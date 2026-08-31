@@ -1,0 +1,1 @@
+- [Colyseus Replit runtime](colyseus-replit-runtime.md) — this app runs from a nested repository, so root Replit commands must target the nested Vite build and shared Colyseus server directly.

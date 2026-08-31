@@ -60,6 +60,7 @@ class QoudRoom extends Room<{ state: QoudRoomState }> {
     }
 
     roomsByCode.set(code, this);
+    this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
   }
 
   onJoin(client: { sessionId: string }, options: { name?: string; player?: Partial<PlayerState> } = {}) {
@@ -100,7 +101,7 @@ class QoudRoom extends Room<{ state: QoudRoomState }> {
     if (roomsByCode.get(this.state.code) === this) roomsByCode.delete(this.state.code);
   }
 
-  onMessage(type: string, client: { sessionId: string }, payload: any) {
+  private handleMessage(type: string, client: { sessionId: string }, payload: any) {
     if (type === 'start-game') {
       this.assertHost(client);
       this.state.status = 'playing';

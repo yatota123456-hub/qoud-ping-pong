@@ -62,7 +62,9 @@ class ColyseusBridge {
   }
   attach(room: any) {
     this.room = room;
-    room.onMessage('*', (type: string, payload: unknown) => this.dispatch(type, payload));
+    for (const messageType of ['room-update', 'game-started', 'goal-scored', 'match-finished', 'host-left', 'game-state', 'paddle-input']) {
+      room.onMessage(messageType, (payload: unknown) => this.dispatch(messageType, payload));
+    }
     room.onStateChange((state: any) => this.dispatch('room-update', this.roomData(state)));
     room.onError?.((code: number, message: string) => this.dispatch('error', message || `Connection error (${code})`));
     room.onLeave?.((code: number) => {
