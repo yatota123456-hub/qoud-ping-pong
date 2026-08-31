@@ -1321,10 +1321,20 @@ function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, p
     const paddles: Record<string, THREE.Group> = {};
     players.forEach(p => { if (!isActive(p.side)) return; const g = createHatPaddle(p.color); scene.add(g); paddles[p.side] = g; });
 
-    threeRef.current = { scene, camera, renderer, ball, paddles, table: table as any, ledMeshes } as any;
-    const onResize = () => { if (!mountRef.current || !threeRef.current) return; const w = mountRef.current.clientWidth; const h = mountRef.current.clientHeight; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h); };
-    window.addEventListener('resize', onResize);
-    return () => { window.removeEventListener('resize', onResize); try { mount.removeChild(renderer.domElement); } catch {} renderer.dispose(); };
+  threeRef.current = { scene, camera, renderer, ball, paddles, table: table as any, ledMeshes } as any;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (!mountRef.current || !threeRef.current) return;
+      const w = mountRef.current.clientWidth;
+      const h = mountRef.current.clientHeight;
+      if (w === 0 || h === 0) return;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    });
+    resizeObserver.observe(mount);
+
+    return () => { resizeObserver.disconnect(); try { mount.removeChild(renderer.domElement); } catch {} renderer.dispose(); };
   }, [players, createHatPaddle, world]);
 
   useEffect(() => {
@@ -1587,7 +1597,7 @@ function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, p
   };
   const endZone = (e: PointerEvent<HTMLDivElement>) => { try { (e.currentTarget as any).releasePointerCapture(e.pointerId); } catch {} drag.current.side = null; };
 
-  return <main className="game-shell" dir={isAr ? "rtl" : "ltr"} onContextMenu={e=>e.preventDefault()} style={{ touchAction: 'none', background:'#000' }}>
+    return <main className="game-shell" dir={isAr ? "rtl" : "ltr"} onContextMenu={e=>e.preventDefault()} style={{ touchAction: 'none', background:'#000', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
     <header className="game-topbar">
       <Brand />
       <div className="match-meta">
