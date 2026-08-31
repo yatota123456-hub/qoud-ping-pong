@@ -29,7 +29,7 @@ type Vec2 = { x: number; y: number };
 
 const COLORS = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
 const SIDES: Player['side'][] = ['bottom', 'top', 'right', 'left'];
-const RECTANGULAR_WORLD = { w: 800, h: 1350 };
+const RECTANGULAR_WORLD = { w: 900, h: 1550 };
 const SQUARE_WORLD = { w: 1200, h: 1200 };
 const ZONE = 100;
 const PADDLE_SIZE = 42;
