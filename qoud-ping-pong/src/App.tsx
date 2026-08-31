@@ -1378,10 +1378,10 @@ function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, p
 
           const touch = touchControls.current; if (touch.left) controls.current.x=-1; else if (touch.right) controls.current.x=1; else controls.current.x=0; if (touch.up) controls.current.y=-1; else if (touch.down) controls.current.y=1; else controls.current.y=0; const bottomInput = touch.bottomLeft ? -1 : touch.bottomRight ? 1 : 0;
           state.prevPaddles = { ...state.paddles };
-          state.paddles.bottom = Math.max(70, Math.min(world.w - 70, state.paddles.bottom + (players[0]?.computer ? ai(state.ball.x, state.paddles.bottom, settings.difficulty) : controls.current.x)*8*delta));
-          state.paddles.top = Math.max(70, Math.min(world.w - 70, state.paddles.top + (players[1]?.computer ? ai(state.ball.x, state.paddles.top, settings.difficulty) : bottomInput)*5*delta));
-          state.paddles.right = Math.max(70, Math.min(world.h - 70, state.paddles.right + (players[2]?.computer ? ai(state.ball.y, state.paddles.right, settings.difficulty) : controls.current.y)*6*delta));
-          state.paddles.left = Math.max(70, Math.min(world.h - 70, state.paddles.left + (players[3]?.computer ? ai(state.ball.y, state.paddles.left, settings.difficulty) : 0)*5*delta));
+          state.paddles.bottom = Math.max(70, Math.min(world.w - 70, state.paddles.bottom + (playerForSide('bottom')?.computer ? ai(state.ball.x, state.paddles.bottom, settings.difficulty) : controls.current.x)*8*delta));
+          state.paddles.top = Math.max(70, Math.min(world.w - 70, state.paddles.top + (playerForSide('top')?.computer ? ai(state.ball.x, state.paddles.top, settings.difficulty) : bottomInput)*5*delta));
+          state.paddles.right = Math.max(70, Math.min(world.h - 70, state.paddles.right + (playerForSide('right')?.computer ? ai(state.ball.y, state.paddles.right, settings.difficulty) : controls.current.y)*6*delta));
+          state.paddles.left = Math.max(70, Math.min(world.h - 70, state.paddles.left + (playerForSide('left')?.computer ? ai(state.ball.y, state.paddles.left, settings.difficulty) : 0)*5*delta));
 
           if (drag.current.side==='bottom' && isActive('bottom')) state.paddles.bottom = Math.max(70, Math.min(world.w - 70, drag.current.x));
           if (drag.current.side==='top' && isActive('top')) state.paddles.top = Math.max(70, Math.min(world.w - 70, drag.current.x));
