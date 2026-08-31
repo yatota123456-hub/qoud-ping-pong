@@ -1,0 +1,20 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "cd qoud-ping-pong && ../node_modules/.bin/tsx server/index.ts",
+    "build": "cd qoud-ping-pong && ./node_modules/.bin/vite build --config vite.config.ts",
+    "typecheck": "cd qoud-ping-pong && ../node_modules/.bin/tsc -p tsconfig.json --noEmit",
+    "start": "cd qoud-ping-pong && NODE_ENV=production ../node_modules/.bin/tsx server/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@types/three": "^0.185.4",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

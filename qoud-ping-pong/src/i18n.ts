@@ -1,0 +1,181 @@
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import LanguageDetector from 'i18next-browser-languagedetector';
+
+const resources = {
+  ar: {
+    translation: {
+      brand_sub: "بينغ بونغ",
+      online: "{{count}} غرفة - {{players}} لاعب الآن",
+      badge_led: "طاولة LED هوائية - نفس الصورة المرجعية",
+      title_1: "طاولة LED",
+      title_2: "بإضاءة نيون.",
+      desc: "استمتع بأجواء اللعب الحقيقي",
+      stat_led: "نيون حقيقي",
+      stat_speed: "سرعة",
+      stat_ball: "كرة حمراء",
+      mode: "النمط",
+      led_table: "LED TABLE • 42px",
+      mode_2d: "2D LED",
+      mode_2d_sub: "مطابق للصورة",
+      mode_3d: "3D LED",
+      mode_3d_sub: "إطار لامع",
+      ball_speed: "سرعة الكرة {{speed}}",
+      fixed: "ثابتة",
+      gradual: "متدرجة",
+      slow: "بطيء",
+      fast_slow: "سريع جداً",
+      start_round: "ابدأ الجولة",
+      who_around: "من حول الطاولة؟",
+      room: "الغرفة",
+      players_count: "عدد اللاعبين",
+      side_bottom: "تحت",
+      side_top: "فوق",
+      side_right: "يمين",
+      side_left: "يسار",
+      computer: "كمبيوتر",
+      human: "انسان",
+      vs_computer: "ضد الكمبيوتر",
+      vs_friends: "أصدقاء",
+      difficulty: "الصعوبة",
+      easy: "خفيف",
+      normal: "متوازن",
+      hard: "شرس",
+      create_room: "أنشئ غرفة والعب • سرعة {{speed}}",
+      or_join: "أو انضم برمز",
+      join: "انضم",
+      code_placeholder: "ABCD",
+      error_name_min: "اكتب اسم كل اللاعبين حرفين على الاقل",
+      error_name_diff: "الاسماء لازم مختلفة",
+      error_code: "الكود 4 حروف",
+      error_server: "سيرفر الأونلاين غير شغال - شغل npm run server أو العب ضد الكمبيوتر",
+      waiting_title: "الكل جاهز؟",
+      waiting_desc: "طاولة LED كاملة - إطار أسود لامع + نيون",
+      room_code: "رمز الغرفة",
+      copy: "اضغط للنسخ",
+      copied: "تم النسخ ✓",
+      you_host: "انت المنشئ",
+      you_joined: "انضممت",
+      players: "اللاعبون",
+      creator: "منشئ",
+      ready: "جاهز",
+      start: "ابدأ",
+      settings: "الإعدادات",
+      time: "الوقت",
+      goal_target: "الهدف {{goal}}",
+      rally: "التتابع",
+      paused: "توقفت",
+      continue: "متابعة",
+      goal_toast: "هدف!",
+      winner: "الفائز",
+      points: "نقاط",
+      another_round: "جولة أخرى",
+      back: "العودة",
+      wins: "{{count}} انتصار",
+      trial_over: "انتهت تجاربك المجانية",
+      buy_desc: "لقد لعبت 3 مرات مجاناً. ادفع 1.99$ لفتح اللعبة للأبد",
+      buy_btn: "شراء الآن - 1.99$",
+      lang: "العربية"
+    }
+  },
+  en: {
+    translation: {
+      brand_sub: "Ping Pong",
+      online: "{{count}} rooms - {{players}} players now",
+      badge_led: "Air LED Table - Same as reference",
+      title_1: "LED Table",
+      title_2: "With neon light.",
+      desc: "Enjoy the real play atmosphere",
+      stat_led: "Real Neon",
+      stat_speed: "Speed",
+      stat_ball: "Red Ball",
+      mode: "Mode",
+      led_table: "LED TABLE • 42px",
+      mode_2d: "2D LED",
+      mode_2d_sub: "Same as image",
+      mode_3d: "3D LED",
+      mode_3d_sub: "Glossy Frame",
+      ball_speed: "Ball Speed {{speed}}",
+      fixed: "Fixed",
+      gradual: "Gradual",
+      slow: "Slow",
+      fast_slow: "Very Fast",
+      start_round: "Start Round",
+      who_around: "Who's around the table?",
+      room: "Room",
+      players_count: "Players",
+      side_bottom: "Bottom",
+      side_top: "Top",
+      side_right: "Right",
+      side_left: "Left",
+      computer: "Computer",
+      human: "Human",
+      vs_computer: "vs Computer",
+      vs_friends: "Friends",
+      difficulty: "Difficulty",
+      easy: "Easy",
+      normal: "Normal",
+      hard: "Hard",
+      create_room: "Create Room & Play • Speed {{speed}}",
+      or_join: "Or join with code",
+      join: "Join",
+      code_placeholder: "ABCD",
+      error_name_min: "Name must be at least 2 letters",
+      error_name_diff: "Names must be different",
+      error_code: "Code is 4 letters",
+      error_server: "Online server offline - run npm run server or play vs Computer",
+      waiting_title: "Everyone Ready?",
+      waiting_desc: "Full LED Table - Glossy black frame + neon",
+      room_code: "Room Code",
+      copy: "Click to copy",
+      copied: "Copied ✓",
+      you_host: "You are host",
+      you_joined: "Joined",
+      players: "Players",
+      creator: "Host",
+      ready: "Ready",
+      start: "Start",
+      settings: "Settings",
+      time: "Time",
+      goal_target: "Goal {{goal}}",
+      rally: "Rally",
+      paused: "Paused",
+      continue: "Resume",
+      goal_toast: "Goal!",
+      winner: "Winner",
+      points: "Points",
+      another_round: "Another Round",
+      back: "Back",
+      wins: "{{count}} wins",
+      trial_over: "Your free trials ended",
+      buy_desc: "You played 3 times for free. Pay $1.99 to unlock forever",
+      buy_btn: "Buy Now - $1.99",
+      lang: "English"
+    }
+  }
+};
+
+i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    resources,
+    fallbackLng: 'ar',
+    lng: localStorage.getItem('qoud_lang') || undefined,
+    interpolation: { escapeValue: false },
+    detection: {
+      order: ['localStorage', 'navigator'],
+      caches: ['localStorage']
+    }
+  });
+
+// حفظ اللغة - بدون Capacitor الآن
+i18n.on('languageChanged', (lng) => {
+  localStorage.setItem('qoud_lang', lng);
+  document.documentElement.dir = lng.startsWith('ar') ? 'rtl' : 'ltr';
+  document.documentElement.lang = lng;
+});
+
+document.documentElement.dir = i18n.language?.startsWith('ar') ? 'rtl' : 'ltr';
+
+export default i18n;

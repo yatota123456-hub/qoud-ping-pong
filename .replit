@@ -1,0 +1,25 @@
+modules = ["nodejs-20"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[deployment]
+deploymentTarget = "vm"
+build = ["bash", "-lc", "cd qoud-ping-pong && ./node_modules/.bin/vite build --config vite.config.ts"]
+run = ["bash", "-lc", "cd qoud-ping-pong && NODE_ENV=production ../node_modules/.bin/tsx server/index.ts"]
+
+[workflows]
+runButton = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd qoud-ping-pong && ../node_modules/.bin/tsx server/index.ts"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
