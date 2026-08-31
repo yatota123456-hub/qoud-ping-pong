@@ -9,7 +9,7 @@ localPort = 5001
 externalPort = 3001
 
 [deployment]
-deploymentTarget = "vm"
+deploymentTarget = "cloudrun"
 build = ["bash", "-lc", "cd qoud-ping-pong && ./node_modules/.bin/vite build --config vite.config.ts"]
 run = ["bash", "-lc", "cd qoud-ping-pong && NODE_ENV=production ../node_modules/.bin/tsx server/index.ts"]
 
