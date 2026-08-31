@@ -1604,17 +1604,23 @@ function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, p
       {players.map(p=><div className="score-chip" key={p.id}><span className="score-color" style={{background:p.color}}/><span>{p.name}</span><strong>{scores[p.id]??0}</strong></div>)}
       <div className="rally-meter"><span>{isAr ? 'التتابع' : 'Rally'}</span><b>{rally}</b></div>
     </div>
-    <section className="arena-stage" style={{width:'100%', display:'flex', flexDirection:'column', alignItems:'center', gap:'8px'}}>
-        <div ref={mountRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onWheel={handleWheel as any}
-          style={{
-            width: `min(96vw, 780px, 85vh)`,
-            aspectRatio: `1 / 1`,
-            borderRadius: '22px', overflow: 'hidden', background: '#000', touchAction: 'none', margin: '0 auto',
-            boxShadow: '0 0 0 2px #111, 0 0 50px rgba(0,229,255,0.35)', position: 'relative',
-          }}>
+    <section className="arena-stage" style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', minHeight: 0, paddingBottom: '16px' }}>
+      <div ref={mountRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onWheel={handleWheel as any}
+        style={{
+          width: '100%',
+          maxWidth: '780px',
+          flex: 1, // هذا السطر يجعل الكانفاس يتمدد عمودياً ليملأ المساحة
+          borderRadius: '22px', 
+          overflow: 'hidden', 
+          background: '#000', 
+          touchAction: 'none', 
+          margin: '0 auto',
+          boxShadow: '0 0 0 2px #111, 0 0 50px rgba(0,229,255,0.35)', 
+          position: 'relative',
+        }}>
         {countdown > 0 && <div style={{position:'absolute', inset:0, background:'rgba(0,0,0,0.72)', display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none', zIndex:5}}><span style={{fontSize:'clamp(64px,18vw,120px)', fontWeight:900, color:'#ff2233', textShadow:'0 0 28px rgba(255,34,51,.8)'}}>{countdown}</span></div>}
       </div>
-      <div onPointerDown={startDragZone} onPointerMove={moveDragZone} onPointerUp={endZone} onPointerCancel={endZone} style={{ height:'88px', width:'100%', maxWidth:'min(96vw, 780px)', touchAction:'none', background:'rgba(255,255,255,0.1)', borderRadius:'14px' }} />
+      <div onPointerDown={startDragZone} onPointerMove={moveDragZone} onPointerUp={endZone} onPointerCancel={endZone} style={{ height: '100px', flexShrink: 0, width: '100%', maxWidth: '780px', touchAction: 'none', background: 'rgba(255,255,255,0.1)', borderRadius: '14px' }} />
     </section>
   </main>;
 }
