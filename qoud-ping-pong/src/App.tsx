@@ -29,7 +29,7 @@ type Vec2 = { x: number; y: number };
 
 const COLORS = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
 const SIDES: Player['side'][] = ['bottom', 'top', 'right', 'left'];
-const RECTANGULAR_WORLD = { w: 700, h: 1000 };
+const RECTANGULAR_WORLD = { w: 500, h: 1050 };
 const SQUARE_WORLD = { w: 1000, h: 1000 };
 const ZONE = 100;
 const PADDLE_SIZE = 42;
@@ -1182,7 +1182,7 @@ function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, p
   const gameEndedRef = useRef(false);
   pausedRef.current = paused;
 
-  const world = SQUARE_WORLD;
+  const world = players.length === 4 ? SQUARE_WORLD : RECTANGULAR_WORLD;
 
   const initialCam = useMemo(() => {
     const camDist = players.length === 4 ? 1150 : 1050; 
@@ -1396,17 +1396,80 @@ function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, p
           } else {
             const speedFactor = settings.speed==='fixed' ? 1 : 1 + state.rally * 0.08;
             state.ball.x += state.ball.vx*speedFactor*delta; state.ball.y += state.ball.vy*speedFactor*delta;
-            const r=20; const paddleR=28;
-            if (!isActive('top') && state.ball.y - r < 22) { state.ball.y=22+r; state.ball.vy=Math.abs(state.ball.vy); }
-            if (!isActive('bottom') && state.ball.y + r > world.h - 22) { state.ball.y=world.h-22-r; state.ball.vy=-Math.abs(state.ball.vy); }
-            if (!isActive('left') && state.ball.x - r < 22) { state.ball.x=22+r; state.ball.vx=Math.abs(state.ball.vx); }
-            if (!isActive('right') && state.ball.x + r > world.w - 22) { state.ball.x=world.w-22-r; state.ball.vx=-Math.abs(state.ball.vx); }
-            if (isActive('top')){ const dx=state.ball.x-state.paddles.top; const dy=state.ball.y-52; if(Math.sqrt(dx*dx+dy*dy) < r+paddleR && Math.abs(dx) <= paddleR && state.ball.vy<0){ state.ball.y=52+ r; state.ball.vy=Math.abs(state.ball.vy); state.ball.vx+=dx*0.03; if(settings.speed==='gradual') state.rally++; } }
-            if (isActive('bottom')){ const dx=state.ball.x-state.paddles.bottom; const dy=state.ball.y-(world.h - 52); if(Math.sqrt(dx*dx+dy*dy) < r+paddleR && Math.abs(dx) <= paddleR && state.ball.vy>0){ state.ball.y=world.h - 52- r; state.ball.vy=-Math.abs(state.ball.vy); state.ball.vx+=dx*0.03; if(settings.speed==='gradual') state.rally++; } }
-            if (isActive('left')){ const dx=state.ball.x-52; const dy=state.ball.y-state.paddles.left; if(Math.sqrt(dx*dx+dy*dy) < r+paddleR && Math.abs(dy) <= paddleR && state.ball.vx<0){ state.ball.x=52+ r; state.ball.vx=Math.abs(state.ball.vx); state.ball.vy+=dy*0.03; if(settings.speed==='gradual') state.rally++; } }
-            if (isActive('right')){ const dx=state.ball.x-(world.w - 52); const dy=state.ball.y-state.paddles.right; if(Math.sqrt(dx*dx+dy*dy) < r+paddleR && Math.abs(dy) <= paddleR && state.ball.vx>0){ state.ball.x=world.w - 52- r; state.ball.vx=-Math.abs(state.ball.vx); state.ball.vy+=dy*0.03; if(settings.speed==='gradual') state.rally++; } }
-            const maxSpd = 3 + settings.ballSpeed * 0.4 + state.rally * 0.15;
-            state.ball.vx=Math.max(-maxSpd,Math.min(maxSpd,state.ball.vx)); state.ball.vy=Math.max(-maxSpd,Math.min(maxSpd,state.ball.vy));
+            const r = 20; const paddleR = 28; const HIT_DIST = r + paddleR - 2;
+
+            // ارتداد الجدران
+            if (!isActive('top') && state.ball.y - r < 22) { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy); }
+            if (!isActive('bottom') && state.ball.y + r > world.h - 22) { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); }
+            if (!isActive('left') && state.ball.x - r < 22) { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); }
+            if (!isActive('right') && state.ball.x + r > world.w - 22) { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); }
+
+            // اصطدام المضارب (فيزياء دفع متجه لضمان عدم القفز العشوائي وزيادة السرعة بسلاسة)
+            if (isActive('top')) {
+              const px = state.paddles.top; const py = 52;
+              const dx = state.ball.x - px; const dy = state.ball.y - py;
+              const dist = Math.sqrt(dx*dx + dy*dy);
+              if (dist <= HIT_DIST + 10 && dist >= 0.5 && state.ball.vy < 1) {
+                const nx = dx / dist; const ny = dy / dist;
+                const cur = Math.hypot(state.ball.vx, state.ball.vy) || getInitialSpeed();
+                const newSpeed = cur * 1.1 + 3.5 + settings.ballSpeed * 0.45;
+                state.ball.x = px + nx * (HIT_DIST + 6);
+                state.ball.y = py + ny * (HIT_DIST + 6);
+                state.ball.vx = (dx / paddleR) * 7.5;
+                state.ball.vy = Math.abs(newSpeed);
+                if (settings.speed === 'gradual') state.rally++;
+              }
+            }
+            if (isActive('bottom')) {
+              const px = state.paddles.bottom; const py = world.h - 52;
+              const dx = state.ball.x - px; const dy = state.ball.y - py;
+              const dist = Math.sqrt(dx*dx + dy*dy);
+              if (dist <= HIT_DIST + 10 && dist >= 0.5 && state.ball.vy > -1) {
+                const nx = dx / dist; const ny = dy / dist;
+                const cur = Math.hypot(state.ball.vx, state.ball.vy) || getInitialSpeed();
+                const newSpeed = cur * 1.1 + 3.5 + settings.ballSpeed * 0.45;
+                state.ball.x = px + nx * (HIT_DIST + 6);
+                state.ball.y = py + ny * (HIT_DIST + 6);
+                state.ball.vx = (dx / paddleR) * 7.5;
+                state.ball.vy = -Math.abs(newSpeed);
+                if (settings.speed === 'gradual') state.rally++;
+              }
+            }
+            if (isActive('left')) {
+              const px = 52; const py = state.paddles.left;
+              const dx = state.ball.x - px; const dy = state.ball.y - py;
+              const dist = Math.sqrt(dx*dx + dy*dy);
+              if (dist <= HIT_DIST + 10 && dist >= 0.5 && state.ball.vx < 1) {
+                const nx = dx / dist; const ny = dy / dist;
+                const cur = Math.hypot(state.ball.vx, state.ball.vy) || getInitialSpeed();
+                const newSpeed = cur * 1.1 + 3.5 + settings.ballSpeed * 0.45;
+                state.ball.x = px + nx * (HIT_DIST + 6);
+                state.ball.y = py + ny * (HIT_DIST + 6);
+                state.ball.vy = (dy / paddleR) * 7.5;
+                state.ball.vx = Math.abs(newSpeed);
+                if (settings.speed === 'gradual') state.rally++;
+              }
+            }
+            if (isActive('right')) {
+              const px = world.w - 52; const py = state.paddles.right;
+              const dx = state.ball.x - px; const dy = state.ball.y - py;
+              const dist = Math.sqrt(dx*dx + dy*dy);
+              if (dist <= HIT_DIST + 10 && dist >= 0.5 && state.ball.vx > -1) {
+                const nx = dx / dist; const ny = dy / dist;
+                const cur = Math.hypot(state.ball.vx, state.ball.vy) || getInitialSpeed();
+                const newSpeed = cur * 1.1 + 3.5 + settings.ballSpeed * 0.45;
+                state.ball.x = px + nx * (HIT_DIST + 6);
+                state.ball.y = py + ny * (HIT_DIST + 6);
+                state.ball.vy = (dy / paddleR) * 7.5;
+                state.ball.vx = -Math.abs(newSpeed);
+                if (settings.speed === 'gradual') state.rally++;
+              }
+            }
+
+            // تحديد السرعة القصوى بشكل متوازن لضمان عدم اختراق الجدران
+            const maxSpd = 12 + settings.ballSpeed * 0.8 + state.rally * 0.3;
+            state.ball.vx = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vx)); 
+            state.ball.vy = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vy));
             const GOAL_W= players.length===2 ? 260 : 300, GOAL_X1=(world.w-GOAL_W)/2, GOAL_X2=GOAL_X1+GOAL_W, GOAL_Y1=(world.h-GOAL_W)/2, GOAL_Y2=GOAL_Y1+GOAL_W;
             const inGX=(x:number)=>x>=GOAL_X1&&x<=GOAL_X2; const inGY=(y:number)=>y>=GOAL_Y1&&y<=GOAL_Y2;
             let missed: Player|undefined;
