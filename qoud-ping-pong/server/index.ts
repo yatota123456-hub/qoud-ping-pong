@@ -22,15 +22,16 @@ class QoudRoom extends Room<QoudRoomState> {
   maxClients = 4;
 
   onCreate(options: CreateOptions) {
-    const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);     
     if (code.length !== 4) throw new Error('Invalid room code');
 
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
     const settings = options.settings ?? {};
-    const vsComputer = settings.vsComputer === true;
-    // Computer opponents live in the same Colyseus state as human players,
-    // while maxClients still counts only real WebSocket connections.
-    this.maxClients = vsComputer ? 1 : maxPlayers;
+    
+    // FIX: Always allow maxPlayers to join, even if vsComputer = true
+    // Computers don't count as clients, so maxClients should be maxPlayers
+    this.maxClients = maxPlayers;
+    
     const state = new QoudRoomState();
     state.code = code;
     state.status = 'waiting';
@@ -38,8 +39,9 @@ class QoudRoom extends Room<QoudRoomState> {
     state.hostSessionId = '';
     state.settingsJson = JSON.stringify(settings);
     this.setState(state);
+    this.setMetadata({ code: code }); // Important for /api/rooms query
 
-    if (vsComputer) {
+    if (settings.vsComputer === true) {
       for (const [index, computer] of (options.computerPlayers ?? []).entries()) {
         const player = new PlayerState();
         const seat = index + 1;
@@ -54,23 +56,36 @@ class QoudRoom extends Room<QoudRoomState> {
     }
 
     roomsByCode.set(code, this);
-    this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
+    this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));       
   }
 
   onJoin(client: { sessionId: string }, options: { name?: string; player?: Partial<PlayerState> } = {}) {
-    if (this.state.status !== 'waiting') throw new Error('الجولة بدأت بالفعل');
+    if (this.state.status !== 'waiting') throw new Error('الجولة بدأت بالفعل');      
 
-    const name = String(options.name ?? options.player?.name ?? '').trim();
-    if (name.length < 2) throw new Error('الاسم قصير جداً');
-    if ([...this.state.players.values()].some((player) => player.name.toLowerCase() === name.toLowerCase())) {
-      throw new Error('الاسم مستخدم داخل الغرفة');
+    let name = String(options.name ?? options.player?.name ?? '').trim();
+    if (name.length < 2) name = `لاعب ${this.state.players.size + 1}`;
+    
+    // FIX: If name already exists, add number instead of throwing error
+    const existingNames = [...this.state.players.values()].map(p => p.name.toLowerCase());
+    if (existingNames.includes(name.toLowerCase())) {
+      let i = 2;
+      while (existingNames.includes(`${name} ${i}`.toLowerCase())) i++;
+      name = `${name} ${i}`;
+    }
+
+    // FIX: If a human joins and there's a computer on the next side, remove the computer
+    const side = (options.player?.side as PlayerSide) ?? this.nextSide();
+    const computerToRemove = [...this.state.players.values()].find(p => p.computer && p.side === side);
+    if (computerToRemove) {
+      this.state.players.delete(computerToRemove.id);
+      this.state.scores.delete(computerToRemove.id);
     }
 
     const player = new PlayerState();
     player.id = client.sessionId;
     player.name = name;
-    player.color = String(options.player?.color ?? '#ffcf5a');
-    player.side = (options.player?.side as PlayerSide) ?? this.nextSide();
+    player.color = String(options.player?.color ?? COLORS[this.state.players.size % COLORS.length]);
+    player.side = side;
     player.computer = false;
     this.state.players.set(client.sessionId, player);
     this.state.scores.set(client.sessionId, 0);
@@ -85,6 +100,11 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.scores.delete(client.sessionId);
     if (wasHost) {
       this.broadcast('host-left', { message: 'منشئ الغرفة غادر' });
+      this.disconnect();
+      return;
+    }
+    // If no players left, dispose
+    if (this.state.players.size === 0) {
       this.disconnect();
       return;
     }
@@ -114,7 +134,7 @@ class QoudRoom extends Room<QoudRoomState> {
         }
       } else {
         const missedId = [...this.state.players.values()].find((player) => player.side === payload?.missedSide)?.id;
-        const scorer = [...this.state.players.values()].find((player) => player.id !== missedId);
+        const scorer = [...this.state.players.values()].find((player) => player.id !== missedId);    
         if (!scorer) return;
         this.state.scores.set(scorer.id, (this.state.scores.get(scorer.id) ?? 0) + 1);
       }
@@ -188,7 +208,7 @@ const gameServer = new Server({
       const code = String(req.query.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (code) {
         const room = roomsByCode.get(code);
-        if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+        if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });       
         return res.json({ roomId: room.roomId, code });
       }
       return res.json({ count: roomsByCode.size });
