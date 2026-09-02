@@ -2,26 +2,12 @@ import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
-import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
 export default defineConfig({
   base: process.env.BASE_PATH || "/",
   plugins: [
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== 'production' && process.env.REPL_ID !== undefined
-      ? [
-          await import('@replit/vite-plugin-cartographer').then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, '..'),
-            }),
-          ),
-          await import('@replit/vite-plugin-dev-banner').then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
   ],
   resolve: {
     alias: {
@@ -36,14 +22,19 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: process.env.PORT ? parseInt(process.env.PORT) : 5000,
+    port: 5001,
     strictPort: false,
     host: '0.0.0.0',
-    allowedHosts: true,
-  },
-  preview: {
-    port: process.env.PORT ? parseInt(process.env.PORT) : 5000,
-    host: '0.0.0.0',
-    allowedHosts: true,
+    proxy: {
+      '/matchmake': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
   },
 });

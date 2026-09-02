@@ -9,7 +9,6 @@ export const PlayerState = schema({
   side: t.string(),
   computer: t.boolean(),
 }, 'PlayerState');
-
 export type PlayerState = SchemaType<typeof PlayerState>;
 
 export const QoudRoomState = schema({
@@ -21,5 +20,4 @@ export const QoudRoomState = schema({
   players: t.map(PlayerState),
   scores: t.map('number'),
 }, 'QoudRoomState');
-
 export type QoudRoomState = SchemaType<typeof QoudRoomState>;

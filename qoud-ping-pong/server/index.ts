@@ -18,13 +18,7 @@ const roomsByCode = new Map<string, QoudRoom>();
 const SIDES: PlayerSide[] = ['bottom', 'top', 'right', 'left'];
 const COLORS = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
 
-function json(res: import('node:http').ServerResponse, status: number, body: unknown) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify(body));
-}
-
-class QoudRoom extends Room<{ state: QoudRoomState }> {
+class QoudRoom extends Room<QoudRoomState> {
   maxClients = 4;
 
   onCreate(options: CreateOptions) {
@@ -184,39 +178,38 @@ class QoudRoom extends Room<{ state: QoudRoomState }> {
 }
 
 const port = Number(process.env.PORT ?? 5000);
-const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
-let vite: Awaited<ReturnType<typeof createViteServer>> | undefined;
-
-app.get('/api/rooms', (req, res) => {
-  const code = String(req.query.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (code) {
-    const room = roomsByCode.get(code);
-    if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
-    return res.json({ roomId: room.roomId, code });
-  }
-  return res.json({ count: roomsByCode.size });
-});
-
-app.get('/health', (_req, res) => res.json({ ok: true, rooms: roomsByCode.size }));
-
-if (isProduction) {
-  const publicDir = path.resolve(import.meta.dirname, '../dist/public');
-  app.use(express.static(publicDir, { index: 'index.html' }));
-  app.get(/.*/, (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
-} else {
-  vite = await createViteServer({
-    configFile: path.resolve(import.meta.dirname, '../vite.config.ts'),
-    server: { middlewareMode: true },
-    appType: 'spa',
-  });
-  app.use((req, res, next) => vite!.middlewares(req, res, next));
-}
-
-const httpServer = createServer(app);
+const httpServer = createServer();
 
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
+  express: async (app) => {
+    app.get('/api/rooms', (req, res) => {
+      const code = String(req.query.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (code) {
+        const room = roomsByCode.get(code);
+        if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
+        return res.json({ roomId: room.roomId, code });
+      }
+      return res.json({ count: roomsByCode.size });
+    });
+
+    app.get('/health', (_req, res) => res.json({ ok: true, rooms: roomsByCode.size }));
+
+    if (isProduction) {
+      const publicDir = path.resolve(import.meta.dirname, '../dist/public');
+      app.use(express.static(publicDir, { index: 'index.html' }));
+      app.get(/.*/, (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
+      return;
+    }
+
+    const vite = await createViteServer({
+      configFile: path.resolve(import.meta.dirname, '../vite.config.ts'),
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use((req, res, next) => vite.middlewares(req, res, next));
+  },
 });
 gameServer.define('qoud', QoudRoom);
 await gameServer.listen(port, '0.0.0.0');
