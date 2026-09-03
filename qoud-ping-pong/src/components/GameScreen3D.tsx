@@ -10,29 +10,32 @@ type Scores = Record<string | number, number>;
 
 function createAirHockeySurface(worldW: number, worldH: number) {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 512;
+  canvas.width = 512;
+  canvas.height = 1024;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.fillStyle = '#f2f4f6';
+  // Pure glossy white like reference
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Small black dots - denser like reference
   ctx.fillStyle = '#0a0a0a';
-  const cols = 12;
-  const rows = 24;
+  const cols = 28;
+  const rows = 56;
   const spacingX = canvas.width / cols;
   const spacingY = canvas.height / rows;
   for (let y = spacingY / 2; y < canvas.height; y += spacingY) {
     for (let x = spacingX / 2; x < canvas.width; x += spacingX) {
+      const offset = (Math.floor(y / spacingY) % 2 === 0) ? 0 : spacingX/2;
       ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.arc(x + offset, y, 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(worldW / 400, worldH / 400);
-  tex.anisotropy = 2;
+  tex.repeat.set(worldW / 380, worldH / 380);
+  tex.anisotropy = 4;
   return tex;
 }
 
@@ -73,28 +76,44 @@ function buildRoundedRectPoints(w: number, h: number, r: number, segmentsPerCorn
 }
 
 function setup3DArenaLighting(scene: THREE.Scene, worldWidth: number, worldHeight: number) {
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.72);
   scene.add(ambientLight);
-  const neonColors = [0x00e5ff, 0xffcf5a, 0xbf5af2, 0xff4081];
+  // Soft directional for glossy reflections like reference
+  const dir = new THREE.DirectionalLight(0xffffff, 0.55);
+  dir.position.set(worldWidth*0.3, 800, worldHeight*0.2);
+  scene.add(dir);
+  // Neon corner glows - brighter
+  const neonColors = [0x00e5ff, 0xff7a28, 0xbf5af2, 0xff2d78];
   const cornerPositions = [
-    { x: 0, z: 0 },
-    { x: worldWidth, z: worldHeight },
-    { x: 0, z: worldHeight },
-    { x: worldWidth, z: 0 },
+    { x: worldWidth*0.15, z: worldHeight*0.15 },
+    { x: worldWidth*0.85, z: worldHeight*0.85 },
+    { x: worldWidth*0.15, z: worldHeight*0.85 },
+    { x: worldWidth*0.85, z: worldHeight*0.15 },
   ];
   cornerPositions.forEach((pos, idx) => {
-    const pointLight = new THREE.PointLight(neonColors[idx % 4], 0.8, Math.max(worldWidth, worldHeight) * 1.2);
-    pointLight.position.set(pos.x, 40, pos.z);
+    const pointLight = new THREE.PointLight(neonColors[idx % 4], 1.4, Math.max(worldWidth, worldHeight) * 1.1);
+    pointLight.position.set(pos.x, 65, pos.z);
     scene.add(pointLight);
   });
+  // Center soft fill to mimic photo studio lighting
+  const centerLight = new THREE.PointLight(0xffffff, 0.45, worldWidth*1.5);
+  centerLight.position.set(worldWidth/2, 400, worldHeight/2);
+  scene.add(centerLight);
 }
 
 function createArenaFrame(worldW: number, worldH: number) {
   const group = new THREE.Group();
-  const bezelThickness = Math.max(24, Math.min(worldW, worldH) * 0.045);
-  const bezelHeight = 24;
-  const bezelY = 11;
-  const bezelMat = new THREE.MeshStandardMaterial({ color: '#050505', roughness: 0.4, metalness: 0.5 });
+  const bezelThickness = Math.max(32, Math.min(worldW, worldH) * 0.055);
+  const bezelHeight = 28;
+  const bezelY = 13;
+
+  // Glossy black frame - exactly like reference image
+  const bezelMat = new THREE.MeshStandardMaterial({ 
+    color: '#080808', 
+    roughness: 0.18, 
+    metalness: 0.85,
+    envMapIntensity: 1.2
+  });
   const bezelPieces = [
     { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: -bezelThickness / 2 },
     { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: worldH + bezelThickness / 2 },
@@ -106,15 +125,60 @@ function createArenaFrame(worldW: number, worldH: number) {
     mesh.position.set(p.x, bezelY, p.z);
     group.add(mesh);
   });
-  const neonRadius = Math.min(40, Math.min(worldW, worldH) * 0.08);
-  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, 8);
+
+  // Inner neon LED strip - bright like reference
+  const neonRadius = Math.min(42, Math.min(worldW, worldH) * 0.065);
+  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, 12);
   const neonCurve = new THREE.CatmullRomCurve3(neonPts, true, 'catmullrom', 0.15);
-  const neonGeo = new THREE.TubeGeometry(neonCurve, 120, 5.5, 8, true);
+  const neonGeo = new THREE.TubeGeometry(neonCurve, 160, 6.5, 10, true);
   const neonTex = createNeonGradientTexture();
-  const neonMat = new THREE.MeshBasicMaterial({ map: neonTex || undefined });
+  const neonMat = new THREE.MeshStandardMaterial({ 
+    map: neonTex || undefined,
+    emissive: new THREE.Color(0xffffff),
+    emissiveMap: neonTex || undefined,
+    emissiveIntensity: 1.8,
+    roughness: 0.2,
+    metalness: 0.1
+  });
   const neonTube = new THREE.Mesh(neonGeo, neonMat);
-  neonTube.position.y = 19.5;
+  neonTube.position.y = 22.5;
   group.add(neonTube);
+
+  // Outer thin LED line - like reference image outer glow
+  const outerRadius = neonRadius + bezelThickness * 0.6;
+  const outerW = worldW + bezelThickness * 0.8;
+  const outerH = worldH + bezelThickness * 0.8;
+  const outerPts = buildRoundedRectPoints(outerW, outerH, outerRadius, 12);
+  const outerCurve = new THREE.CatmullRomCurve3(outerPts.map(p => new THREE.Vector3(p.x - bezelThickness*0.4, 0, p.z - bezelThickness*0.4)), true, 'catmullrom', 0.15);
+  const outerGeo = new THREE.TubeGeometry(outerCurve, 160, 1.8, 6, true);
+  const outerMat = new THREE.MeshBasicMaterial({ 
+    map: neonTex || undefined,
+    transparent: true,
+    opacity: 0.85
+  });
+  const outerTube = new THREE.Mesh(outerGeo, outerMat);
+  outerTube.position.y = 26;
+  group.add(outerTube);
+
+  // Goal gaps - black blocks like reference
+  const goalW = 220;
+  const goalH = 32;
+  const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
+  const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
+  goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2);
+  group.add(goalTop);
+  const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
+  goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2);
+  group.add(goalBottom);
+  if (worldW >= 1100) { // square mode - also side goals
+    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
+    goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
+    group.add(goalLeft);
+    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
+    goalRight.position.set(worldW + bezelThickness/2, bezelY+2, worldH/2);
+    group.add(goalRight);
+  }
+
   return group;
 }
 
@@ -306,7 +370,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     mount.appendChild(renderer.domElement);
     const tableGroup = new THREE.Group();
     const surfaceTexture = createAirHockeySurface(world.w, world.h);
-    const tableMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', map: surfaceTexture || undefined, metalness: 0.05, roughness: 0.35 });
+    const tableMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', map: surfaceTexture || undefined, metalness: 0.08, roughness: 0.12, envMapIntensity: 0.8 });
     const table = new THREE.Mesh(new THREE.BoxGeometry(world.w, 18, world.h), tableMaterial);
     table.position.set(world.w / 2, 9, world.h / 2);
     tableGroup.add(table);
@@ -386,29 +450,43 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           const bottomPlayer = playerForSide('bottom');
           const leftPlayer = playerForSide('left');
           const rightPlayer = playerForSide('right');
-          if (topActive && (!topPlayer || topPlayer.computer)) {
-            const topSpeed = 5 * delta;
-            if (state.paddles.top < state.ball.x - 12) state.paddles.top += topSpeed;
-            else if (state.paddles.top > state.ball.x + 12) state.paddles.top -= topSpeed;
-            state.paddles.top = Math.max(45, Math.min(world.w - 45, state.paddles.top));
+          // FIXED AI: any paddle that is NOT the human player should be computer
+          const mySide = (players.find((p:any) => p.socketId === socket.id)?.side ?? 'bottom') as any;
+          const isComputerSide = (side: string, player: any) => {
+            if (side === mySide && !isOfflineMode) return false; // human in online
+            if (isOfflineMode) {
+              // In offline vsComputer mode: bottom is human, others are computers
+              if (side === 'bottom') return false;
+              return true;
+            }
+            // Online: if player exists and marked computer, or player missing
+            if (!player) return true;
+            return !!player.computer;
+          };
+          const aiSpeed = (diff: number) => (settings.difficulty === 'hard' ? 7.5 : settings.difficulty === 'easy' ? 3.2 : 5.2) * delta * diff;
+          if (topActive && isComputerSide('top', topPlayer)) {
+            const s = aiSpeed(1);
+            if (state.paddles.top < state.ball.x - 10) state.paddles.top += s;
+            else if (state.paddles.top > state.ball.x + 10) state.paddles.top -= s;
+            state.paddles.top = Math.max(55, Math.min(world.w - 55, state.paddles.top));
           }
-          if (bottomActive && bottomPlayer?.computer) {
-            const botSpeed = 5 * delta;
-            if (state.paddles.bottom < state.ball.x - 12) state.paddles.bottom += botSpeed;
-            else if (state.paddles.bottom > state.ball.x + 12) state.paddles.bottom -= botSpeed;
-            state.paddles.bottom = Math.max(45, Math.min(world.w - 45, state.paddles.bottom));
+          if (bottomActive && isComputerSide('bottom', bottomPlayer)) {
+            const s = aiSpeed(1);
+            if (state.paddles.bottom < state.ball.x - 10) state.paddles.bottom += s;
+            else if (state.paddles.bottom > state.ball.x + 10) state.paddles.bottom -= s;
+            state.paddles.bottom = Math.max(55, Math.min(world.w - 55, state.paddles.bottom));
           }
-          if (leftActive && (!leftPlayer || leftPlayer.computer)) {
-            const leftSpeed = 5 * delta;
-            if (state.paddles.left < state.ball.y - 12) state.paddles.left += leftSpeed;
-            else if (state.paddles.left > state.ball.y + 12) state.paddles.left -= leftSpeed;
-            state.paddles.left = Math.max(45, Math.min(world.h - 45, state.paddles.left));
+          if (leftActive && isComputerSide('left', leftPlayer)) {
+            const s = aiSpeed(1);
+            if (state.paddles.left < state.ball.y - 10) state.paddles.left += s;
+            else if (state.paddles.left > state.ball.y + 10) state.paddles.left -= s;
+            state.paddles.left = Math.max(55, Math.min(world.h - 55, state.paddles.left));
           }
-          if (rightActive && rightPlayer?.computer) {
-            const rightSpeed = 5 * delta;
-            if (state.paddles.right < state.ball.y - 12) state.paddles.right += rightSpeed;
-            else if (state.paddles.right > state.ball.y + 12) state.paddles.right -= rightSpeed;
-            state.paddles.right = Math.max(45, Math.min(world.h - 45, state.paddles.right));
+          if (rightActive && isComputerSide('right', rightPlayer)) {
+            const s = aiSpeed(1);
+            if (state.paddles.right < state.ball.y - 10) state.paddles.right += s;
+            else if (state.paddles.right > state.ball.y + 10) state.paddles.right -= s;
+            state.paddles.right = Math.max(55, Math.min(world.h - 55, state.paddles.right));
           }
           state.ball.x += state.ball.vx * delta;
           state.ball.y += state.ball.vy * delta;
