@@ -84,6 +84,23 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private handleMessage(type: string, client: { sessionId: string }, payload: any) {
+    if (type === 'update-name') {
+      const player = this.state.players.get(client.sessionId);
+      if (!player || this.state.status !== 'waiting') return;
+      let newName = String(payload?.name ?? '').trim().slice(0, 15);
+      if (newName.length < 2) return;
+      const otherNames = [...this.state.players.values()]
+        .filter(p => p.id !== client.sessionId)
+        .map(p => p.name.toLowerCase());
+      if (otherNames.includes(newName.toLowerCase())) {
+        let i = 2;
+        while (otherNames.includes(`${newName} ${i}`.toLowerCase())) i++;
+        newName = `${newName} ${i}`;
+      }
+      player.name = newName;
+      this.broadcastRoom();
+      return;
+    }
     if (type === 'start-game') {
       this.assertHost(client);
       this.state.status = 'playing';
@@ -112,24 +129,27 @@ class QoudRoom extends Room<QoudRoomState> {
       this.state.status = 'waiting';
       return;
     }
-    if (type === 'game-state' || type === 'paddle-input') {
-      if (type === 'game-state') {
-        if (client.sessionId !== this.state.hostSessionId) return;
-        const gameState = payload?.state ?? payload;
-        if (!gameState) return;
-        this.broadcast(type, gameState, { except: client });
-        return;
-      }
+    if (type === 'game-state') {
+      if (client.sessionId !== this.state.hostSessionId) return;
+      const gameState = payload?.state ?? payload;
+      if (!gameState) return;
+      this.broadcast(type, gameState, { except: client });
+      return;
+    }
+    if (type === 'paddle-input') {
       const player = this.state.players.get(client.sessionId);
-      if (!player || payload?.side !== player.side) return;
+      if (!player) return;
+      if (payload?.side !== player.side) return;
       const x = Number(payload?.x);
-      const y = payload?.y === undefined ? 0 : Number(payload.y);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-      this.broadcast('paddle-input', {
-        side: player.side,
-        x: Math.max(0, Math.min(MAX_COORD, x)),
-        y: Math.max(0, Math.min(MAX_COORD, y)),
-      }, { except: client });
+      if (!Number.isFinite(x)) return;
+      const hostClient = [...this.clients].find(c => c.sessionId === this.state.hostSessionId);
+      const data = { side: player.side, x: Math.max(45, Math.min(MAX_COORD - 45, x)) };
+      if (hostClient && hostClient.sessionId !== client.sessionId) {
+        hostClient.send('paddle-input', data);
+      } else {
+        this.broadcast('paddle-input', data, { except: client });
+      }
+      return;
     }
   }
 
