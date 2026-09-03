@@ -1,34 +1,15 @@
 import { Client } from '@colyseus/sdk';
 
-export type Player = {
-  id: number | string;
-  name: string;
-  color: string;
-  side: 'top' | 'right' | 'bottom' | 'left';
-  computer: boolean;
-  socketId?: string;
-};
-
-export type RoomData = {
-  code: string;
-  players: Player[];
-  maxPlayers: number;
-  status: 'waiting' | 'playing';
-  createdAt?: number;
-  hostName?: string;
-  hostSocketId?: string;
-  settings?: Record<string, unknown>;
-};
-
+export type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string; };
+export type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: Record<string, unknown>; };
 type SocketListener = (...args: any[]) => void;
 
 class ColyseusBridge {
   room: any = null;
   private listeners = new Map<string, Set<SocketListener>>();
-
+  private lastPaddleEmit = 0;
   get connected() { return Boolean(this.room); }
   get id() { return this.room?.sessionId ?? ''; }
-
   on(event: string, listener: SocketListener) {
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
     this.listeners.get(event)!.add(listener);
@@ -39,8 +20,14 @@ class ColyseusBridge {
     else this.listeners.get(event)?.delete(listener);
     return this;
   }
-  emit(event: string, payload?: unknown) {
+  emit(event: string, payload?: any) {
     if (!this.room) return false;
+    // Throttle لـ paddle-input فقط
+    if (event === 'paddle-input') {
+      const now = Date.now();
+      if (now - this.lastPaddleEmit < 33) return true; // 30fps max
+      this.lastPaddleEmit = now;
+    }
     this.room.send(event, payload);
     return true;
   }
@@ -51,39 +38,20 @@ class ColyseusBridge {
     }
     room.onStateChange((state: any) => this.dispatch('room-update', this.roomData(state)));
     room.onError?.((code: number, message: string) => this.dispatch('error', message || `Connection error (${code})`));
-    room.onLeave?.((code: number) => {
-      if (this.room === room) this.dispatch('connection-lost', code);
-    });
+    room.onLeave?.((code: number) => { if (this.room === room) this.dispatch('connection-lost', code); });
     if (room.state) this.dispatch('room-update', this.roomData(room.state));
   }
-  async leave() {
-    const room = this.room;
-    this.room = null;
-    if (room) await room.leave(true);
-  }
-  private dispatch(event: string, ...args: any[]) {
-    this.listeners.get(event)?.forEach((listener) => listener(...args));
-  }
+  async leave() { const room = this.room; this.room = null; if (room) await room.leave(true); }
+  private dispatch(event: string, ...args: any[]) { this.listeners.get(event)?.forEach((l) => l(...args)); }
   private roomData(state: any): RoomData {
     const players = state?.players ? Array.from(state.players.values()).map((player: any) => ({
-      id: player.id, name: player.name, color: player.color, side: player.side,
-      computer: Boolean(player.computer), socketId: player.id,
+      id: player.id, name: player.name, color: player.color, side: player.side, computer: Boolean(player.computer), socketId: player.id,
     })) : [];
     let settings: Record<string, unknown> | undefined;
     try { settings = state?.settingsJson ? JSON.parse(state.settingsJson) : undefined; } catch {}
-    return {
-      code: state?.code ?? '',
-      status: state?.status ?? 'waiting',
-      maxPlayers: Number(state?.maxPlayers ?? players.length),
-      hostSocketId: state?.hostSessionId,
-      hostName: players.find((player: Player) => player.id === state?.hostSessionId)?.name,
-      players,
-      settings,
-    };
+    return { code: state?.code ?? '', status: state?.status ?? 'waiting', maxPlayers: Number(state?.maxPlayers ?? players.length), hostSocketId: state?.hostSessionId, hostName: players.find((p: Player) => p.id === state?.hostSessionId)?.name, players, settings };
   }
 }
-
-// Single shared instance used by App.tsx and GameScreen3D.tsx so both
-// the 2D and 3D game screens see the same connection / session id.
 export const socket = new ColyseusBridge();
-export const colyseus = new Client(window.location.origin);
+const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string) || window.location.origin;
+export const colyseus = new Client(SERVER_URL);
