@@ -17,21 +17,17 @@ type CreateOptions = {
 const roomsByCode = new Map<string, QoudRoom>();
 const SIDES: PlayerSide[] = ['bottom', 'top', 'right', 'left'];
 const COLORS = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
+const MAX_COORD = 2000;
 
 class QoudRoom extends Room<QoudRoomState> {
   maxClients = 4;
 
   onCreate(options: CreateOptions) {
-    const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);     
+    const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     if (code.length !== 4) throw new Error('Invalid room code');
-
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
     const settings = options.settings ?? {};
-    
-    // FIX: Always allow maxPlayers to join, even if vsComputer = true
-    // Computers don't count as clients, so maxClients should be maxPlayers
     this.maxClients = maxPlayers;
-    
     const state = new QoudRoomState();
     state.code = code;
     state.status = 'waiting';
@@ -39,57 +35,30 @@ class QoudRoom extends Room<QoudRoomState> {
     state.hostSessionId = '';
     state.settingsJson = JSON.stringify(settings);
     this.setState(state);
-    this.setMetadata({ code: code }); // Important for /api/rooms query
-
-    if (settings.vsComputer === true) {
-      for (const [index, computer] of (options.computerPlayers ?? []).entries()) {
-        const player = new PlayerState();
-        const seat = index + 1;
-        player.id = `computer-${seat}`;
-        player.name = String(computer.name || `Computer ${seat + 1}`).trim();
-        player.color = String(computer.color || COLORS[seat] || COLORS[0]);
-        player.side = computer.side ?? SIDES[seat] ?? 'top';
-        player.computer = true;
-        state.players.set(player.id, player);
-        state.scores.set(player.id, 0);
-      }
-    }
-
+    this.setMetadata({ code: code });
     roomsByCode.set(code, this);
-    this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));       
+    this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
   }
 
   onJoin(client: { sessionId: string }, options: { name?: string; player?: Partial<PlayerState> } = {}) {
-    if (this.state.status !== 'waiting') throw new Error('الجولة بدأت بالفعل');      
-
+    if (this.state.status !== 'waiting') throw new Error('الجولة بدأت بالفعل');
     let name = String(options.name ?? options.player?.name ?? '').trim();
     if (name.length < 2) name = `لاعب ${this.state.players.size + 1}`;
-    
-    // FIX: If name already exists, add number instead of throwing error
     const existingNames = [...this.state.players.values()].map(p => p.name.toLowerCase());
     if (existingNames.includes(name.toLowerCase())) {
       let i = 2;
       while (existingNames.includes(`${name} ${i}`.toLowerCase())) i++;
       name = `${name} ${i}`;
     }
-
-    // FIX: If a human joins and there's a computer on the next side, remove the computer
     const side = (options.player?.side as PlayerSide) ?? this.nextSide();
-    const computerToRemove = [...this.state.players.values()].find(p => p.computer && p.side === side);
-    if (computerToRemove) {
-      this.state.players.delete(computerToRemove.id);
-      this.state.scores.delete(computerToRemove.id);
-    }
-
     const player = new PlayerState();
     player.id = client.sessionId;
     player.name = name;
-    player.color = String(options.player?.color ?? COLORS[this.state.players.size % COLORS.length]);
+    player.color = String(options.player?.color ?? COLORS[this.humanCount() % COLORS.length]);
     player.side = side;
     player.computer = false;
     this.state.players.set(client.sessionId, player);
     this.state.scores.set(client.sessionId, 0);
-
     if (!this.state.hostSessionId) this.state.hostSessionId = client.sessionId;
     this.broadcastRoom();
   }
@@ -103,7 +72,6 @@ class QoudRoom extends Room<QoudRoomState> {
       this.disconnect();
       return;
     }
-    // If no players left, dispose
     if (this.state.players.size === 0) {
       this.disconnect();
       return;
@@ -123,7 +91,6 @@ class QoudRoom extends Room<QoudRoomState> {
       this.broadcast('game-started', { settings: this.state.settingsJson });
       return;
     }
-
     if (type === 'goal-scored') {
       this.assertHost(client);
       const requestedScores = payload?.scores;
@@ -132,47 +99,47 @@ class QoudRoom extends Room<QoudRoomState> {
           const score = Number(requestedScores[player.id]);
           if (Number.isFinite(score) && score >= 0) this.state.scores.set(player.id, Math.floor(score));
         }
-      } else {
-        const missedId = [...this.state.players.values()].find((player) => player.side === payload?.missedSide)?.id;
-        const scorer = [...this.state.players.values()].find((player) => player.id !== missedId);    
-        if (!scorer) return;
-        this.state.scores.set(scorer.id, (this.state.scores.get(scorer.id) ?? 0) + 1);
       }
       this.broadcast('goal-scored', { missedSide: payload?.missedSide, scores: Object.fromEntries(this.state.scores.entries()) });
       return;
     }
-
     if (type === 'match-finished') {
       this.assertHost(client);
       this.broadcast('match-finished', {
         winnerId: payload?.winnerId,
         scores: Object.fromEntries(this.state.scores.entries()),
       });
+      this.state.status = 'waiting';
       return;
     }
-
     if (type === 'game-state' || type === 'paddle-input') {
       if (type === 'game-state') {
-        if (client.sessionId === this.state.hostSessionId) this.broadcast(type, payload, { except: client });
+        if (client.sessionId !== this.state.hostSessionId) return;
+        const gameState = payload?.state ?? payload;
+        if (!gameState) return;
+        this.broadcast(type, gameState, { except: client });
         return;
       }
-
       const player = this.state.players.get(client.sessionId);
-      if (!player || player.computer || payload?.side !== player.side) return;
+      if (!player || payload?.side !== player.side) return;
       const x = Number(payload?.x);
-      const y = Number(payload?.y);
+      const y = payload?.y === undefined ? 0 : Number(payload.y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       this.broadcast('paddle-input', {
         side: player.side,
-        x: Math.max(0, Math.min(1000, x)),
-        y: Math.max(0, Math.min(1000, y)),
+        x: Math.max(0, Math.min(MAX_COORD, x)),
+        y: Math.max(0, Math.min(MAX_COORD, y)),
       }, { except: client });
     }
   }
 
+  private humanCount() {
+    return [...this.state.players.values()].filter(p => !p.computer).length;
+  }
+
   private nextSide(): PlayerSide {
-    const sides: PlayerSide[] = ['bottom', 'top', 'right', 'left'];
-    return sides.find((side) => ![...this.state.players.values()].some((player) => player.side === side)) ?? 'bottom';
+    const humanOccupied = new Set([...this.state.players.values()].filter(p => !p.computer).map(p => p.side));
+    return SIDES.find(side => !humanOccupied.has(side)) ?? 'bottom';
   }
 
   private assertHost(client: { sessionId: string }) {
@@ -185,7 +152,8 @@ class QoudRoom extends Room<QoudRoomState> {
       status: this.state.status,
       maxPlayers: this.state.maxPlayers,
       hostSessionId: this.state.hostSessionId,
-      players: [...this.state.players.values()].map((player) => ({
+      settings: JSON.parse(this.state.settingsJson || '{}'),
+      players: [...this.state.players.values()].map(player => ({
         id: player.id,
         name: player.name,
         color: player.color,
@@ -200,7 +168,6 @@ class QoudRoom extends Room<QoudRoomState> {
 const port = Number(process.env.PORT ?? 5000);
 const isProduction = process.env.NODE_ENV === 'production';
 const httpServer = createServer();
-
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
   express: async (app) => {
@@ -208,21 +175,18 @@ const gameServer = new Server({
       const code = String(req.query.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (code) {
         const room = roomsByCode.get(code);
-        if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });       
+        if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
         return res.json({ roomId: room.roomId, code });
       }
       return res.json({ count: roomsByCode.size });
     });
-
     app.get('/health', (_req, res) => res.json({ ok: true, rooms: roomsByCode.size }));
-
     if (isProduction) {
       const publicDir = path.resolve(import.meta.dirname, '../dist/public');
       app.use(express.static(publicDir, { index: 'index.html' }));
       app.get(/.*/, (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
       return;
     }
-
     const vite = await createViteServer({
       configFile: path.resolve(import.meta.dirname, '../vite.config.ts'),
       server: { middlewareMode: true },

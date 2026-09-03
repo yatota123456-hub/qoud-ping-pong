@@ -282,7 +282,7 @@ function App() {
         maxPlayers: settings.players,
         settings,
         player: allPlayers[0],
-        computerPlayers: allPlayers.slice(1).filter((player) => player.computer),
+        computerPlayers: [],
         name: allPlayers[0].name,
       });
       socket.attach(colyseusRoom);
