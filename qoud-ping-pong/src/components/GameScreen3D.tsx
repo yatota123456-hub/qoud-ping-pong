@@ -148,7 +148,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   const frameIdRef = useRef<number>(0);
   pausedRef.current = paused;
 
-  const world = useMemo(() => getArenaWorld(players.length, settings.arenaSize), [players.length, settings.arenaSize]);
+  const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
   const initialCam = useMemo(() => {
     const camDist = players.length >= 3 ? 1350 : 1350;
     return { angle: 0, targetAngle: 0, distance: camDist, targetDistance: camDist, height: 950, targetHeight: 950, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
@@ -317,10 +317,18 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     ball.position.y = 23;
     scene.add(ball);
     const paddles: Record<string, THREE.Group> = {};
-    players.forEach(p => {
-      const g = createHatPaddle(p.color);
+    const COLORS_FALLBACK = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
+    const SIDES_ALL: Player['side'][] = ['bottom', 'top', 'right', 'left'];
+    // Ensure we have a paddle for each active side even if players prop is incomplete
+    const activeSides = players.length >= 3 ? SIDES_ALL.slice(0, players.length) : (['bottom','top'] as Player['side'][]).slice(0, Math.max(2, players.length));
+    const ensureCount = Math.max(2, players.length, settings.players || 2);
+    const sidesNeeded = ensureCount === 2 ? (['bottom','top'] as Player['side'][]) : ensureCount === 3 ? (['bottom','top','right'] as Player['side'][]) : SIDES_ALL;
+    sidesNeeded.forEach((side, idx) => {
+      const existing = players.find(p => p.side === side);
+      const color = existing?.color || COLORS_FALLBACK[idx] || '#ffcf5a';
+      const g = createHatPaddle(color);
       scene.add(g);
-      paddles[p.side] = g;
+      paddles[side] = g;
     });
     threeRef.current = { scene, camera, renderer, ball, paddles, surfaceTexture, tableMaterial };
     const ro = new ResizeObserver(() => {
@@ -560,13 +568,22 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             </div>
           </header>
           <div style={{ display: 'flex', gap: '8px', padding: '10px 16px', background: '#0a0a0a', borderBottom: '1px solid #1a1a1a', overflowX: 'auto' }}>
-            {players.map((p: any) => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#151515', border: `1px solid ${p.color}`, borderRadius: '20px', padding: '6px 12px', minWidth: '90px' }}>
-                <span style={{ background: p.color, width: '10px', height: '10px', borderRadius: '50%', display: 'inline-block' }} />
-                <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{p.name}</span>
-                <strong style={{ color: p.color, marginLeft: 'auto' }}>{scores[p.id] ?? 0}</strong>
-              </div>
-            ))}
+            {(() => {
+              const COLORS_FB = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
+              const SIDES_FB: Player['side'][] = ['bottom','top','right','left'];
+              const need = Math.max(2, players.length, settings.players || 2);
+              const sides = need === 2 ? SIDES_FB.slice(0,2) : need === 3 ? SIDES_FB.slice(0,3) : SIDES_FB.slice(0,4);
+              return sides.map((side, idx) => {
+                const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top' ? 'سامي' : side === 'right' ? 'ليان' : side === 'left' ? 'كريم' : 'نورا', color: COLORS_FB[idx], side };
+                return (
+                  <div key={p.id + side} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#151515', border: `1px solid ${p.color}`, borderRadius: '20px', padding: '6px 12px', minWidth: '90px' }}>
+                    <span style={{ background: p.color, width: '10px', height: '10px', borderRadius: '50%', display: 'inline-block' }} />
+                    <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{p.name}</span>
+                    <strong style={{ color: p.color, marginLeft: 'auto' }}>{scores[p.id] ?? scores[idx] ?? 0}</strong>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </>
       )}
