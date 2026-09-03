@@ -114,6 +114,9 @@ importers:
       three:
         specifier: ^0.185.1
         version: 0.185.1
+      tsx:
+        specifier: ^4.19.1
+        version: 4.23.13
     devDependencies:
       '@hookform/resolvers':
         specifier: ^3.10.0
