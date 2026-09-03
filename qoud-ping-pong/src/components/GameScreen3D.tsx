@@ -122,7 +122,8 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const ARENA_SCALES: any = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
   const RECT = { w: 800, h: 1250 };
   const SQUARE = { w: 1200, h: 1200 };
-  const base = count === 4 ? SQUARE : RECT;
+  // FIXED: 3 players now also square
+  const base = count >= 3 ? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc };
 }
@@ -150,7 +151,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
   const world = useMemo(() => getArenaWorld(players.length, settings.arenaSize), [players.length, settings.arenaSize]);
   const initialCam = useMemo(() => {
-    const camDist = players.length === 4 ? 1150 : 1350;
+    const camDist = players.length >= 3 ? 1350 : 1350;
     return { angle: 0, targetAngle: 0, distance: camDist, targetDistance: camDist, height: 950, targetHeight: 950, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
   }, [world, players.length]);
 
@@ -158,6 +159,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   const threeRef = useRef<any>(null);
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 5, vy: 6 },
+    // top/bottom store an X coordinate (position along width)
+    // left/right store a Z coordinate (position along height/depth)
     paddles: { top: world.w / 2, right: world.h / 2, bottom: world.w / 2, left: world.h / 2 },
     last: performance.now(),
     elapsed: 0,
@@ -165,6 +168,10 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     countdown: 0,
     countdownStart: 0,
   });
+
+  // NEW: stable string key so the scene-build effect only reruns when the roster actually changes
+  // (must be declared BEFORE the effect that uses it in its dependency array)
+  const playersKey = useMemo(() => players.map(p => `${p.side}:${p.color}`).join(','), [players]);
 
   const [showCamMenu, setShowCamMenu] = useState(false);
   const [hideUI, setHideUI] = useState(false);
@@ -219,6 +226,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     if (dir === 'down') cam.current.targetHeight = Math.max(250, cam.current.targetHeight - 120);
   }, []);
 
+  // POINTER INPUT — now handles all four sides (top/bottom move along X, left/right move along Z)
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -228,34 +236,44 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     const handlePointerMove = (e: PointerEvent) => {
       if (!e.isPrimary || !threeRef.current) return;
       const mySide = getMySide();
-      if (mySide !== 'top' && mySide !== 'bottom') return;
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(mouse, threeRef.current.camera);
       const target = new THREE.Vector3();
       if (raycaster.ray.intersectPlane(plane, target)) {
-        const clampedX = Math.max(45, Math.min(world.w - 45, target.x));
-        stateRef.current.paddles[mySide] = clampedX;
-        if (!isOfflineMode && !isHost) {
-          socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX });
+        if (mySide === 'top' || mySide === 'bottom') {
+          const clampedX = Math.max(45, Math.min(world.w - 45, target.x));
+          stateRef.current.paddles[mySide] = clampedX;
+          if (!isOfflineMode && !isHost) {
+            socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX });
+          }
+        } else if (mySide === 'left' || mySide === 'right') {
+          const clampedZ = Math.max(45, Math.min(world.h - 45, target.z));
+          stateRef.current.paddles[mySide] = clampedZ;
+          if (!isOfflineMode && !isHost) {
+            socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedZ });
+          }
         }
       }
     };
-    el.addEventListener('pointerdown', handlePointerMove);
-    el.addEventListener('pointermove', handlePointerMove);
+    el.addEventListener('pointerdown', handlePointerMove as any);
+    el.addEventListener('pointermove', handlePointerMove as any);
     return () => {
-      el.removeEventListener('pointerdown', handlePointerMove);
-      el.removeEventListener('pointermove', handlePointerMove);
+      el.removeEventListener('pointerdown', handlePointerMove as any);
+      el.removeEventListener('pointermove', handlePointerMove as any);
     };
-  }, [world.w, getMySide, isOfflineMode, isHost, roomCode]);
+  }, [world.w, world.h, getMySide, isOfflineMode, isHost, roomCode]);
 
+  // NETWORK SYNC — host now accepts input for all four sides
   useEffect(() => {
     if (isOfflineMode) return;
     if (isHost) {
       const handleInput = (data: { side: Player['side']; x: number }) => {
         if (data.side === 'top' || data.side === 'bottom') {
           stateRef.current.paddles[data.side] = Math.max(45, Math.min(world.w - 45, data.x));
+        } else if (data.side === 'left' || data.side === 'right') {
+          stateRef.current.paddles[data.side] = Math.max(45, Math.min(world.h - 45, data.x));
         }
       };
       socket.on('paddle-input', handleInput);
@@ -269,8 +287,9 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     };
     socket.on('game-state', handleState);
     return () => { socket.off('game-state', handleState); };
-  }, [isHost, isOfflineMode, world.w]);
+  }, [isHost, isOfflineMode, world.w, world.h]);
 
+  // SCENE / MESH SETUP — rebuilds only when arena size or roster composition changes
   useEffect(() => {
     if (!mountRef.current) return;
     const mount = mountRef.current;
@@ -306,11 +325,13 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     ball.position.y = 23;
     scene.add(ball);
     const paddles: Record<string, THREE.Group> = {};
+
     players.forEach(p => {
       const g = createHatPaddle(p.color);
       scene.add(g);
       paddles[p.side] = g;
     });
+
     threeRef.current = { scene, camera, renderer, ball, paddles, surfaceTexture, tableMaterial };
     const ro = new ResizeObserver(() => {
       if (!mountRef.current || !threeRef.current) return;
@@ -330,12 +351,15 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
       threeRef.current = null;
     };
-  }, [world.w, world.h]);
+  }, [world.w, world.h, playersKey]);
 
+  // GAME LOOP — physics + render, now covers top/bottom/left/right
   useEffect(() => {
     const state = stateRef.current;
-    const playerForSide = (side: Player['side']) => players.find(p => p.side === side) ?? players[0];
+    const playerForSide = (side: Player['side']) => players.find(p => p.side === side);
+    const activeSide = (side: Player['side']) => players.some(p => p.side === side);
     const runsPhysics = isHost || isOfflineMode;
+
     const launchBall = () => {
       const spd = getInitialSpeed();
       const dirY = Math.random() > 0.5 ? 1 : -1;
@@ -344,6 +368,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       state.ball.vy = Math.cos(ang) * spd * dirY;
     };
     if (runsPhysics) launchBall();
+
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2);
       state.last = now;
@@ -358,102 +383,149 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           if (e >= 3) { state.countdown = 0; setCountdown(0); launchBall(); }
           else { setCountdown(Math.ceil(3 - e)); }
         } else {
+          const topActive = activeSide('top');
+          const bottomActive = activeSide('bottom');
+          const leftActive = activeSide('left');
+          const rightActive = activeSide('right');
           const topPlayer = playerForSide('top');
-          if (!topPlayer || topPlayer.computer) {
+          const bottomPlayer = playerForSide('bottom');
+          const leftPlayer = playerForSide('left');
+          const rightPlayer = playerForSide('right');
+
+          // --- AI for computer-controlled paddles on every active side ---
+          if (topActive && (!topPlayer || topPlayer.computer)) {
             const topSpeed = 5 * delta;
             if (state.paddles.top < state.ball.x - 12) state.paddles.top += topSpeed;
             else if (state.paddles.top > state.ball.x + 12) state.paddles.top -= topSpeed;
             state.paddles.top = Math.max(45, Math.min(world.w - 45, state.paddles.top));
           }
+          if (bottomActive && bottomPlayer?.computer) {
+            const botSpeed = 5 * delta;
+            if (state.paddles.bottom < state.ball.x - 12) state.paddles.bottom += botSpeed;
+            else if (state.paddles.bottom > state.ball.x + 12) state.paddles.bottom -= botSpeed;
+            state.paddles.bottom = Math.max(45, Math.min(world.w - 45, state.paddles.bottom));
+          }
+          if (leftActive && (!leftPlayer || leftPlayer.computer)) {
+            const leftSpeed = 5 * delta;
+            if (state.paddles.left < state.ball.y - 12) state.paddles.left += leftSpeed;
+            else if (state.paddles.left > state.ball.y + 12) state.paddles.left -= leftSpeed;
+            state.paddles.left = Math.max(45, Math.min(world.h - 45, state.paddles.left));
+          }
+          if (rightActive && rightPlayer?.computer) {
+            const rightSpeed = 5 * delta;
+            if (state.paddles.right < state.ball.y - 12) state.paddles.right += rightSpeed;
+            else if (state.paddles.right > state.ball.y + 12) state.paddles.right -= rightSpeed;
+            state.paddles.right = Math.max(45, Math.min(world.h - 45, state.paddles.right));
+          }
+
           state.ball.x += state.ball.vx * delta;
           state.ball.y += state.ball.vy * delta;
           const r = 12;
           const paddleRadius = 24;
-          if (state.ball.x - r <= 0) { state.ball.x = r + 1; state.ball.vx = Math.abs(state.ball.vx); }
-          else if (state.ball.x + r >= world.w) { state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx); }
-          const botP = state.paddles.bottom;
-          const paddleYBot = world.h - 52;
-          const distBot = Math.hypot(state.ball.x - botP, state.ball.y - paddleYBot);
-          if (distBot < r + paddleRadius && state.ball.vy > 0) {
-            const nx = (state.ball.x - botP) / distBot;
-            const ny = (state.ball.y - paddleYBot) / distBot;
-            state.ball.x = botP + nx * (r + paddleRadius + 1);
-            state.ball.y = paddleYBot + ny * (r + paddleRadius + 1);
-            state.ball.vy = -Math.abs(state.ball.vy);
-            state.ball.vx += nx * 3.5;
-            state.rally++;
+
+          // --- bottom paddle collision ---
+          if (bottomActive) {
+            const botP = state.paddles.bottom;
+            const paddleYBot = world.h - 52;
+            const distBot = Math.hypot(state.ball.x - botP, state.ball.y - paddleYBot);
+            if (distBot < r + paddleRadius && state.ball.vy > 0) {
+              const nx = (state.ball.x - botP) / distBot;
+              const ny = (state.ball.y - paddleYBot) / distBot;
+              state.ball.x = botP + nx * (r + paddleRadius + 1);
+              state.ball.y = paddleYBot + ny * (r + paddleRadius + 1);
+              state.ball.vy = -Math.abs(state.ball.vy);
+              state.ball.vx += nx * 3.5;
+              state.rally++;
+            }
           }
-          const topP = state.paddles.top;
-          const paddleYTop = 52;
-          const distTop = Math.hypot(state.ball.x - topP, state.ball.y - paddleYTop);
-          if (distTop < r + paddleRadius && state.ball.vy < 0) {
-            const nx = (state.ball.x - topP) / distTop;
-            const ny = (state.ball.y - paddleYTop) / distTop;
-            state.ball.x = topP + nx * (r + paddleRadius + 1);
-            state.ball.y = paddleYTop + ny * (r + paddleRadius + 1);
-            state.ball.vy = Math.abs(state.ball.vy);
-            state.ball.vx += nx * 3.5;
-            state.rally++;
+
+          // --- top paddle collision ---
+          if (topActive) {
+            const topP = state.paddles.top;
+            const paddleYTop = 52;
+            const distTop = Math.hypot(state.ball.x - topP, state.ball.y - paddleYTop);
+            if (distTop < r + paddleRadius && state.ball.vy < 0) {
+              const nx = (state.ball.x - topP) / distTop;
+              const ny = (state.ball.y - paddleYTop) / distTop;
+              state.ball.x = topP + nx * (r + paddleRadius + 1);
+              state.ball.y = paddleYTop + ny * (r + paddleRadius + 1);
+              state.ball.vy = Math.abs(state.ball.vy);
+              state.ball.vx += nx * 3.5;
+              state.rally++;
+            }
           }
+
+          // --- NEW: left paddle collision ---
+          if (leftActive) {
+            const leftP = state.paddles.left;
+            const paddleXLeft = 52;
+            const distLeft = Math.hypot(state.ball.x - paddleXLeft, state.ball.y - leftP);
+            if (distLeft < r + paddleRadius && state.ball.vx < 0) {
+              const nx = (state.ball.x - paddleXLeft) / distLeft;
+              const ny = (state.ball.y - leftP) / distLeft;
+              state.ball.x = paddleXLeft + nx * (r + paddleRadius + 1);
+              state.ball.y = leftP + ny * (r + paddleRadius + 1);
+              state.ball.vx = Math.abs(state.ball.vx);
+              state.ball.vy += ny * 3.5;
+              state.rally++;
+            }
+          }
+
+          // --- NEW: right paddle collision ---
+          if (rightActive) {
+            const rightP = state.paddles.right;
+            const paddleXRight = world.w - 52;
+            const distRight = Math.hypot(state.ball.x - paddleXRight, state.ball.y - rightP);
+            if (distRight < r + paddleRadius && state.ball.vx > 0) {
+              const nx = (state.ball.x - paddleXRight) / distRight;
+              const ny = (state.ball.y - rightP) / distRight;
+              state.ball.x = paddleXRight + nx * (r + paddleRadius + 1);
+              state.ball.y = rightP + ny * (r + paddleRadius + 1);
+              state.ball.vx = -Math.abs(state.ball.vx);
+              state.ball.vy += ny * 3.5;
+              state.rally++;
+            }
+          }
+
           const GOAL_W = 280;
           const GX1 = (world.w - GOAL_W) / 2, GX2 = GX1 + GOAL_W;
-          const inGoal = (x: number) => x >= GX1 && x <= GX2;
+          const GOAL_H = 280;
+          const GY1 = (world.h - GOAL_H) / 2, GY2 = GY1 + GOAL_H;
+          const inGoalX = (x: number) => x >= GX1 && x <= GX2;
+          const inGoalY = (y: number) => y >= GY1 && y <= GY2;
           let missed: Player | undefined;
+
+          // top wall
           if (state.ball.y - r <= 0) {
-            if (inGoal(state.ball.x)) missed = playerForSide('top');
-            else { state.ball.y = r + 1; state.ball.vy = Math.abs(state.ball.vy); }
-          } else if (state.ball.y + r >= world.h) {
-            if (inGoal(state.ball.x)) missed = playerForSide('bottom');
-            else { state.ball.y = world.h - r - 1; state.ball.vy = -Math.abs(state.ball.vy); }
+            if (topActive) {
+              if (inGoalX(state.ball.x)) missed = playerForSide('top');
+              else { state.ball.y = r + 1; state.ball.vy = Math.abs(state.ball.vy); }
+            } else {
+              state.ball.y = r + 1; state.ball.vy = Math.abs(state.ball.vy);
+            }
           }
-          if (missed) {
-            onGoal(missed);
-            state.countdown = 3;
-            state.countdownStart = now;
-            setCountdown(3);
-            state.ball.x = world.w / 2;
-            state.ball.y = world.h / 2;
-            launchBall();
+          // bottom wall
+          if (!missed && state.ball.y + r >= world.h) {
+            if (bottomActive) {
+              if (inGoalX(state.ball.x)) missed = playerForSide('bottom');
+              else { state.ball.y = world.h - r - 1; state.ball.vy = -Math.abs(state.ball.vy); }
+            } else {
+              state.ball.y = world.h - r - 1; state.ball.vy = -Math.abs(state.ball.vy);
+            }
           }
-          setRally(state.rally);
-        }
-        if (!isOfflineMode) {
-          socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
-        }
-      }
-      if (threeRef.current) {
-        const { ball, paddles, camera, renderer } = threeRef.current;
-        const c = cam.current;
-        c.angle += (c.targetAngle - c.angle) * 0.1;
-        c.distance += (c.targetDistance - c.distance) * 0.1;
-        c.height += (c.targetHeight - c.height) * 0.1;
-        const cx = c.lookX + Math.sin(c.angle) * c.distance;
-        const cz = c.lookZ + Math.cos(c.angle) * c.distance;
-        camera.position.set(cx, c.height, cz);
-        camera.lookAt(c.lookX, 0, c.lookZ);
-        ball.position.x = state.ball.x;
-        ball.position.z = state.ball.y;
-        if (paddles['bottom']) paddles['bottom'].position.set(state.paddles.bottom, 12, world.h - 52);
-        if (paddles['top']) paddles['top'].position.set(state.paddles.top, 12, 52);
-        renderer.render(threeRef.current.scene, camera);
-      }
-      frameIdRef.current = requestAnimationFrame(tick);
-    };
-    frameIdRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameIdRef.current);
-  }, [players, settings, onGoal, onTimeUp, world, getInitialSpeed, isHost, isOfflineMode, roomCode]);
-
-  function formatTime(s: number) { return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
-
-  return (
-    <main className="game-shell" style={{ background: '#000', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
-      {hideUI && (<button onClick={() => setHideUI(false)} style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, background: '#00e5ff', color: '#000', borderRadius: 999, padding: '8px 14px', fontWeight: 900, display: 'flex', gap: 6, alignItems: 'center', border: 'none', cursor: 'pointer' }}><Eye size={16} /> {isAr ? 'اظهار' : 'Show'}</button>)}
-      {!hideUI && (<header className="game-topbar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', alignItems: 'center', zIndex: 10 }}><div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D</div><div className="match-meta" style={{ color: '#fff' }}><b>{settings.mode === 'time' ? formatTime(timeLeft) : '∞'}</b> | Rally: {rally}</div><div className="game-actions" style={{ display: 'flex', gap: '6px' }}><button className="game-icon" onClick={() => setShowCamMenu(v => !v)} style={{ background: showCamMenu ? '#00e5ff' : '#111', color: showCamMenu ? '#000' : '#fff', borderRadius: 10, padding: '8px 10px', border: '1px solid #333', display: 'flex', alignItems: 'center', gap: 4 }}><Camera size={16} /> {isAr ? 'كاميرا' : 'Cam'}</button><button className="game-icon" onClick={onPause}>{paused ? <Play size={18} /> : <Pause size={18} />}</button><button className="game-icon" onClick={resetCamera} style={{ background: '#ffcf5a', color: '#000' }}><RotateCcw size={16} /></button><button className="game-icon" onClick={onExit}><X size={18} /></button></div></header>)}
-      <div ref={mountRef} style={{ width: '100%', flex: 1, borderRadius: '22px', overflow: 'hidden', position: 'relative', touchAction: 'none' }}>
-        {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233' }}>{countdown}</span></div>}
-        {showCamMenu && !hideUI && (<div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr ? 'تحكم الكاميرا' : 'Camera'}</b><button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (<button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k ? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k ? '#111' : '#0a0a0a', color: currentPreset === k ? '#00e5ff' : '#aaa', cursor: 'pointer' }}>{isAr ? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}</button>))}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}><div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div /><button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button><button onClick={resetCamera} style={{ ...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button><button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button><div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div /></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => zoomCam(1)} style={{ flex: 1, ...btnStyle }}><ZoomIn size={18} /> {isAr ? 'قرب' : 'In'}</button><button onClick={() => zoomCam(-1)} style={{ flex: 1, ...btnStyle }}><ZoomOut size={18} /> {isAr ? 'بعد' : 'Out'}</button></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => rotateCam('left')} style={{ flex: 1, ...btnStyle }}><RotateCcw size={16} /> {isAr ? 'يسار' : 'Left'}</button><button onClick={() => rotateCam('right')} style={{ flex: 1, ...btnStyle }}><RotateCw size={16} /> {isAr ? 'يمين' : 'Right'}</button></div><button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}><EyeOff size={16} /> {isAr ? 'اخفاء كل الازرار' : 'Hide All UI'}</button><small style={{ opacity: 0.5, fontSize: 10, textAlign: 'center' }}>{isAr ? 'التحكم بالماوس: اسحب للتدوير' : 'Drag table to move paddle'}</small></div>)}
-      </div>
-    </main>
-  );
-}
-const btnStyle: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#fff', borderRadius: 10, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700, cursor: 'pointer' };
+          // NEW: left wall
+          if (!missed && state.ball.x - r <= 0) {
+            if (leftActive) {
+              if (inGoalY(state.ball.y)) missed = playerForSide('left');
+              else { state.ball.x = r + 1; state.ball.vx = Math.abs(state.ball.vx); }
+            } else {
+              state.ball.x = r + 1; state.ball.vx = Math.abs(state.ball.vx);
+            }
+          }
+          // NEW: right wall
+          if (!missed && state.ball.x + r >= world.w) {
+            if (rightActive) {
+              if (inGoalY(state.ball.y)) missed = playerForSide('right');
+              else { state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx); }
+            } else {
+              state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx);
