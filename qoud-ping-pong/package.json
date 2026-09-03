@@ -9,6 +9,19 @@
     "serve": "vite preview --host 0.0.0.0",
     "start": "tsx server/index.ts"
   },
+  "dependencies": {
+    "@colyseus/core": "0.18.10",
+    "@colyseus/schema": "5.0.25",
+    "@colyseus/sdk": "0.18.2",
+    "@colyseus/ws-transport": "0.18.2",
+    "express": "5.1.0",
+    "i18next": "^26.4.0",
+    "i18next-browser-languagedetector": "^8.2.1",
+    "react-i18next": "^17.0.12",
+    "socket.io-client": "^4.8.3",
+    "three": "^0.185.1",
+    "tsx": "^4.19.1"
+  },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.4",
@@ -72,17 +85,5 @@
     "vite": "catalog:",
     "wouter": "^3.3.5",
     "zod": "catalog:"
-  },
-  "dependencies": {
-    "@colyseus/core": "0.18.10",
-    "@colyseus/schema": "5.0.25",
-    "@colyseus/sdk": "0.18.2",
-    "@colyseus/ws-transport": "0.18.2",
-    "express": "5.1.0",
-    "i18next": "^26.4.0",
-    "i18next-browser-languagedetector": "^8.2.1",
-    "react-i18next": "^17.0.12",
-    "socket.io-client": "^4.8.3",
-    "three": "^0.185.1"
   }
 }
