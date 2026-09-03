@@ -3,18 +3,17 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx server/index.ts",
-    "build": "cd qoud-ping-pong && ./node_modules/.bin/vite build --config vite.config.ts",
-    "typecheck": "cd qoud-ping-pong && ../node_modules/.bin/tsc -p tsconfig.json --noEmit",
-    "start": "cd qoud-ping-pong && NODE_ENV=production ../node_modules/.bin/tsx server/index.ts"
+    "dev": "tsx qoud-ping-pong/server/index.ts",
+    "build": "pnpm --filter @workspace/qoud-ping-pong build",
+    "typecheck": "cd qoud-ping-pong && tsc -p tsconfig.json --noEmit",
+    "start": "cross-env NODE_ENV=production tsx qoud-ping-pong/server/index.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
     "@types/three": "^0.185.4",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0"
   }
 }
