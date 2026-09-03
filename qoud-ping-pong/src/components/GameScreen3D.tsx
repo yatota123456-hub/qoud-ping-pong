@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Pause, Play, X, RotateCcw, Camera, Eye, EyeOff, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw, Video, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+// NOTE: adjust this path if your project layout differs — it must point at
+// the shared socket module (see socket.ts) so this screen shares the same
+// Colyseus connection / session id as the 2D screen and App.tsx.
+import { socket } from '../socket.tsx';
 
 // ================= الأنواع المشتركة =================
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
@@ -16,8 +20,8 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  // لون السطح الأبيض اللامع
-  ctx.fillStyle = '#f8f9fa';
+  // لون السطح الأبيض المطفي (يطابق صورة الطاولة المرجعية)
+  ctx.fillStyle = '#f2f4f6';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // رسم فتحات الهواء السوداء الصغيرة
@@ -38,9 +42,47 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   return tex;
 }
 
-// ================= إعداد إضاءة وحواف الساحة =================
+// ================= نسيج التدرج النيون (يلف حول حافة الطاولة كاملة) =================
+function createNeonGradientTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
+  grad.addColorStop(0.0, '#00e5ff');
+  grad.addColorStop(0.2, '#7c4dff');
+  grad.addColorStop(0.4, '#ff2d78');
+  grad.addColorStop(0.6, '#ff7a28');
+  grad.addColorStop(0.8, '#ffcf5a');
+  grad.addColorStop(1.0, '#00e5ff');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+// ================= مسار مستطيل بزوايا دائرية (لأنبوب الإضاءة) =================
+function buildRoundedRectPoints(w: number, h: number, r: number, segmentsPerCorner = 12) {
+  const pts: THREE.Vector3[] = [];
+  const addArc = (cx: number, cz: number, a0: number, a1: number) => {
+    for (let i = 0; i <= segmentsPerCorner; i++) {
+      const t = a0 + (a1 - a0) * (i / segmentsPerCorner);
+      pts.push(new THREE.Vector3(cx + Math.cos(t) * r, 0, cz + Math.sin(t) * r));
+    }
+  };
+  addArc(r, r, Math.PI, Math.PI * 1.5);
+  addArc(w - r, r, Math.PI * 1.5, Math.PI * 2);
+  addArc(w - r, h - r, 0, Math.PI * 0.5);
+  addArc(r, h - r, Math.PI * 0.5, Math.PI);
+  return pts;
+}
+
+// ================= إعداد إضاءة الساحة (لا تبني الحواف بعد الآن - أنظر createArenaFrame) =================
 function setup3DArenaLighting(scene: THREE.Scene, worldWidth: number, worldHeight: number) {
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
   scene.add(ambientLight);
 
   const neonColors = [0x00e5ff, 0xffcf5a, 0xbf5af2, 0xff4081];
@@ -52,42 +94,50 @@ function setup3DArenaLighting(scene: THREE.Scene, worldWidth: number, worldHeigh
   ];
 
   cornerPositions.forEach((pos, idx) => {
-    // تقريب الأضواء للسطح لزيادة قوة الانعكاسات
-    const pointLight = new THREE.PointLight(neonColors[idx % 4], 2.2, Math.max(worldWidth, worldHeight) * 1.5);
-    pointLight.position.set(pos.x, 30, pos.z);
+    const pointLight = new THREE.PointLight(neonColors[idx % 4], 1.4, Math.max(worldWidth, worldHeight) * 1.5);
+    pointLight.position.set(pos.x, 40, pos.z);
     scene.add(pointLight);
-
-    const bulbMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(6, 16, 16),
-      new THREE.MeshBasicMaterial({ color: neonColors[idx % 4] })
-    );
-    bulbMesh.position.set(pos.x, 20, pos.z);
-    scene.add(bulbMesh);
   });
+}
 
-  const railThickness = 12;
-  const railHeight = 16;
-  const tableY = 12;
+// ================= إطار الطاولة: حافة سوداء + أنبوب إضاءة نيون متدرج (مطابق للصورة المرجعية) =================
+function createArenaFrame(worldW: number, worldH: number) {
+  const group = new THREE.Group();
 
-  const createRailMaterial = (colorHex: number) => new THREE.MeshStandardMaterial({
-    color: colorHex,
-    emissive: colorHex,
-    emissiveIntensity: 2.5,
-    roughness: 0.1,
-  });
-
-  const rails = [
-    { w: worldWidth + 20, h: railHeight, d: railThickness, x: worldWidth / 2, z: -railThickness / 2, mat: createRailMaterial(0x00e5ff) },
-    { w: worldWidth + 20, h: railHeight, d: railThickness, x: worldWidth / 2, z: worldHeight + railThickness / 2, mat: createRailMaterial(0xffcf5a) },
-    { w: railThickness, h: railHeight, d: worldHeight, x: -railThickness / 2, z: worldHeight / 2, mat: createRailMaterial(0xbf5af2) },
-    { w: railThickness, h: railHeight, d: worldHeight, x: worldWidth + railThickness / 2, z: worldHeight / 2, mat: createRailMaterial(0xff4081) },
+  const bezelThickness = Math.max(24, Math.min(worldW, worldH) * 0.045);
+  const bezelHeight = 24;
+  const bezelY = 11;
+  const bezelMat = new THREE.MeshStandardMaterial({ color: '#050505', roughness: 0.4, metalness: 0.5 });
+  const bezelPieces = [
+    { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: -bezelThickness / 2 },
+    { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: worldH + bezelThickness / 2 },
+    { w: bezelThickness, d: worldH, x: -bezelThickness / 2, z: worldH / 2 },
+    { w: bezelThickness, d: worldH, x: worldW + bezelThickness / 2, z: worldH / 2 },
   ];
-
-  rails.forEach((r) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(r.w, r.h, r.d), r.mat);
-    mesh.position.set(r.x, tableY + railHeight / 2, r.z);
-    scene.add(mesh);
+  bezelPieces.forEach((p) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, bezelHeight, p.d), bezelMat);
+    mesh.position.set(p.x, bezelY, p.z);
+    group.add(mesh);
   });
+
+  const neonRadius = Math.min(40, Math.min(worldW, worldH) * 0.08);
+  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, 14);
+  const neonCurve = new THREE.CatmullRomCurve3(neonPts, true, 'catmullrom', 0.15);
+  const neonGeo = new THREE.TubeGeometry(neonCurve, 320, 5.5, 12, true);
+  const neonTex = createNeonGradientTexture();
+  const neonMat = new THREE.MeshStandardMaterial({
+    map: neonTex || undefined,
+    emissive: 0xffffff,
+    emissiveMap: neonTex || undefined,
+    emissiveIntensity: 2.4,
+    roughness: 0.25,
+    metalness: 0.1,
+  });
+  const neonTube = new THREE.Mesh(neonGeo, neonMat);
+  neonTube.position.y = 19.5;
+  group.add(neonTube);
+
+  return group;
 }
 
 function getArenaWorld(count: number, size: any = 'medium') {
@@ -99,7 +149,7 @@ function getArenaWorld(count: number, size: any = 'medium') {
   return { w: base.w * sc, h: base.h * sc };
 }
 
-// ================= بريسيتات الكاميرا الجديدة (اضافة بدون حذف) =================
+// ================= بريسيتات الكاميرا =================
 const CAM_PRESETS_3D = {
   top: { angle: 0, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
   bottom: { angle: Math.PI, distance: 500, height: 650, name: 'خلفك', nameEn: 'Behind You' },
@@ -139,13 +189,20 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     countdownStart: 0,
   });
 
-  // === حالات جديدة للكاميرا (اضافة) ===
+  // === حالات الكاميرا ===
   const [showCamMenu, setShowCamMenu] = useState(false);
   const [hideUI, setHideUI] = useState(false);
   const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('iso');
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 6 + settings.ballSpeed * 0.5, [settings.ballSpeed]);
+
+  // من هو جانبي أنا (اللاعب المحلي) حسب معرف الجلسة، مع افتراض أول لاعب محليًا (أوفلاين)
+  const getMySide = useCallback((): Player['side'] => {
+    return (players.find((p) => p.socketId === socket.id)?.side ?? players[0]?.side ?? 'bottom') as Player['side'];
+  }, [players]);
+
+  const isOfflineMode = !socket.connected || players.length <= 1;
 
   const createHatPaddle = useCallback((color: string) => {
     const group = new THREE.Group();
@@ -171,7 +228,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
   const resetCamera = useCallback(() => { cam.current = {...initialCam }; setCurrentPreset('iso'); }, [initialCam]);
 
-  // === دوال تحكم كاميرا جديدة (اضافة بدون حذف) ===
   const applyPreset = useCallback((key: Cam3DPresetKey) => {
     const p = CAM_PRESETS_3D[key];
     cam.current.targetAngle = p.angle;
@@ -191,7 +247,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     if (dir === 'down') cam.current.targetHeight = Math.max(250, cam.current.targetHeight - 120);
   }, []);
 
-  // تحريك المضرب بنظام Pointer المتقدم لدعم اللمس المتعدد (إصبعين) وسلاسة الاستجابة
+  // ============ تحريك المضرب: كل لاعب يحرك مضربه هو فقط (أعلى/أسفل)، ويُرسل الإدخال للمضيف إذا لم يكن هو المضيف ============
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -201,8 +257,11 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     const mouse = new THREE.Vector2();
 
     const handlePointerMove = (e: PointerEvent) => {
-      // تجاهل اللمسات الإضافية (الإصبع الثاني) لتفادي تشتت المضرب
       if (!e.isPrimary ||!threeRef.current) return;
+
+      const mySide = getMySide();
+      // الفيزياء الحالية في 3D تدعم فقط الحركة الأفقية للمضربين العلوي والسفلي
+      if (mySide !== 'top' && mySide !== 'bottom') return;
 
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -212,7 +271,12 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       const target = new THREE.Vector3();
       if (raycaster.ray.intersectPlane(plane, target)) {
         const clampedX = Math.max(45, Math.min(world.w - 45, target.x));
-        stateRef.current.paddles.bottom = clampedX;
+        // تحديث محلي فوري لسلاسة الاستجابة
+        stateRef.current.paddles[mySide] = clampedX;
+        // إن لم أكن المضيف، أرسل حركتي له ليطبّقها في الفيزياء الفعلية
+        if (!isOfflineMode && !isHost) {
+          socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX });
+        }
       }
     };
 
@@ -222,7 +286,29 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       el.removeEventListener('pointerdown', handlePointerMove);
       el.removeEventListener('pointermove', handlePointerMove);
     };
-  }, [world.w]);
+  }, [world.w, getMySide, isOfflineMode, isHost, roomCode]);
+
+  // ============ مزامنة الشبكة: المضيف يستقبل إدخال اللاعبين الآخرين، والضيف يستقبل حالة اللعبة كاملة ============
+  useEffect(() => {
+    if (isOfflineMode) return;
+    if (isHost) {
+      const handleInput = (data: { side: Player['side']; x: number }) => {
+        if (data.side === 'top' || data.side === 'bottom') {
+          stateRef.current.paddles[data.side] = Math.max(45, Math.min(world.w - 45, data.x));
+        }
+      };
+      socket.on('paddle-input', handleInput);
+      return () => { socket.off('paddle-input', handleInput); };
+    }
+    const handleState = (serverState: any) => {
+      if (!serverState) return;
+      if (serverState.ball) stateRef.current.ball = serverState.ball;
+      if (serverState.paddles) stateRef.current.paddles = serverState.paddles;
+      if (serverState.countdown !== undefined) stateRef.current.countdown = serverState.countdown;
+    };
+    socket.on('game-state', handleState);
+    return () => { socket.off('game-state', handleState); };
+  }, [isHost, isOfflineMode, world.w]);
 
   // إنشاء المشهد 3D بالانعكاسات الواقعية
   useEffect(() => {
@@ -247,16 +333,16 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     renderer.shadowMap.enabled = true;
     mount.appendChild(renderer.domElement);
 
-    // الطاولة بمادة MeshPhysicalMaterial لمحاكاة الأكريليك اللامع والانعكاسات
+    // الطاولة بمادة MeshPhysicalMaterial لمحاكاة السطح شبه المطفي (مطابق للصورة المرجعية)
     const tableGroup = new THREE.Group();
     const surfaceTexture = createAirHockeySurface(world.w, world.h);
     const tableMaterial = new THREE.MeshPhysicalMaterial({
       color: '#ffffff',
       map: surfaceTexture || undefined,
-      metalness: 0.1,
-      roughness: 0.1,
-      clearcoat: 1.0, // طبقة زجاجية لامعة عاكسة للضوء
-      clearcoatRoughness: 0.05,
+      metalness: 0.05,
+      roughness: 0.35,
+      clearcoat: 0.5,
+      clearcoatRoughness: 0.25,
     });
 
     const table = new THREE.Mesh(new THREE.BoxGeometry(world.w, 18, world.h), tableMaterial);
@@ -264,6 +350,10 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     table.receiveShadow = true;
     tableGroup.add(table);
     scene.add(tableGroup);
+
+    // الإطار: حافة سوداء + أنبوب إضاءة نيون متدرج بزوايا دائرية (مطابق للصورة المرجعية)
+    const frame = createArenaFrame(world.w, world.h);
+    scene.add(frame);
 
     // الكرة
     const ball = new THREE.Mesh(
@@ -301,11 +391,13 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     };
   }, [world.w, world.h, players, createHatPaddle]);
 
-  // حلقة اللعبة وفيزياء الارتداد المصححة
+  // حلقة اللعبة وفيزياء الارتداد
+  // الفيزياء تعمل فقط عند المضيف (أو في الوضع غير المتصل)، والضيف يعرض فقط الحالة المستلمة من المضيف
   useEffect(() => {
     let frame = 0;
     const state = stateRef.current;
     const playerForSide = (side: Player['side']) => players.find(p => p.side === side)?? players[0];
+    const runsPhysics = isHost || isOfflineMode;
 
     const launchBall = () => {
       const spd = getInitialSpeed();
@@ -314,13 +406,13 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       state.ball.vx = Math.sin(ang) * spd;
       state.ball.vy = Math.cos(ang) * spd * dirY;
     };
-    launchBall();
+    if (runsPhysics) launchBall();
 
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2);
       state.last = now;
 
-      if (!pausedRef.current &&!gameEndedRef.current) {
+      if (!pausedRef.current &&!gameEndedRef.current && runsPhysics) {
         state.elapsed += delta / 60;
         if (settings.mode === 'time' && state.elapsed > 1) {
           state.elapsed = 0;
@@ -332,11 +424,14 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           if (e >= 3) { state.countdown = 0; setCountdown(0); launchBall(); }
           else { setCountdown(Math.ceil(3 - e)); }
         } else {
-          // حركة ذكاء المضرب العلوي
-          const topSpeed = 5 * delta;
-          if (state.paddles.top < state.ball.x - 12) state.paddles.top += topSpeed;
-          else if (state.paddles.top > state.ball.x + 12) state.paddles.top -= topSpeed;
-          state.paddles.top = Math.max(45, Math.min(world.w - 45, state.paddles.top));
+          // حركة ذكاء المضرب العلوي فقط إن لم يوجد لاعب بشري حقيقي على هذا الجانب
+          const topPlayer = playerForSide('top');
+          if (!topPlayer || topPlayer.computer) {
+            const topSpeed = 5 * delta;
+            if (state.paddles.top < state.ball.x - 12) state.paddles.top += topSpeed;
+            else if (state.paddles.top > state.ball.x + 12) state.paddles.top -= topSpeed;
+            state.paddles.top = Math.max(45, Math.min(world.w - 45, state.paddles.top));
+          }
 
           // تحديث موقع الكرة
           state.ball.x += state.ball.vx * delta;
@@ -363,7 +458,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             const nx = (state.ball.x - botP) / distBot;
             const ny = (state.ball.y - paddleYBot) / distBot;
 
-            // طرد الكرة خارج المضرب لمنعها من العبور
             state.ball.x = botP + nx * (r + paddleRadius + 1);
             state.ball.y = paddleYBot + ny * (r + paddleRadius + 1);
 
@@ -422,6 +516,10 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           }
           setRally(state.rally);
         }
+
+        if (!isOfflineMode) {
+          socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
+        }
       }
 
       if (threeRef.current) {
@@ -447,13 +545,12 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [players, settings, onGoal, onTimeUp, world, getInitialSpeed]);
+  }, [players, settings, onGoal, onTimeUp, world, getInitialSpeed, isHost, isOfflineMode, roomCode]);
 
   function formatTime(s: number) { return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
 
   return (
     <main className="game-shell" style={{ background: '#000', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
-      {/* زر اظهار اذا مخفي (اضافة) */}
       {hideUI && (
         <button onClick={()=>setHideUI(false)} style={{ position:'absolute', top:16, right:16, zIndex:30, background:'#00e5ff', color:'#000', borderRadius:999, padding:'8px 14px', fontWeight:900, display:'flex', gap:6, alignItems:'center', border:'none', cursor:'pointer' }}>
           <Eye size={16}/> {isAr? 'اظهار':'Show'}
@@ -477,7 +574,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       <div ref={mountRef} style={{ width: '100%', flex: 1, borderRadius: '22px', overflow: 'hidden', position: 'relative', touchAction: 'none' }}>
         {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233' }}>{countdown}</span></div>}
 
-        {/* قائمة الكاميرا الجديدة (اضافة) */}
         {showCamMenu &&!hideUI && (
           <div style={{
             position:'absolute', top:12, right:12, zIndex:20,
