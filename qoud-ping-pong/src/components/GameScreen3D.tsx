@@ -417,8 +417,10 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
   useEffect(() => {
     const state = stateRef.current;
+    const needPlayers = Math.max(2, players.length, settings.players || 2);
+    const sidesForCount: Player['side'][] = needPlayers === 2 ? ['bottom','top'] : needPlayers === 3 ? ['bottom','top','right'] : ['bottom','top','right','left'];
     const playerForSide = (side: Player['side']) => players.find(p => p.side === side);
-    const activeSide = (side: Player['side']) => players.some(p => p.side === side);
+    const activeSide = (side: Player['side']) => sidesForCount.includes(side);
     const runsPhysics = isHost || isOfflineMode;
     const launchBall = () => {
       const spd = getInitialSpeed();
@@ -450,42 +452,42 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           const bottomPlayer = playerForSide('bottom');
           const leftPlayer = playerForSide('left');
           const rightPlayer = playerForSide('right');
-          // FIXED AI: any paddle that is NOT the human player should be computer
+          // FIXED AI - Predictive and fast
           const mySide = (players.find((p:any) => p.socketId === socket.id)?.side ?? 'bottom') as any;
           const isComputerSide = (side: string, player: any) => {
-            if (side === mySide && !isOfflineMode) return false; // human in online
+            if (side === mySide && !isOfflineMode) return false;
             if (isOfflineMode) {
-              // In offline vsComputer mode: bottom is human, others are computers
               if (side === 'bottom') return false;
               return true;
             }
-            // Online: if player exists and marked computer, or player missing
             if (!player) return true;
             return !!player.computer;
           };
-          const aiSpeed = (diff: number) => (settings.difficulty === 'hard' ? 7.5 : settings.difficulty === 'easy' ? 3.2 : 5.2) * delta * diff;
+          const aiSpeed = (diff: number) => (settings.difficulty === 'hard' ? 14 : settings.difficulty === 'easy' ? 7 : 10) * delta * diff;
+          const predX = state.ball.x + state.ball.vx * 14;
+          const predY = state.ball.y + state.ball.vy * 14;
           if (topActive && isComputerSide('top', topPlayer)) {
             const s = aiSpeed(1);
-            if (state.paddles.top < state.ball.x - 10) state.paddles.top += s;
-            else if (state.paddles.top > state.ball.x + 10) state.paddles.top -= s;
+            if (state.paddles.top < predX - 8) state.paddles.top += s;
+            else if (state.paddles.top > predX + 8) state.paddles.top -= s;
             state.paddles.top = Math.max(55, Math.min(world.w - 55, state.paddles.top));
           }
           if (bottomActive && isComputerSide('bottom', bottomPlayer)) {
             const s = aiSpeed(1);
-            if (state.paddles.bottom < state.ball.x - 10) state.paddles.bottom += s;
-            else if (state.paddles.bottom > state.ball.x + 10) state.paddles.bottom -= s;
+            if (state.paddles.bottom < predX - 8) state.paddles.bottom += s;
+            else if (state.paddles.bottom > predX + 8) state.paddles.bottom -= s;
             state.paddles.bottom = Math.max(55, Math.min(world.w - 55, state.paddles.bottom));
           }
           if (leftActive && isComputerSide('left', leftPlayer)) {
             const s = aiSpeed(1);
-            if (state.paddles.left < state.ball.y - 10) state.paddles.left += s;
-            else if (state.paddles.left > state.ball.y + 10) state.paddles.left -= s;
+            if (state.paddles.left < predY - 8) state.paddles.left += s;
+            else if (state.paddles.left > predY + 8) state.paddles.left -= s;
             state.paddles.left = Math.max(55, Math.min(world.h - 55, state.paddles.left));
           }
           if (rightActive && isComputerSide('right', rightPlayer)) {
             const s = aiSpeed(1);
-            if (state.paddles.right < state.ball.y - 10) state.paddles.right += s;
-            else if (state.paddles.right > state.ball.y + 10) state.paddles.right -= s;
+            if (state.paddles.right < predY - 8) state.paddles.right += s;
+            else if (state.paddles.right > predY + 8) state.paddles.right -= s;
             state.paddles.right = Math.max(55, Math.min(world.h - 55, state.paddles.right));
           }
           state.ball.x += state.ball.vx * delta;
@@ -588,7 +590,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             }
           }
           if (missed) {
-            onGoal(missed);
+            const realMissed = playerForSide(missed.side);
+            onGoal(realMissed);
             state.countdown = 3;
             state.countdownStart = now;
             setCountdown(3);

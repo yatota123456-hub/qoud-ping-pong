@@ -324,8 +324,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     if (isHost) { if (settings.start !== 'paddle') { launchBall(false); servingRef.current.active = false; } else { state.ball.x = state.paddles.bottom.x; state.ball.y = state.paddles.bottom.y - 24; servingRef.current.active = true; servingRef.current.side = 'bottom'; servingRef.current.startTime = performance.now(); servingRef.current.requested = false; } }
     let frame = 0;
     const resize = () => { const ratio = Math.min(window.devicePixelRatio || 1, 2); const rect = arena.getBoundingClientRect(); canvas.width = rect.width * ratio; canvas.height = rect.height * ratio; context.setTransform(canvas.width / world.w, 0, 0, canvas.height / world.h, 0, 0); }; resize(); const observer = new ResizeObserver(resize); observer.observe(arena);
-    const playerForSide = (side: Player['side']) => players.find((player) => player.side === side) ?? players[0];
-    const active = (side: Player['side']) => players.some((player) => player.side === side);
+    const needCount = Math.max(2, players.length, settings.players || 2);
+    const requiredSides: Player['side'][] = needCount === 2? ['bottom','top'] : needCount === 3? ['bottom','top','right'] : ['bottom','top','right','left'];
+    const playerForSide = (side: Player['side']) => players.find((p) => p.side === side)?? ({ id: side, name: side, color: COLORS[SIDES.indexOf(side)], side, computer: side!== 'bottom' } as Player);
+    const active = (side: Player['side']) => requiredSides.includes(side);
     const resetBall = (missedSide?: Player['side']) => { state.countdown = 3; state.countdownStart = performance.now(); state.countdownSide = missedSide || null; state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0; };
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2); state.last = now; const myPlayer = players.find(p => p.socketId === socket.id) || players[0]; const mySide = myPlayer?.side || 'bottom'; const isOffline = !socket.connected || players.length <= 1;
@@ -336,11 +338,19 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           if (state.countdown > 0) { const elapsed = (now - state.countdownStart) / 1000; if (elapsed >= 3) { state.countdown = 0; const side = state.countdownSide; if (settings.start === 'paddle' && side) { servingRef.current.active = true; servingRef.current.side = side; servingRef.current.startTime = now; servingRef.current.requested = false; if (side === 'bottom') { state.ball.x = state.paddles.bottom.x; state.ball.y = state.paddles.bottom.y - 24; } else if (side === 'top') { state.ball.x = state.paddles.top.x; state.ball.y = state.paddles.top.y + 24; } else if (side === 'left') { state.ball.x = state.paddles.left.x - 24; state.ball.y = state.paddles.left.y; } else { state.ball.x = state.paddles.right.x + 24; state.ball.y = state.paddles.right.y; } state.ball.vx = 0; state.ball.vy = 0; setIsServing(true); } else { launchBall(false); setIsServing(false); servingRef.current.active = false; } } else { socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); draw(context, state, players, now, true, world); frame = requestAnimationFrame(tick); return; } }
           const touch = touchControls.current; if (touch.left) controls.current.x = -1; else if (touch.right) controls.current.x = 1; else controls.current.x = 0; if (touch.up) controls.current.y = -1; else if (touch.down) controls.current.y = 1; else controls.current.y = 0; const bottomInput = touch.bottomLeft ? -1 : touch.bottomRight ? 1 : 0;
           if (isOffline) {
-            state.paddles.bottom.x = Math.max(50, Math.min(world.w - 50, state.paddles.bottom.x + (players[0]?.computer ? ai(state.ball.x, state.paddles.bottom.x, settings.difficulty) : controls.current.x + bottomInput) * 9 * delta));
-            state.paddles.bottom.y = Math.max(world.h - 70 - ZONE, Math.min(world.h - 40, state.paddles.bottom.y + (players[0]?.computer ? ai(state.ball.y, state.paddles.bottom.y, settings.difficulty) : controls.current.y) * 7 * delta));
-            state.paddles.top.x = Math.max(50, Math.min(world.w - 50, state.paddles.top.x + (players[1]?.computer ? ai(state.ball.x, state.paddles.top.x, settings.difficulty) : bottomInput) * 6 * delta)); state.paddles.top.y = Math.max(40, Math.min(40 + ZONE, state.paddles.top.y));
-            state.paddles.right.y = Math.max(50, Math.min(world.h - 50, state.paddles.right.y + (players[2]?.computer ? ai(state.ball.y, state.paddles.right.y, settings.difficulty) : controls.current.y) * 7 * delta)); state.paddles.right.x = Math.max(world.w - 70 - ZONE, Math.min(world.w - 40, state.paddles.right.x));
-            state.paddles.left.y = Math.max(50, Math.min(world.h - 50, state.paddles.left.y + (players[3]?.computer ? ai(state.ball.y, state.paddles.left.y, settings.difficulty) : 0) * 6 * delta)); state.paddles.left.x = Math.max(40, Math.min(40 + ZONE, state.paddles.left.x));
+            // FIXED: تنبؤ + سرعة عالية + bottom دائما انسان
+            const predX = state.ball.x + state.ball.vx * 12;
+            const predY = state.ball.y + state.ball.vy * 12;
+            // bottom = انسان 100%
+            state.paddles.bottom.x = Math.max(50, Math.min(world.w - 50, state.paddles.bottom.x + (controls.current.x + bottomInput + (drag.current.side==='bottom'? (drag.current.x - state.paddles.bottom.x)*0.18 : 0)) * 9 * delta));
+            state.paddles.bottom.y = Math.max(world.h - 70 - ZONE, Math.min(world.h - 40, state.paddles.bottom.y + controls.current.y * 7 * delta));
+            // top/right/left = كمبيوتر دائما مع تنبؤ
+            state.paddles.top.x = Math.max(50, Math.min(world.w - 50, state.paddles.top.x + ai(predX, state.paddles.top.x, settings.difficulty) * 9 * delta));
+            state.paddles.top.y = Math.max(40, Math.min(40 + ZONE, state.paddles.top.y));
+            state.paddles.right.y = Math.max(50, Math.min(world.h - 50, state.paddles.right.y + ai(predY, state.paddles.right.y, settings.difficulty) * 9 * delta));
+            state.paddles.right.x = Math.max(world.w - 70 - ZONE, Math.min(world.w - 40, state.paddles.right.x));
+            state.paddles.left.y = Math.max(50, Math.min(world.h - 50, state.paddles.left.y + ai(predY, state.paddles.left.y, settings.difficulty) * 9 * delta));
+            state.paddles.left.x = Math.max(40, Math.min(40 + ZONE, state.paddles.left.x));
             if (drag.current.side === 'bottom' && active('bottom')) { state.paddles.bottom.x = Math.max(50, Math.min(world.w - 50, drag.current.x)); state.paddles.bottom.y = Math.max(world.h - 70 - ZONE, Math.min(world.h - 40, drag.current.y)); }
             if (drag.current.side === 'top' && active('top')) { state.paddles.top.x = Math.max(50, Math.min(world.w - 50, drag.current.x)); state.paddles.top.y = Math.max(40, Math.min(40 + ZONE, drag.current.y)); }
             if (drag.current.side === 'right' && active('right')) { state.paddles.right.y = Math.max(50, Math.min(world.h - 50, drag.current.y)); state.paddles.right.x = Math.max(world.w - 70 - ZONE, Math.min(world.w - 40, drag.current.x)); }
@@ -402,7 +412,11 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     </section><div className="touch-controls"><button {...bindTouch('bottomRight')}><ChevronRight size={24} /></button><button {...bindTouch('bottomLeft')}><ChevronLeft size={24} /></button></div></main>;
 }
 
-function ai(ball: number, paddle: number, difficulty: Difficulty) { const factor = difficulty === 'easy' ? .35 : difficulty === 'normal' ? .65 : .92; return ball > paddle + 16 ? factor : ball < paddle - 16 ? -factor : 0; }
+function ai(ball: number, paddle: number, difficulty: Difficulty) {
+  const factor = difficulty === 'easy'? 0.85 : difficulty === 'normal'? 1.45 : 2.15;
+  const dead = 6;
+  return ball > paddle + dead? factor : ball < paddle - dead? -factor : 0;
+}
 function getColoredPaddle(color: string, size: number = 42): HTMLCanvasElement { const c = document.createElement('canvas'); c.width = size; c.height = size; const ctx = c.getContext('2d')!; ctx.shadowColor = color; ctx.shadowBlur = 20; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(size / 2, size / 2, size * 0.48, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); ctx.arc(size / 2, size / 2, size * 0.28, 0, Math.PI * 2); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; const grad = ctx.createRadialGradient(size * 0.38, size * 0.38, size * 0.05, size / 2, size / 2, size * 0.32); grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.2, color); grad.addColorStop(1, color); ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(size / 2, size * 0.52, size * 0.30, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.arc(size * 0.38, size * 0.38, size * 0.08, 0, Math.PI * 2); ctx.fill(); return c; }
 function draw(context: CanvasRenderingContext2D, state: any, players: Player[], now: number, isServing: boolean, world = RECTANGULAR_WORLD) {
   const canvas = context.canvas as HTMLCanvasElement; const sx = canvas.width / world.w; const sy = canvas.height / world.h; context.save(); context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height); context.restore();
