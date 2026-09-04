@@ -550,9 +550,9 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               state.rally++;
             }
           }
-          const GOAL_W = 280;
+          const GOAL_W = 220; // Fixed to match frame gap
           const GX1 = (world.w - GOAL_W) / 2, GX2 = GX1 + GOAL_W;
-          const GOAL_H = 280;
+          const GOAL_H = 220;
           const GY1 = (world.h - GOAL_H) / 2, GY2 = GY1 + GOAL_H;
           const inGoalX = (x: number) => x >= GX1 && x <= GX2;
           const inGoalY = (y: number) => y >= GY1 && y <= GY2;

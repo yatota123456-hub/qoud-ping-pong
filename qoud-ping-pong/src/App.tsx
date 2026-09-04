@@ -183,18 +183,22 @@ function App() {
     setPlayers(currentPlayers); setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0]))); setWinner(null); setLastGoal(null); setMatchPaused(false); setMatchKey((key) => key + 1); setScreen('game');
   }, [isHost, makePlayers]);
   const goalScored = useCallback((missed: Player) => {
-    if (!isHost) return;
+    if (!isHost && socket.connected) return;
     setScores((current) => {
       const updated = { ...current };
-      const list = playersRef.current;
-      const scorer = list.length === 2 ? list.find(p => p.id !== missed.id)! : list.find((player) => player.id !== missed.id) ?? missed;
+      const oppositeMap: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
+      const scorerSide = oppositeMap[missed.side] ?? 'bottom';
+      const list = playersRef.current.length >= 2? playersRef.current : makePlayers();
+      let scorer = list.find(p => p.side === scorerSide) ?? list.find(p => p.side !== missed.side);
+      if (!scorer) scorer = playerForSide(scorerSide as any) as Player;
       updated[scorer.id] = (updated[scorer.id] ?? 0) + 1;
       socket.emit('goal-scored', { missedSide: missed.side, scores: updated });
       if (settings.mode === 'goals' && (updated[scorer.id] ?? 0) >= settings.goal) finishMatch(scorer);
       return updated;
     });
-    setLastGoal(missed.name); window.setTimeout(() => setLastGoal(null), 1300);
-  }, [finishMatch, settings.goal, settings.mode, isHost]);
+    setLastGoal(missed.name);
+    window.setTimeout(() => setLastGoal(null), 1300);
+  }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers]);
 
   if (screen === 'waiting') return <WaitingRoom room={room} players={players} isHost={isHost} error={error} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
   if (screen === 'game') {
@@ -378,12 +382,18 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           if (active('right')) { const dx = state.ball.x - state.paddles.right.x; const dy = state.ball.y - state.paddles.right.y; const dist = Math.sqrt(dx * dx + dy * dy); if (dist <= HIT_DIST + 14 && dist >= 0.5 && state.ball.vx > -1) { const nx = dx / dist; const ny = dy / dist; const cur = Math.hypot(state.ball.vx, state.ball.vy) || getInitialSpeed(); const forwardSpeed = Math.max(0, -velRight.x); const newSpeed = cur * 1.18 + BASE_BOOST + forwardSpeed * THRUST + settings.ballSpeed * 0.42; state.ball.x = state.paddles.right.x + nx * (HIT_DIST + 10); state.ball.y = state.paddles.right.y + ny * (HIT_DIST + 10); state.speedMult = Math.min(2.8, (state.speedMult || 1) * 1.14); state.rally++; state.ball.vx = -Math.abs(newSpeed) - 0.5; state.ball.vy = (dy / PADDLE_R) * 6.2 + velRight.y * PADDLE_POWER; beep(480 + state.rally * 6); state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: COLORS[2] }); } }
           const maxSpd = 7 + settings.ballSpeed * 0.85 + state.rally * 0.55; state.ball.vx = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vx)); state.ball.vy = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vy));
           state.prevPaddles = { top: { x: state.paddles.top.x, y: state.paddles.top.y }, bottom: { x: state.paddles.bottom.x, y: state.paddles.bottom.y }, left: { x: state.paddles.left.x, y: state.paddles.left.y }, right: { x: state.paddles.right.x, y: state.paddles.right.y }, };
-          const GOAL_W = players.length === 2 ? 260 : 300; const GOAL_X1 = (world.w - GOAL_W) / 2; const GOAL_X2 = GOAL_X1 + GOAL_W; const GOAL_Y1 = (world.h - GOAL_W) / 2; const GOAL_Y2 = GOAL_Y1 + GOAL_W; const inGoalX = (x: number) => x >= GOAL_X1 && x <= GOAL_X2; const inGoalY = (y: number) => y >= GOAL_Y1 && y <= GOAL_Y2; let missed: Player | undefined;
+          const GOAL_W = 220; const GOAL_H = 220; const GOAL_X1 = (world.w - GOAL_W) / 2; const GOAL_X2 = GOAL_X1 + GOAL_W; const GOAL_Y1 = (world.h - GOAL_H) / 2; const GOAL_Y2 = GOAL_Y1 + GOAL_H; const inGoalX = (x: number) => x >= GOAL_X1 && x <= GOAL_X2; const inGoalY = (y: number) => y >= GOAL_Y1 && y <= GOAL_Y2; let missed: Player | undefined;
           if (state.ball.y - r < 22) { if (active('top')) { if (inGoalX(state.ball.x)) missed = playerForSide('top'); else { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy); beep(300); } } else { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy); beep(300); } }
           if (!missed && state.ball.y + r > world.h - 22) { if (active('bottom')) { if (inGoalX(state.ball.x)) missed = playerForSide('bottom'); else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); beep(300); } } else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); beep(300); } }
           if (!missed && state.ball.x - r < 22) { if (active('left')) { if (inGoalY(state.ball.y)) missed = playerForSide('left'); else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); beep(300); } } else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); beep(300); } }
           if (!missed && state.ball.x + r > world.w - 22) { if (active('right')) { if (inGoalY(state.ball.y)) missed = playerForSide('right'); else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); beep(300); } } else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); beep(300); } }
-          if (missed) { state.effects.push({ x: Math.max(40, Math.min(world.w - 40, state.ball.x)), y: Math.max(40, Math.min(world.h - 40, state.ball.y)), born: now, color: missed.color }); beep(130, .16); onGoalRef.current(missed); resetBall(missed.side); }
+          if (missed) { 
+            state.effects.push({ x: Math.max(40, Math.min(world.w - 40, state.ball.x)), y: Math.max(40, Math.min(world.h - 40, state.ball.y)), born: now, color: missed.color }); 
+            beep(130, .16); 
+            // FIXED: ارسل الجهة الصحيحة
+            onGoalRef.current(playerForSide(missed.side)); 
+            resetBall(missed.side); 
+          }
           setRally(state.rally); socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
         }
       }
