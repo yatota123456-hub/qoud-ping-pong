@@ -104,24 +104,48 @@ function App() {
   useEffect(() => { void fetch('/api/rooms').then(r => r.ok? r.json() : null).then((d: any) => { if (d?.count!== undefined) setRoomsCount(d.count); }).catch(() => {}); }, []);
 
   useEffect(() => {
-    socket.on('room-update', (roomData: RoomData) => {
+    const onRoomUpdate = (roomData: RoomData) => {
       setRoom(prev => roomData.code || prev || roomRef.current);
-      if (roomData.players?.length > 0) setPlayers(roomData.players);
-      if (roomData.settings && screenRef.current!== 'game') setSettings((current) => ({...current,...roomData.settings }));
+      if (screenRef.current!== 'game' && roomData.players?.length > 0) {
+        setPlayers(roomData.players);
+      }
+      if (roomData.settings && screenRef.current!== 'game') {
+        setSettings((current) => ({...current,...roomData.settings }));
+      }
       if (roomData.hostSocketId) setIsHost(roomData.hostSocketId === socket.id);
-      if (roomData.status === 'playing' && screenRef.current === 'waiting') { setWinner(null); setLastGoal(null); setMatchPaused(false); setMatchKey((key) => key + 1); setScreen('game'); }
-    });
-    socket.on('game-started', () => { setWinner(null); setLastGoal(null); setMatchPaused(false); setMatchKey((key) => key + 1); setScreen('game'); });
-    socket.on('match-finished', ({ winnerId, scores: serverScores }) => { setScores(serverScores); setWinner(playersRef.current.find((player) => player.id === winnerId)?? null); setScreen('results'); });
-    socket.on('goal-scored', ({ scores: serverScores, missedSide }) => {
+      if (roomData.status === 'playing' && screenRef.current === 'waiting') {
+        setWinner(null); setLastGoal(null); setMatchPaused(false); setMatchKey((k) => k + 1); setScreen('game');
+      }
+    };
+    const onGameStarted = () => { setWinner(null); setLastGoal(null); setMatchPaused(false); setMatchKey((k) => k + 1); setScreen('game'); };
+    const onMatchFinished = ({ winnerId, scores: serverScores }: any) => { setScores(serverScores); setWinner(playersRef.current.find((p) => p.id === winnerId)?? null); setScreen('results'); };
+    const onGoalScored = ({ scores: serverScores, missedSide }: any) => {
+      const isOfflineLocal =!socket.connected || playersRef.current.length < 2;
+      if (isOfflineLocal) return;
       setScores(serverScores);
-      const missed = playersRef.current.find((player) => player.side === missedSide);
+      const missed = playersRef.current.find((p) => p.side === missedSide);
       if (missed) { setLastGoal(missed.name); window.setTimeout(() => setLastGoal(null), 1300); }
-    });
-    socket.on('error', (msg: string) => setError(msg));
-    socket.on('connection-lost', () => { setError(isArRef.current? 'انقطع الاتصال بالخادم' : 'Connection to the game server was lost'); setScreen('setup'); setPlayers([]); });
-    socket.on('host-left', () => { setError(isArRef.current? 'منشئ الغرفة غادر' : 'Host left the room'); setScreen('setup'); });
-    return () => { socket.off('room-update'); socket.off('game-started'); socket.off('match-finished'); socket.off('goal-scored'); socket.off('error'); socket.off('connection-lost'); socket.off('host-left'); };
+    };
+    const onError = (msg: string) => setError(msg);
+    const onLost = () => { setError(isArRef.current? 'انقطع الاتصال بالخادم' : 'Connection lost'); setScreen('setup'); setPlayers([]); };
+    const onHostLeft = () => { setError(isArRef.current? 'منشئ الغرفة غادر' : 'Host left'); setScreen('setup'); };
+
+    socket.on('room-update', onRoomUpdate);
+    socket.on('game-started', onGameStarted);
+    socket.on('match-finished', onMatchFinished);
+    socket.on('goal-scored', onGoalScored);
+    socket.on('error', onError);
+    socket.on('connection-lost', onLost);
+    socket.on('host-left', onHostLeft);
+    return () => {
+      socket.off('room-update', onRoomUpdate);
+      socket.off('game-started', onGameStarted);
+      socket.off('match-finished', onMatchFinished);
+      socket.off('goal-scored', onGoalScored);
+      socket.off('error', onError);
+      socket.off('connection-lost', onLost);
+      socket.off('host-left', onHostLeft);
+    };
   }, []);
 
   const updateSettings = (patch: Partial<Settings>) => {
@@ -179,27 +203,25 @@ function App() {
   const startMatch = useCallback(() => {
     const canStart = isHost || playersRef.current.length <= 1 ||!socket.connected;
     if (!canStart) { setError(isArRef.current? 'المنشئ هو من يبدأ الجولة' : 'Only the host can start'); return; }
-    // إصلاح: في الأوفلاين استخدم makePlayers دائما
-    const isOffline =!socket.connected || playersRef.current.length < settings.players;
+    const isOffline =!socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
     const currentPlayers = isOffline? makePlayers() : (playersRef.current.length > 0? playersRef.current : makePlayers());
     if (socket.connected &&!isOffline) socket.emit('start-game', { code: roomRef.current });
     setPlayers(currentPlayers);
     setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0])));
     setWinner(null); setLastGoal(null); setMatchPaused(false); setMatchKey((key) => key + 1); setScreen('game');
-  }, [isHost, makePlayers, settings.players]);
+  }, [isHost, makePlayers, settings.players, settings.vsComputer]);
   
   const goalScored = useCallback((missed: Player) => {
-    const isOffline =!socket.connected || playersRef.current.length <= 1;
+    const isOffline =!socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
     if (!isHost && socket.connected &&!isOffline) return;
     setScores((current) => {
-      const list = playersRef.current.length >= 2? playersRef.current : makePlayers();
+      const list = playersRef.current.length >= settings.players? playersRef.current : makePlayers();
       const oppositeMap: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
       const scorerSide = oppositeMap[missed.side]?? 'bottom';
       const scorer = list.find(p => p.side === scorerSide)?? list.find(p => p.side!== missed.side)?? list[0];
       if (!scorer) return current;
       const updated = {...current };
       updated[scorer.id] = (updated[scorer.id]?? 0) + 1;
-      // إصلاح: لا ترسل للسيرفر في الأوفلاين
       if (!isOffline && socket.connected) {
         socket.emit('goal-scored', { missedSide: missed.side, scores: updated });
       }
@@ -210,7 +232,7 @@ function App() {
     });
     setLastGoal(missed.name);
     window.setTimeout(() => setLastGoal(null), 1300);
-  }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers]);
+  }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers, settings.players, settings.vsComputer]);
 
   if (screen === 'waiting') return <WaitingRoom room={room} players={players} isHost={isHost} error={error} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
   if (screen === 'game') {
