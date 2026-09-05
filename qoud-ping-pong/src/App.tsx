@@ -214,11 +214,19 @@ function App() {
   const goalScored = useCallback((missed: Player) => {
     const isOffline =!socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
     if (!isHost && socket.connected &&!isOffline) return;
+  
+    const list = playersRef.current.length >= settings.players? playersRef.current : makePlayers();
+    const oppositeMap: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
+    const scorerSide = oppositeMap[missed.side]?? 'bottom';
+    const scorer = list.find(p => p.side === scorerSide)?? list.find(p => p.side!== missed.side)?? list[0];
+  
+    // إصلاح الاسم: اعرض اسم اللي سجل مو اللي انفتح مرماه
+    if (scorer) {
+      setLastGoal(scorer.name);
+      window.setTimeout(() => setLastGoal(null), 1300);
+    }
+  
     setScores((current) => {
-      const list = playersRef.current.length >= settings.players? playersRef.current : makePlayers();
-      const oppositeMap: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
-      const scorerSide = oppositeMap[missed.side]?? 'bottom';
-      const scorer = list.find(p => p.side === scorerSide)?? list.find(p => p.side!== missed.side)?? list[0];
       if (!scorer) return current;
       const updated = {...current };
       updated[scorer.id] = (updated[scorer.id]?? 0) + 1;
@@ -230,8 +238,6 @@ function App() {
       }
       return updated;
     });
-    setLastGoal(missed.name);
-    window.setTimeout(() => setLastGoal(null), 1300);
   }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers, settings.players, settings.vsComputer]);
 
   if (screen === 'waiting') return <WaitingRoom room={room} players={players} isHost={isHost} error={error} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
