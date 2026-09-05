@@ -14,10 +14,8 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   canvas.height = 1024;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  // Pure glossy white like reference
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  // Small black dots - denser like reference
   ctx.fillStyle = '#0a0a0a';
   const cols = 28;
   const rows = 56;
@@ -25,7 +23,7 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   const spacingY = canvas.height / rows;
   for (let y = spacingY / 2; y < canvas.height; y += spacingY) {
     for (let x = spacingX / 2; x < canvas.width; x += spacingX) {
-      const offset = (Math.floor(y / spacingY) % 2 === 0) ? 0 : spacingX/2;
+      const offset = (Math.floor(y / spacingY) % 2 === 0)? 0 : spacingX/2;
       ctx.beginPath();
       ctx.arc(x + offset, y, 2.2, 0, Math.PI * 2);
       ctx.fill();
@@ -78,11 +76,9 @@ function buildRoundedRectPoints(w: number, h: number, r: number, segmentsPerCorn
 function setup3DArenaLighting(scene: THREE.Scene, worldWidth: number, worldHeight: number) {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.72);
   scene.add(ambientLight);
-  // Soft directional for glossy reflections like reference
   const dir = new THREE.DirectionalLight(0xffffff, 0.55);
   dir.position.set(worldWidth*0.3, 800, worldHeight*0.2);
   scene.add(dir);
-  // Neon corner glows - brighter
   const neonColors = [0x00e5ff, 0xff7a28, 0xbf5af2, 0xff2d78];
   const cornerPositions = [
     { x: worldWidth*0.15, z: worldHeight*0.15 },
@@ -95,7 +91,6 @@ function setup3DArenaLighting(scene: THREE.Scene, worldWidth: number, worldHeigh
     pointLight.position.set(pos.x, 65, pos.z);
     scene.add(pointLight);
   });
-  // Center soft fill to mimic photo studio lighting
   const centerLight = new THREE.PointLight(0xffffff, 0.45, worldWidth*1.5);
   centerLight.position.set(worldWidth/2, 400, worldHeight/2);
   scene.add(centerLight);
@@ -106,11 +101,9 @@ function createArenaFrame(worldW: number, worldH: number) {
   const bezelThickness = Math.max(32, Math.min(worldW, worldH) * 0.055);
   const bezelHeight = 28;
   const bezelY = 13;
-
-  // Glossy black frame - exactly like reference image
-  const bezelMat = new THREE.MeshStandardMaterial({ 
-    color: '#080808', 
-    roughness: 0.18, 
+  const bezelMat = new THREE.MeshStandardMaterial({
+    color: '#080808',
+    roughness: 0.18,
     metalness: 0.85,
     envMapIntensity: 1.2
   });
@@ -125,14 +118,12 @@ function createArenaFrame(worldW: number, worldH: number) {
     mesh.position.set(p.x, bezelY, p.z);
     group.add(mesh);
   });
-
-  // Inner neon LED strip - bright like reference
   const neonRadius = Math.min(42, Math.min(worldW, worldH) * 0.065);
   const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, 12);
   const neonCurve = new THREE.CatmullRomCurve3(neonPts, true, 'catmullrom', 0.15);
   const neonGeo = new THREE.TubeGeometry(neonCurve, 160, 6.5, 10, true);
   const neonTex = createNeonGradientTexture();
-  const neonMat = new THREE.MeshStandardMaterial({ 
+  const neonMat = new THREE.MeshStandardMaterial({
     map: neonTex || undefined,
     emissive: new THREE.Color(0xffffff),
     emissiveMap: neonTex || undefined,
@@ -143,15 +134,13 @@ function createArenaFrame(worldW: number, worldH: number) {
   const neonTube = new THREE.Mesh(neonGeo, neonMat);
   neonTube.position.y = 22.5;
   group.add(neonTube);
-
-  // Outer thin LED line - like reference image outer glow
   const outerRadius = neonRadius + bezelThickness * 0.6;
   const outerW = worldW + bezelThickness * 0.8;
   const outerH = worldH + bezelThickness * 0.8;
   const outerPts = buildRoundedRectPoints(outerW, outerH, outerRadius, 12);
   const outerCurve = new THREE.CatmullRomCurve3(outerPts.map(p => new THREE.Vector3(p.x - bezelThickness*0.4, 0, p.z - bezelThickness*0.4)), true, 'catmullrom', 0.15);
   const outerGeo = new THREE.TubeGeometry(outerCurve, 160, 1.8, 6, true);
-  const outerMat = new THREE.MeshBasicMaterial({ 
+  const outerMat = new THREE.MeshBasicMaterial({
     map: neonTex || undefined,
     transparent: true,
     opacity: 0.85
@@ -159,9 +148,7 @@ function createArenaFrame(worldW: number, worldH: number) {
   const outerTube = new THREE.Mesh(outerGeo, outerMat);
   outerTube.position.y = 26;
   group.add(outerTube);
-
-  // Goal gaps - black blocks like reference
-  const goalW = 220;
+  const goalW = 260;
   const goalH = 32;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
@@ -170,7 +157,7 @@ function createArenaFrame(worldW: number, worldH: number) {
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
   goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2);
   group.add(goalBottom);
-  if (worldW >= 1100) { // square mode - also side goals
+  if (worldW >= 1100) {
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
     goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
     group.add(goalLeft);
@@ -178,7 +165,6 @@ function createArenaFrame(worldW: number, worldH: number) {
     goalRight.position.set(worldW + bezelThickness/2, bezelY+2, worldH/2);
     group.add(goalRight);
   }
-
   return group;
 }
 
@@ -186,7 +172,7 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const ARENA_SCALES: any = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
   const RECT = { w: 800, h: 1250 };
   const SQUARE = { w: 1200, h: 1200 };
-  const base = count >= 3 ? SQUARE : RECT;
+  const base = count >= 3? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc };
 }
@@ -204,7 +190,7 @@ type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D;
 export function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, paused, onGoal, onTimeUp, onPause, onExit }: { roomCode: string; isHost: boolean; players: Player[]; settings: Settings; scores: Scores; lastGoal: string | null; paused: boolean; onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; }) {
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
-  const [timeLeft, setTimeLeft] = useState(settings.mode === 'time' ? settings.duration : 0);
+  const [timeLeft, setTimeLeft] = useState(settings.mode === 'time'? settings.duration : 0);
   const [rally, setRally] = useState(0);
   const [countdown, setCountdown] = useState(0);
   const pausedRef = useRef(paused);
@@ -214,20 +200,23 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
   const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
   const initialCam = useMemo(() => {
-    const camDist = players.length >= 3 ? 1350 : 1350;
+    const camDist = players.length >= 3? 1350 : 1350;
     return { angle: 0, targetAngle: 0, distance: camDist, targetDistance: camDist, height: 950, targetHeight: 950, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
   }, [world, players.length]);
 
-  const cam = useRef({ ...initialCam });
+  const cam = useRef({...initialCam });
   const threeRef = useRef<any>(null);
   const stateRef = useRef({
-    ball: { x: world.w / 2, y: world.h / 2, vx: 5, vy: 6 },
-    paddles: { top: world.w / 2, right: world.h / 2, bottom: world.w / 2, left: world.h / 2 },
+    ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
+    paddles: { top: world.w / 2, right: world.h / 2, bottom: world.w / 2, left: world.h / 2 } as any,
+    targetPaddles: { top: world.w / 2, right: world.h / 2, bottom: world.w / 2, left: world.h / 2 } as any,
     last: performance.now(),
     elapsed: 0,
     rally: 0,
     countdown: 0,
     countdownStart: 0,
+    countdownSide: null as Player['side'] | null,
+    serving: { active: false, side: 'bottom' as Player['side'], startTime: 0, requested: false }
   });
 
   const playersKey = useMemo(() => players.map(p => `${p.side}:${p.color}`).join(','), [players]);
@@ -240,10 +229,10 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   const getInitialSpeed = useCallback(() => 6 + settings.ballSpeed * 0.5, [settings.ballSpeed]);
 
   const getMySide = useCallback((): Player['side'] => {
-    return (players.find((p) => p.socketId === socket.id)?.side ?? players[0]?.side ?? 'bottom') as Player['side'];
+    return (players.find((p) => p.socketId === socket.id)?.side?? players[0]?.side?? 'bottom') as Player['side'];
   }, [players]);
 
-  const isOfflineMode = !socket.connected || players.length <= 1;
+  const isOfflineMode =!socket.connected || players.length <= 1;
 
   const createHatPaddle = useCallback((color: string) => {
     const group = new THREE.Group();
@@ -264,7 +253,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     return group;
   }, []);
 
-  const resetCamera = useCallback(() => { cam.current = { ...initialCam }; setCurrentPreset('iso'); }, [initialCam]);
+  const resetCamera = useCallback(() => { cam.current = {...initialCam }; setCurrentPreset('iso'); }, [initialCam]);
 
   const applyPreset = useCallback((key: Cam3DPresetKey) => {
     const p = CAM_PRESETS_3D[key];
@@ -275,7 +264,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   }, []);
 
   const zoomCam = useCallback((dir: number) => {
-    cam.current.targetDistance = Math.max(300, Math.min(2000, cam.current.targetDistance * (dir > 0 ? 0.85 : 1.18)));
+    cam.current.targetDistance = Math.max(300, Math.min(2000, cam.current.targetDistance * (dir > 0? 0.85 : 1.18)));
   }, []);
 
   const rotateCam = useCallback((dir: 'left' | 'right' | 'up' | 'down') => {
@@ -292,7 +281,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const mouse = new THREE.Vector2();
     const handlePointerMove = (e: PointerEvent) => {
-      if (!e.isPrimary || !threeRef.current) return;
+      if (!e.isPrimary ||!threeRef.current) return;
       const mySide = getMySide();
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -302,14 +291,14 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       if (raycaster.ray.intersectPlane(plane, target)) {
         if (mySide === 'top' || mySide === 'bottom') {
           const clampedX = Math.max(45, Math.min(world.w - 45, target.x));
-          stateRef.current.paddles[mySide] = clampedX;
-          if (!isOfflineMode && !isHost) {
+          stateRef.current.targetPaddles[mySide] = clampedX;
+          if (!isOfflineMode &&!isHost) {
             socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX });
           }
         } else if (mySide === 'left' || mySide === 'right') {
           const clampedZ = Math.max(45, Math.min(world.h - 45, target.z));
-          stateRef.current.paddles[mySide] = clampedZ;
-          if (!isOfflineMode && !isHost) {
+          stateRef.current.targetPaddles[mySide] = clampedZ;
+          if (!isOfflineMode &&!isHost) {
             socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedZ });
           }
         }
@@ -328,9 +317,9 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     if (isHost) {
       const handleInput = (data: { side: Player['side']; x: number }) => {
         if (data.side === 'top' || data.side === 'bottom') {
-          stateRef.current.paddles[data.side] = Math.max(45, Math.min(world.w - 45, data.x));
+          stateRef.current.targetPaddles[data.side] = Math.max(45, Math.min(world.w - 45, data.x));
         } else if (data.side === 'left' || data.side === 'right') {
-          stateRef.current.paddles[data.side] = Math.max(45, Math.min(world.h - 45, data.x));
+          stateRef.current.targetPaddles[data.side] = Math.max(45, Math.min(world.h - 45, data.x));
         }
       };
       socket.on('paddle-input', handleInput);
@@ -339,8 +328,12 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     const handleState = (serverState: any) => {
       if (!serverState) return;
       if (serverState.ball) stateRef.current.ball = serverState.ball;
-      if (serverState.paddles) stateRef.current.paddles = serverState.paddles;
-      if (serverState.countdown !== undefined) stateRef.current.countdown = serverState.countdown;
+      if (serverState.paddles) {
+        Object.keys(serverState.paddles).forEach((k: any) => {
+          stateRef.current.targetPaddles[k] = serverState.paddles[k];
+        });
+      }
+      if (serverState.countdown!== undefined) stateRef.current.countdown = serverState.countdown;
     };
     socket.on('game-state', handleState);
     return () => { socket.off('game-state', handleState); };
@@ -382,11 +375,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     scene.add(ball);
     const paddles: Record<string, THREE.Group> = {};
     const COLORS_FALLBACK = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
-    const SIDES_ALL: Player['side'][] = ['bottom', 'top', 'right', 'left'];
-    // Ensure we have a paddle for each active side even if players prop is incomplete
-    const activeSides = players.length >= 3 ? SIDES_ALL.slice(0, players.length) : (['bottom','top'] as Player['side'][]).slice(0, Math.max(2, players.length));
     const ensureCount = Math.max(2, players.length, settings.players || 2);
-    const sidesNeeded = ensureCount === 2 ? (['bottom','top'] as Player['side'][]) : ensureCount === 3 ? (['bottom','top','right'] as Player['side'][]) : SIDES_ALL;
+    const sidesNeeded = ensureCount === 2? (['bottom','top'] as Player['side'][]) : ensureCount === 3? (['bottom','top','right'] as Player['side'][]) : (['bottom','top','right','left'] as Player['side'][]);
     sidesNeeded.forEach((side, idx) => {
       const existing = players.find(p => p.side === side);
       const color = existing?.color || COLORS_FALLBACK[idx] || '#ffcf5a';
@@ -396,7 +386,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     });
     threeRef.current = { scene, camera, renderer, ball, paddles, surfaceTexture, tableMaterial };
     const ro = new ResizeObserver(() => {
-      if (!mountRef.current || !threeRef.current) return;
+      if (!mountRef.current ||!threeRef.current) return;
       camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
@@ -418,22 +408,26 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   useEffect(() => {
     const state = stateRef.current;
     const needPlayers = Math.max(2, players.length, settings.players || 2);
-    const sidesForCount: Player['side'][] = needPlayers === 2 ? ['bottom','top'] : needPlayers === 3 ? ['bottom','top','right'] : ['bottom','top','right','left'];
+    const sidesForCount: Player['side'][] = needPlayers === 2? ['bottom','top'] : needPlayers === 3? ['bottom','top','right'] : ['bottom','top','right','left'];
     const playerForSide = (side: Player['side']) => players.find(p => p.side === side);
     const activeSide = (side: Player['side']) => sidesForCount.includes(side);
     const runsPhysics = isHost || isOfflineMode;
     const launchBall = () => {
       const spd = getInitialSpeed();
-      const dirY = Math.random() > 0.5 ? 1 : -1;
+      const dirY = Math.random() > 0.5? 1 : -1;
       const ang = (Math.random() - 0.5) * 0.8;
       state.ball.vx = Math.sin(ang) * spd;
       state.ball.vy = Math.cos(ang) * spd * dirY;
+      state.serving.active = false;
     };
-    if (runsPhysics) launchBall();
+    if (runsPhysics) {
+      launchBall();
+      state.paddles = {...state.targetPaddles };
+    }
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2);
       state.last = now;
-      if (!pausedRef.current && !gameEndedRef.current && runsPhysics) {
+      if (!pausedRef.current &&!gameEndedRef.current && runsPhysics) {
         state.elapsed += delta / 60;
         if (settings.mode === 'time' && state.elapsed > 1) {
           state.elapsed = 0;
@@ -441,60 +435,74 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         }
         if (state.countdown > 0) {
           const e = (now - state.countdownStart) / 1000;
-          if (e >= 3) { state.countdown = 0; setCountdown(0); launchBall(); }
-          else { setCountdown(Math.ceil(3 - e)); }
+          state.ball.x = world.w / 2;
+          state.ball.y = world.h / 2;
+          state.ball.vx = 0;
+          state.ball.vy = 0;
+          if (e >= 3) {
+            state.countdown = 0;
+            setCountdown(0);
+            if (settings.start === 'paddle' && state.countdownSide) {
+              state.serving.active = true;
+              state.serving.side = state.countdownSide;
+              state.serving.startTime = now;
+              state.serving.requested = false;
+              const s = state.countdownSide;
+              if (s === 'bottom') { state.ball.x = state.paddles.bottom; state.ball.y = world.h - 80; }
+              else if (s === 'top') { state.ball.x = state.paddles.top; state.ball.y = 80; }
+              else if (s === 'left') { state.ball.x = 80; state.ball.y = state.paddles.left; }
+              else { state.ball.x = world.w - 80; state.ball.y = state.paddles.right; }
+            } else {
+              launchBall();
+            }
+            state.countdownSide = null;
+          } else {
+            setCountdown(Math.ceil(3 - e));
+          }
+        } else if (state.serving.active) {
+          const side = state.serving.side;
+          if (side === 'bottom') { state.ball.x = state.paddles.bottom; state.ball.y = world.h - 80; }
+          else if (side === 'top') { state.ball.x = state.paddles.top; state.ball.y = 80; }
+          else if (side === 'left') { state.ball.x = 80; state.ball.y = state.paddles.left; }
+          else { state.ball.x = world.w - 80; state.ball.y = state.paddles.right; }
+          const p = playerForSide(side);
+          if (p?.computer && now - state.serving.startTime > 800) state.serving.requested = true;
+          if (state.serving.requested) launchBall();
         } else {
-          const topActive = activeSide('top');
-          const bottomActive = activeSide('bottom');
-          const leftActive = activeSide('left');
-          const rightActive = activeSide('right');
-          const topPlayer = playerForSide('top');
-          const bottomPlayer = playerForSide('bottom');
-          const leftPlayer = playerForSide('left');
-          const rightPlayer = playerForSide('right');
-          // FIXED AI - Predictive and fast
-          const mySide = (players.find((p:any) => p.socketId === socket.id)?.side ?? 'bottom') as any;
+          const mySide = (players.find((p:any) => p.socketId === socket.id)?.side?? 'bottom') as any;
           const isComputerSide = (side: string, player: any) => {
-            if (side === mySide && !isOfflineMode) return false;
+            if (side === mySide &&!isOfflineMode) return false;
             if (isOfflineMode) {
               if (side === 'bottom') return false;
               return true;
             }
             if (!player) return true;
-            return !!player.computer;
+            return!!player.computer;
           };
-          const aiSpeed = (diff: number) => (settings.difficulty === 'hard' ? 14 : settings.difficulty === 'easy' ? 7 : 10) * delta * diff;
+          const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
           const predX = state.ball.x + state.ball.vx * 14;
           const predY = state.ball.y + state.ball.vy * 14;
-          if (topActive && isComputerSide('top', topPlayer)) {
-            const s = aiSpeed(1);
-            if (state.paddles.top < predX - 8) state.paddles.top += s;
-            else if (state.paddles.top > predX + 8) state.paddles.top -= s;
-            state.paddles.top = Math.max(55, Math.min(world.w - 55, state.paddles.top));
-          }
-          if (bottomActive && isComputerSide('bottom', bottomPlayer)) {
-            const s = aiSpeed(1);
-            if (state.paddles.bottom < predX - 8) state.paddles.bottom += s;
-            else if (state.paddles.bottom > predX + 8) state.paddles.bottom -= s;
-            state.paddles.bottom = Math.max(55, Math.min(world.w - 55, state.paddles.bottom));
-          }
-          if (leftActive && isComputerSide('left', leftPlayer)) {
-            const s = aiSpeed(1);
-            if (state.paddles.left < predY - 8) state.paddles.left += s;
-            else if (state.paddles.left > predY + 8) state.paddles.left -= s;
-            state.paddles.left = Math.max(55, Math.min(world.h - 55, state.paddles.left));
-          }
-          if (rightActive && isComputerSide('right', rightPlayer)) {
-            const s = aiSpeed(1);
-            if (state.paddles.right < predY - 8) state.paddles.right += s;
-            else if (state.paddles.right > predY + 8) state.paddles.right -= s;
-            state.paddles.right = Math.max(55, Math.min(world.h - 55, state.paddles.right));
-          }
+          (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+            if (!activeSide(side)) return;
+            const p = playerForSide(side);
+            if (isComputerSide(side, p)) {
+              if (side === 'top' || side === 'bottom') state.targetPaddles[side] = clamp(predX, 55, world.w - 55);
+              else state.targetPaddles[side] = clamp(predY, 55, world.h - 55);
+            }
+          });
+          (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+            if (!activeSide(side)) return;
+            const p = playerForSide(side);
+            const isHuman =!isComputerSide(side, p);
+            const factor = isHuman? 0.38 : 0.18;
+            state.paddles[side] += (state.targetPaddles[side] - state.paddles[side]) * factor * delta;
+          });
+
           state.ball.x += state.ball.vx * delta;
           state.ball.y += state.ball.vy * delta;
           const r = 12;
           const paddleRadius = 24;
-          if (bottomActive) {
+          if (activeSide('bottom')) {
             const botP = state.paddles.bottom;
             const paddleYBot = world.h - 52;
             const distBot = Math.hypot(state.ball.x - botP, state.ball.y - paddleYBot);
@@ -508,7 +516,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               state.rally++;
             }
           }
-          if (topActive) {
+          if (activeSide('top')) {
             const topP = state.paddles.top;
             const paddleYTop = 52;
             const distTop = Math.hypot(state.ball.x - topP, state.ball.y - paddleYTop);
@@ -522,7 +530,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               state.rally++;
             }
           }
-          if (leftActive) {
+          if (activeSide('left')) {
             const leftP = state.paddles.left;
             const paddleXLeft = 52;
             const distLeft = Math.hypot(state.ball.x - paddleXLeft, state.ball.y - leftP);
@@ -536,7 +544,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               state.rally++;
             }
           }
-          if (rightActive) {
+          if (activeSide('right')) {
             const rightP = state.paddles.right;
             const paddleXRight = world.w - 52;
             const distRight = Math.hypot(state.ball.x - paddleXRight, state.ball.y - rightP);
@@ -550,15 +558,21 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               state.rally++;
             }
           }
-          const GOAL_W = 220; // Fixed to match frame gap
+          const maxBallSpeed = 26 + settings.ballSpeed * 1.1 + state.rally * 0.4;
+          const curSpeed = Math.hypot(state.ball.vx, state.ball.vy);
+          if (curSpeed > maxBallSpeed) {
+            const scale = maxBallSpeed / curSpeed;
+            state.ball.vx *= scale;
+            state.ball.vy *= scale;
+          }
+          const GOAL_W = world.w >= 1100? 300 : 260;
           const GX1 = (world.w - GOAL_W) / 2, GX2 = GX1 + GOAL_W;
-          const GOAL_H = 220;
-          const GY1 = (world.h - GOAL_H) / 2, GY2 = GY1 + GOAL_H;
+          const GY1 = (world.h - GOAL_W) / 2, GY2 = GY1 + GOAL_W;
           const inGoalX = (x: number) => x >= GX1 && x <= GX2;
           const inGoalY = (y: number) => y >= GY1 && y <= GY2;
           let missed: Player | undefined;
           if (state.ball.y - r <= 0) {
-            if (topActive) {
+            if (activeSide('top')) {
               if (inGoalX(state.ball.x)) missed = playerForSide('top');
               else { state.ball.y = r + 1; state.ball.vy = Math.abs(state.ball.vy); }
             } else {
@@ -566,7 +580,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             }
           }
           if (!missed && state.ball.y + r >= world.h) {
-            if (bottomActive) {
+            if (activeSide('bottom')) {
               if (inGoalX(state.ball.x)) missed = playerForSide('bottom');
               else { state.ball.y = world.h - r - 1; state.ball.vy = -Math.abs(state.ball.vy); }
             } else {
@@ -574,7 +588,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             }
           }
           if (!missed && state.ball.x - r <= 0) {
-            if (leftActive) {
+            if (activeSide('left')) {
               if (inGoalY(state.ball.y)) missed = playerForSide('left');
               else { state.ball.x = r + 1; state.ball.vx = Math.abs(state.ball.vx); }
             } else {
@@ -582,7 +596,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             }
           }
           if (!missed && state.ball.x + r >= world.w) {
-            if (rightActive) {
+            if (activeSide('right')) {
               if (inGoalY(state.ball.y)) missed = playerForSide('right');
               else { state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx); }
             } else {
@@ -590,16 +604,21 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             }
           }
           if (missed) {
-            const realMissed = playerForSide(missed.side);
+            const realMissed = playerForSide(missed.side)?? missed;
             onGoal(realMissed);
-            state.countdown = 3;
-            state.countdownStart = now;
-            setCountdown(3);
             state.ball.x = world.w / 2;
             state.ball.y = world.h / 2;
-            launchBall();
+            state.ball.vx = 0;
+            state.ball.vy = 0;
+            state.countdown = 3;
+            state.countdownStart = now;
+            state.countdownSide = missed.side;
+            setCountdown(3);
+            state.rally = 0;
+            setRally(0);
+          } else {
+            setRally(state.rally);
           }
-          setRally(state.rally);
         }
         if (!isOfflineMode) {
           socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
@@ -617,6 +636,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         camera.lookAt(c.lookX, 0, c.lookZ);
         ball.position.x = state.ball.x;
         ball.position.z = state.ball.y;
+        ball.visible = state.countdown === 0 || Math.floor(now / 120) % 2 === 0;
         if (paddles['bottom']) paddles['bottom'].position.set(state.paddles.bottom, 12, world.h - 52);
         if (paddles['top']) paddles['top'].position.set(state.paddles.top, 12, 52);
         if (paddles['left']) paddles['left'].position.set(52, 12, state.paddles.left);
@@ -633,17 +653,17 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
   return (
     <main className="game-shell" style={{ background: '#000', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
-      {hideUI && (<button onClick={() => setHideUI(false)} style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, background: '#00e5ff', color: '#000', borderRadius: 999, padding: '8px 14px', fontWeight: 900, display: 'flex', gap: 6, alignItems: 'center', border: 'none', cursor: 'pointer' }}><Eye size={16} /> {isAr ? 'اظهار' : 'Show'}</button>)}
+      {hideUI && (<button onClick={() => setHideUI(false)} style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, background: '#00e5ff', color: '#000', borderRadius: 999, padding: '8px 14px', fontWeight: 900, display: 'flex', gap: 6, alignItems: 'center', border: 'none', cursor: 'pointer' }}><Eye size={16} /> {isAr? 'اظهار' : 'Show'}</button>)}
       {!hideUI && (
         <>
           <header className="game-topbar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', alignItems: 'center', zIndex: 10, background: '#0a0a0a', borderBottom: '1px solid #1a1a1a' }}>
-            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • {players.length >= 3 ? (isAr ? 'مربع' : 'Square') : (isAr ? 'مستطيل' : 'Rect')}</div>
-            <div className="match-meta" style={{ color: '#fff' }}><b>{settings.mode === 'time' ? formatTime(timeLeft) : '∞'}</b> | Rally: {rally}</div>
+            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • {players.length >= 3? (isAr? 'مربع' : 'Square') : (isAr? 'مستطيل' : 'Rect')}</div>
+            <div className="match-meta" style={{ color: '#fff' }}><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | Rally: {rally}</div>
             <div className="game-actions" style={{ display: 'flex', gap: '6px' }}>
-              <button className="game-icon" onClick={() => setShowCamMenu(v => !v)} title={isAr ? 'الكاميرا' : 'Camera'} style={{ background: showCamMenu ? '#00e5ff' : '#111', color: showCamMenu ? '#000' : '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>
+              <button className="game-icon" onClick={() => setShowCamMenu(v =>!v)} title={isAr? 'الكاميرا' : 'Camera'} style={{ background: showCamMenu? '#00e5ff' : '#111', color: showCamMenu? '#000' : '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>
                 <Camera size={18} />
               </button>
-              <button className="game-icon" onClick={onPause} style={{ background: '#111', color: '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>{paused ? <Play size={18} /> : <Pause size={18} />}</button>
+              <button className="game-icon" onClick={onPause} style={{ background: '#111', color: '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>{paused? <Play size={18} /> : <Pause size={18} />}</button>
               <button className="game-icon" onClick={resetCamera} style={{ background: '#ffcf5a', color: '#000', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none' }}><RotateCcw size={16} /></button>
               <button className="game-icon" onClick={onExit} style={{ background: '#111', color: '#ff6b8b', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}><X size={18} /></button>
             </div>
@@ -653,14 +673,14 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               const COLORS_FB = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
               const SIDES_FB: Player['side'][] = ['bottom','top','right','left'];
               const need = Math.max(2, players.length, settings.players || 2);
-              const sides = need === 2 ? SIDES_FB.slice(0,2) : need === 3 ? SIDES_FB.slice(0,3) : SIDES_FB.slice(0,4);
+              const sides = need === 2? SIDES_FB.slice(0,2) : need === 3? SIDES_FB.slice(0,3) : SIDES_FB.slice(0,4);
               return sides.map((side, idx) => {
-                const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top' ? 'سامي' : side === 'right' ? 'ليان' : side === 'left' ? 'كريم' : 'نورا', color: COLORS_FB[idx], side };
+                const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top'? 'سامي' : side === 'right'? 'ليان' : side === 'left'? 'كريم' : 'نورا', color: COLORS_FB[idx], side };
                 return (
                   <div key={p.id + side} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#151515', border: `1px solid ${p.color}`, borderRadius: '20px', padding: '6px 12px', minWidth: '90px' }}>
                     <span style={{ background: p.color, width: '10px', height: '10px', borderRadius: '50%', display: 'inline-block' }} />
                     <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{p.name}</span>
-                    <strong style={{ color: p.color, marginLeft: 'auto' }}>{scores[p.id] ?? scores[idx] ?? 0}</strong>
+                    <strong style={{ color: p.color, marginLeft: 'auto' }}>{scores[p.id]?? 0}</strong>
                   </div>
                 );
               });
@@ -670,8 +690,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       )}
       <div ref={mountRef} style={{ width: '100%', flex: 1, borderRadius: '22px', overflow: 'hidden', position: 'relative', touchAction: 'none' }}>
         {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233' }}>{countdown}</span></div>}
-        {lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr ? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
-        {showCamMenu && !hideUI && (<div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr ? 'تحكم الكاميرا' : 'Camera'}</b><button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (<button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k ? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k ? '#111' : '#0a0a0a', color: currentPreset === k ? '#00e5ff' : '#aaa', cursor: 'pointer' }}>{isAr ? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}</button>))}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}><div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div /><button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button><button onClick={resetCamera} style={{ ...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button><button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button><div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div /></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => zoomCam(1)} style={{ flex: 1, ...btnStyle }}><ZoomIn size={18} /> {isAr ? 'قرب' : 'In'}</button><button onClick={() => zoomCam(-1)} style={{ flex: 1, ...btnStyle }}><ZoomOut size={18} /> {isAr ? 'بعد' : 'Out'}</button></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => rotateCam('left')} style={{ flex: 1, ...btnStyle }}><RotateCcw size={16} /> {isAr ? 'يسار' : 'Left'}</button><button onClick={() => rotateCam('right')} style={{ flex: 1, ...btnStyle }}><RotateCw size={16} /> {isAr ? 'يمين' : 'Right'}</button></div><button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}><EyeOff size={16} /> {isAr ? 'اخفاء كل الازرار' : 'Hide All UI'}</button><small style={{ opacity: 0.5, fontSize: 10, textAlign: 'center' }}>{isAr ? 'التحكم بالماوس: اسحب للتدوير' : 'Drag table to move paddle'}</small></div>)}
+        {lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
+        {showCamMenu &&!hideUI && (<div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b><button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (<button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k? '#111' : '#0a0a0a', color: currentPreset === k? '#00e5ff' : '#aaa', cursor: 'pointer' }}>{isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}</button>))}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}><div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div /><button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button><button onClick={resetCamera} style={{...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button><button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button><div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div /></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle }}><ZoomIn size={18} /> {isAr? 'قرب' : 'In'}</button><button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle }}><ZoomOut size={18} /> {isAr? 'بعد' : 'Out'}</button></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle }}><RotateCcw size={16} /> {isAr? 'يسار' : 'Left'}</button><button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle }}><RotateCw size={16} /> {isAr? 'يمين' : 'Right'}</button></div><button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}><EyeOff size={16} /> {isAr? 'اخفاء كل الازرار' : 'Hide All UI'}</button><small style={{ opacity: 0.5, fontSize: 10, textAlign: 'center' }}>{isAr? 'التحكم بالماوس: اسحب للتدوير' : 'Drag table to move paddle'}</small></div>)}
       </div>
     </main>
   );
