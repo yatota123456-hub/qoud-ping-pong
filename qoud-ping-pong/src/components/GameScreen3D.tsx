@@ -435,49 +435,20 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         }
         if (state.countdown > 0) {
           const e = (now - state.countdownStart) / 1000;
-          state.ball.x = world.w / 2;
-          state.ball.y = world.h / 2;
-          state.ball.vx = 0;
-          state.ball.vy = 0;
+          state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
           if (e >= 3) {
-            state.countdown = 0;
-            setCountdown(0);
-            if (settings.start === 'paddle' && state.countdownSide) {
-              state.serving.active = true;
-              state.serving.side = state.countdownSide;
-              state.serving.startTime = now;
-              state.serving.requested = false;
-              const s = state.countdownSide;
-              if (s === 'bottom') { state.ball.x = state.paddles.bottom; state.ball.y = world.h - 80; }
-              else if (s === 'top') { state.ball.x = state.paddles.top; state.ball.y = 80; }
-              else if (s === 'left') { state.ball.x = 80; state.ball.y = state.paddles.left; }
-              else { state.ball.x = world.w - 80; state.ball.y = state.paddles.right; }
-            } else {
-              launchBall();
-            }
-            state.countdownSide = null;
+            state.countdown = 0; setCountdown(0); state.countdownSide = null;
+            state.serving.active = false;
+            launchBall(); // من المنتصف لكل ال4
           } else {
             setCountdown(Math.ceil(3 - e));
           }
-        } else if (state.serving.active) {
-          const side = state.serving.side;
-          if (side === 'bottom') { state.ball.x = state.paddles.bottom; state.ball.y = world.h - 80; }
-          else if (side === 'top') { state.ball.x = state.paddles.top; state.ball.y = 80; }
-          else if (side === 'left') { state.ball.x = 80; state.ball.y = state.paddles.left; }
-          else { state.ball.x = world.w - 80; state.ball.y = state.paddles.right; }
-          const p = playerForSide(side);
-          if (p?.computer && now - state.serving.startTime > 800) state.serving.requested = true;
-          if (state.serving.requested) launchBall();
         } else {
           const mySide = (players.find((p:any) => p.socketId === socket.id)?.side?? 'bottom') as any;
           const isComputerSide = (side: string, player: any) => {
             if (side === mySide &&!isOfflineMode) return false;
-            if (isOfflineMode) {
-              if (side === 'bottom') return false;
-              return true;
-            }
-            if (!player) return true;
-            return!!player.computer;
+            if (isOfflineMode) { if (side === 'bottom') return false; return true; }
+            if (!player) return true; return!!player.computer;
           };
           const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
           const predX = state.ball.x + state.ball.vx * 14;
@@ -497,146 +468,77 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             const factor = isHuman? 0.38 : 0.18;
             state.paddles[side] += (state.targetPaddles[side] - state.paddles[side]) * factor * delta;
           });
-
-          state.ball.x += state.ball.vx * delta;
-          state.ball.y += state.ball.vy * delta;
-          const r = 12;
-          const paddleRadius = 24;
+    
+          state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
+          const r = 12; const paddleRadius = 24;
+          // تصادم لكل ال4
           if (activeSide('bottom')) {
-            const botP = state.paddles.bottom;
-            const paddleYBot = world.h - 52;
+            const botP = state.paddles.bottom; const paddleYBot = world.h - 52;
             const distBot = Math.hypot(state.ball.x - botP, state.ball.y - paddleYBot);
             if (distBot < r + paddleRadius && state.ball.vy > 0) {
-              const nx = (state.ball.x - botP) / distBot;
-              const ny = (state.ball.y - paddleYBot) / distBot;
-              state.ball.x = botP + nx * (r + paddleRadius + 1);
-              state.ball.y = paddleYBot + ny * (r + paddleRadius + 1);
-              state.ball.vy = -Math.abs(state.ball.vy);
-              state.ball.vx += nx * 3.5;
-              state.rally++;
+              const nx = (state.ball.x - botP) / distBot; const ny = (state.ball.y - paddleYBot) / distBot;
+              state.ball.x = botP + nx * (r + paddleRadius + 1); state.ball.y = paddleYBot + ny * (r + paddleRadius + 1);
+              state.ball.vy = -Math.abs(state.ball.vy); state.ball.vx += nx * 3.5; state.rally++;
             }
           }
           if (activeSide('top')) {
-            const topP = state.paddles.top;
-            const paddleYTop = 52;
+            const topP = state.paddles.top; const paddleYTop = 52;
             const distTop = Math.hypot(state.ball.x - topP, state.ball.y - paddleYTop);
             if (distTop < r + paddleRadius && state.ball.vy < 0) {
-              const nx = (state.ball.x - topP) / distTop;
-              const ny = (state.ball.y - paddleYTop) / distTop;
-              state.ball.x = topP + nx * (r + paddleRadius + 1);
-              state.ball.y = paddleYTop + ny * (r + paddleRadius + 1);
-              state.ball.vy = Math.abs(state.ball.vy);
-              state.ball.vx += nx * 3.5;
-              state.rally++;
+              const nx = (state.ball.x - topP) / distTop; const ny = (state.ball.y - paddleYTop) / distTop;
+              state.ball.x = topP + nx * (r + paddleRadius + 1); state.ball.y = paddleYTop + ny * (r + paddleRadius + 1);
+              state.ball.vy = Math.abs(state.ball.vy); state.ball.vx += nx * 3.5; state.rally++;
             }
           }
           if (activeSide('left')) {
-            const leftP = state.paddles.left;
-            const paddleXLeft = 52;
+            const leftP = state.paddles.left; const paddleXLeft = 52;
             const distLeft = Math.hypot(state.ball.x - paddleXLeft, state.ball.y - leftP);
             if (distLeft < r + paddleRadius && state.ball.vx < 0) {
-              const nx = (state.ball.x - paddleXLeft) / distLeft;
-              const ny = (state.ball.y - leftP) / distLeft;
-              state.ball.x = paddleXLeft + nx * (r + paddleRadius + 1);
-              state.ball.y = leftP + ny * (r + paddleRadius + 1);
-              state.ball.vx = Math.abs(state.ball.vx);
-              state.ball.vy += ny * 3.5;
-              state.rally++;
+              const nx = (state.ball.x - paddleXLeft) / distLeft; const ny = (state.ball.y - leftP) / distLeft;
+              state.ball.x = paddleXLeft + nx * (r + paddleRadius + 1); state.ball.y = leftP + ny * (r + paddleRadius + 1);
+              state.ball.vx = Math.abs(state.ball.vx); state.ball.vy += ny * 3.5; state.rally++;
             }
           }
           if (activeSide('right')) {
-            const rightP = state.paddles.right;
-            const paddleXRight = world.w - 52;
+            const rightP = state.paddles.right; const paddleXRight = world.w - 52;
             const distRight = Math.hypot(state.ball.x - paddleXRight, state.ball.y - rightP);
             if (distRight < r + paddleRadius && state.ball.vx > 0) {
-              const nx = (state.ball.x - paddleXRight) / distRight;
-              const ny = (state.ball.y - rightP) / distRight;
-              state.ball.x = paddleXRight + nx * (r + paddleRadius + 1);
-              state.ball.y = rightP + ny * (r + paddleRadius + 1);
-              state.ball.vx = -Math.abs(state.ball.vx);
-              state.ball.vy += ny * 3.5;
-              state.rally++;
+              const nx = (state.ball.x - paddleXRight) / distRight; const ny = (state.ball.y - rightP) / distRight;
+              state.ball.x = paddleXRight + nx * (r + paddleRadius + 1); state.ball.y = rightP + ny * (r + paddleRadius + 1);
+              state.ball.vx = -Math.abs(state.ball.vx); state.ball.vy += ny * 3.5; state.rally++;
             }
           }
           const maxBallSpeed = 26 + settings.ballSpeed * 1.1 + state.rally * 0.4;
           const curSpeed = Math.hypot(state.ball.vx, state.ball.vy);
-          if (curSpeed > maxBallSpeed) {
-            const scale = maxBallSpeed / curSpeed;
-            state.ball.vx *= scale;
-            state.ball.vy *= scale;
-          }
+          if (curSpeed > maxBallSpeed) { const scale = maxBallSpeed / curSpeed; state.ball.vx *= scale; state.ball.vy *= scale; }
           const GOAL_W = world.w >= 1100? 300 : 260;
           const GX1 = (world.w - GOAL_W) / 2, GX2 = GX1 + GOAL_W;
           const GY1 = (world.h - GOAL_W) / 2, GY2 = GY1 + GOAL_W;
           const inGoalX = (x: number) => x >= GX1 && x <= GX2;
           const inGoalY = (y: number) => y >= GY1 && y <= GY2;
           let missed: Player | undefined;
-          if (state.ball.y - r <= 0) {
-            if (activeSide('top')) {
-              if (inGoalX(state.ball.x)) missed = playerForSide('top');
-              else { state.ball.y = r + 1; state.ball.vy = Math.abs(state.ball.vy); }
-            } else {
-              state.ball.y = r + 1; state.ball.vy = Math.abs(state.ball.vy);
-            }
-          }
-          if (!missed && state.ball.y + r >= world.h) {
-            if (activeSide('bottom')) {
-              if (inGoalX(state.ball.x)) missed = playerForSide('bottom');
-              else { state.ball.y = world.h - r - 1; state.ball.vy = -Math.abs(state.ball.vy); }
-            } else {
-              state.ball.y = world.h - r - 1; state.ball.vy = -Math.abs(state.ball.vy);
-            }
-          }
-          if (!missed && state.ball.x - r <= 0) {
-            if (activeSide('left')) {
-              if (inGoalY(state.ball.y)) missed = playerForSide('left');
-              else { state.ball.x = r + 1; state.ball.vx = Math.abs(state.ball.vx); }
-            } else {
-              state.ball.x = r + 1; state.ball.vx = Math.abs(state.ball.vx);
-            }
-          }
-          if (!missed && state.ball.x + r >= world.w) {
-            if (activeSide('right')) {
-              if (inGoalY(state.ball.y)) missed = playerForSide('right');
-              else { state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx); }
-            } else {
-              state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx);
-            }
-          }
+          if (state.ball.y - r <= 0) { if (activeSide('top')) { if (inGoalX(state.ball.x)) missed = playerForSide('top'); else { state.ball.y = r + 1; state.ball.vy = Math.abs(state.ball.vy); } } else { state.ball.y = r + 1; state.ball.vy = Math.abs(state.ball.vy); } }
+          if (!missed && state.ball.y + r >= world.h) { if (activeSide('bottom')) { if (inGoalX(state.ball.x)) missed = playerForSide('bottom'); else { state.ball.y = world.h - r - 1; state.ball.vy = -Math.abs(state.ball.vy); } } else { state.ball.y = world.h - r - 1; state.ball.vy = -Math.abs(state.ball.vy); } }
+          if (!missed && state.ball.x - r <= 0) { if (activeSide('left')) { if (inGoalY(state.ball.y)) missed = playerForSide('left'); else { state.ball.x = r + 1; state.ball.vx = Math.abs(state.ball.vx); } } else { state.ball.x = r + 1; state.ball.vx = Math.abs(state.ball.vx); } }
+          if (!missed && state.ball.x + r >= world.w) { if (activeSide('right')) { if (inGoalY(state.ball.y)) missed = playerForSide('right'); else { state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx); } } else { state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx); } }
           if (missed) {
             const realMissed = playerForSide(missed.side)?? missed;
             onGoal(realMissed);
-            state.ball.x = world.w / 2;
-            state.ball.y = world.h / 2;
-            state.ball.vx = 0;
-            state.ball.vy = 0;
-            state.countdown = 3;
-            state.countdownStart = now;
-            state.countdownSide = missed.side;
-            setCountdown(3);
-            state.rally = 0;
-            setRally(0);
-          } else {
-            setRally(state.rally);
-          }
+            state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
+            state.countdown = 3; state.countdownStart = now; state.countdownSide = missed.side;
+            setCountdown(3); state.rally = 0; setRally(0);
+          } else { setRally(state.rally); }
         }
-        if (!isOfflineMode) {
-          socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
-        }
+        if (!isOfflineMode) { socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); }
       }
+      // رسم
       if (threeRef.current) {
-        const { ball, paddles, camera, renderer } = threeRef.current;
-        const c = cam.current;
-        c.angle += (c.targetAngle - c.angle) * 0.1;
-        c.distance += (c.targetDistance - c.distance) * 0.1;
-        c.height += (c.targetHeight - c.height) * 0.1;
-        const cx = c.lookX + Math.sin(c.angle) * c.distance;
-        const cz = c.lookZ + Math.cos(c.angle) * c.distance;
-        camera.position.set(cx, c.height, cz);
-        camera.lookAt(c.lookX, 0, c.lookZ);
-        ball.position.x = state.ball.x;
-        ball.position.z = state.ball.y;
-        ball.visible = state.countdown === 0 || Math.floor(now / 120) % 2 === 0;
+        const { ball, paddles, camera, renderer } = threeRef.current; const c = cam.current;
+        c.angle += (c.targetAngle - c.angle) * 0.1; c.distance += (c.targetDistance - c.distance) * 0.1; c.height += (c.targetHeight - c.height) * 0.1;
+        const cx = c.lookX + Math.sin(c.angle) * c.distance; const cz = c.lookZ + Math.cos(c.angle) * c.distance;
+        camera.position.set(cx, c.height, cz); camera.lookAt(c.lookX, 0, c.lookZ);
+        ball.position.x = state.ball.x; ball.position.z = state.ball.y;
+        ball.visible = state.countdown === 0;
         if (paddles['bottom']) paddles['bottom'].position.set(state.paddles.bottom, 12, world.h - 52);
         if (paddles['top']) paddles['top'].position.set(state.paddles.top, 12, 52);
         if (paddles['left']) paddles['left'].position.set(52, 12, state.paddles.left);

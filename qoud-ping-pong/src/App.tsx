@@ -179,14 +179,18 @@ function App() {
   const startMatch = useCallback(() => {
     const canStart = isHost || playersRef.current.length <= 1 ||!socket.connected;
     if (!canStart) { setError(isArRef.current? 'المنشئ هو من يبدأ الجولة' : 'Only the host can start'); return; }
-    const currentPlayers = playersRef.current.length > 0? playersRef.current : makePlayers();
-    if (socket.connected) socket.emit('start-game', { code: roomRef.current });
-    setPlayers(currentPlayers); setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0]))); setWinner(null); setLastGoal(null); setMatchPaused(false); setMatchKey((key) => key + 1); setScreen('game');
-  }, [isHost, makePlayers]);
-
-  // === إصلاح جذري لنظام النقاط - كان ينشئ id وهمي side ===
+    // إصلاح: في الأوفلاين استخدم makePlayers دائما
+    const isOffline =!socket.connected || playersRef.current.length < settings.players;
+    const currentPlayers = isOffline? makePlayers() : (playersRef.current.length > 0? playersRef.current : makePlayers());
+    if (socket.connected &&!isOffline) socket.emit('start-game', { code: roomRef.current });
+    setPlayers(currentPlayers);
+    setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0])));
+    setWinner(null); setLastGoal(null); setMatchPaused(false); setMatchKey((key) => key + 1); setScreen('game');
+  }, [isHost, makePlayers, settings.players]);
+  
   const goalScored = useCallback((missed: Player) => {
-    if (!isHost && socket.connected) return;
+    const isOffline =!socket.connected || playersRef.current.length <= 1;
+    if (!isHost && socket.connected &&!isOffline) return;
     setScores((current) => {
       const list = playersRef.current.length >= 2? playersRef.current : makePlayers();
       const oppositeMap: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
@@ -195,7 +199,10 @@ function App() {
       if (!scorer) return current;
       const updated = {...current };
       updated[scorer.id] = (updated[scorer.id]?? 0) + 1;
-      socket.emit('goal-scored', { missedSide: missed.side, scores: updated });
+      // إصلاح: لا ترسل للسيرفر في الأوفلاين
+      if (!isOffline && socket.connected) {
+        socket.emit('goal-scored', { missedSide: missed.side, scores: updated });
+      }
       if (settings.mode === 'goals' && (updated[scorer.id]?? 0) >= settings.goal) {
         setTimeout(() => finishMatch(scorer), 0);
       }

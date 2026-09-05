@@ -112,9 +112,12 @@ class QoudRoom extends Room<QoudRoomState> {
       this.assertHost(client);
       const requestedScores = payload?.scores;
       if (requestedScores && typeof requestedScores === 'object') {
-        for (const player of this.state.players.values()) {
-          const score = Number(requestedScores[player.id]);
-          if (Number.isFinite(score) && score >= 0) this.state.scores.set(player.id, Math.floor(score));
+        // إصلاح: احفظ كل المفاتيح حتى لو كان كمبيوتر وليس في this.state.players
+        for (const [id, value] of Object.entries(requestedScores as any)) {
+          const score = Number(value);
+          if (Number.isFinite(score) && score >= 0) {
+            this.state.scores.set(id, Math.floor(score));
+          }
         }
       }
       this.broadcast('goal-scored', { missedSide: payload?.missedSide, scores: Object.fromEntries(this.state.scores.entries()) });
