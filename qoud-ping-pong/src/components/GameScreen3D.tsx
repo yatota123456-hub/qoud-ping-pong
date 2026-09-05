@@ -208,8 +208,19 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   const threeRef = useRef<any>(null);
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
-    paddles: { top: world.w / 2, right: world.h / 2, bottom: world.w / 2, left: world.h / 2 } as any,
-    targetPaddles: { top: world.w / 2, right: world.h / 2, bottom: world.w / 2, left: world.h / 2 } as any,
+    // تم التعديل: المضرب صار {x,z} عشان يتحرك للأمام مثل 2D
+    paddles: {
+      top: { x: world.w / 2, z: 52 },
+      right: { x: world.w - 52, z: world.h / 2 },
+      bottom: { x: world.w / 2, z: world.h - 52 },
+      left: { x: 52, z: world.h / 2 }
+    } as any,
+    targetPaddles: {
+      top: { x: world.w / 2, z: 52 },
+      right: { x: world.w - 52, z: world.h / 2 },
+      bottom: { x: world.w / 2, z: world.h - 52 },
+      left: { x: 52, z: world.h / 2 }
+    } as any,
     last: performance.now(),
     elapsed: 0,
     rally: 0,
@@ -274,12 +285,14 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     if (dir === 'down') cam.current.targetHeight = Math.max(250, cam.current.targetHeight - 120);
   }, []);
 
+  // تم التعديل: حركة 2D كاملة في 3D (X و Z) للاعب
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
     const raycaster = new THREE.Raycaster();
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const mouse = new THREE.Vector2();
+    const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
     const handlePointerMove = (e: PointerEvent) => {
       if (!e.isPrimary ||!threeRef.current) return;
       const mySide = getMySide();
@@ -289,18 +302,32 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       raycaster.setFromCamera(mouse, threeRef.current.camera);
       const target = new THREE.Vector3();
       if (raycaster.ray.intersectPlane(plane, target)) {
-        if (mySide === 'top' || mySide === 'bottom') {
-          const clampedX = Math.max(45, Math.min(world.w - 45, target.x));
-          stateRef.current.targetPaddles[mySide] = clampedX;
-          if (!isOfflineMode &&!isHost) {
-            socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX });
-          }
-        } else if (mySide === 'left' || mySide === 'right') {
-          const clampedZ = Math.max(45, Math.min(world.h - 45, target.z));
-          stateRef.current.targetPaddles[mySide] = clampedZ;
-          if (!isOfflineMode &&!isHost) {
-            socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedZ });
-          }
+        let tx = target.x;
+        let tz = target.z;
+        if (mySide === 'top') {
+          const clampedX = clamp(tx, 45, world.w - 45);
+          const clampedZ = clamp(tz, 45, world.h * 0.45);
+          stateRef.current.targetPaddles[mySide].x = clampedX;
+          stateRef.current.targetPaddles[mySide].z = clampedZ;
+          if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
+        } else if (mySide === 'bottom') {
+          const clampedX = clamp(tx, 45, world.w - 45);
+          const clampedZ = clamp(tz, world.h * 0.55, world.h - 45);
+          stateRef.current.targetPaddles[mySide].x = clampedX;
+          stateRef.current.targetPaddles[mySide].z = clampedZ;
+          if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
+        } else if (mySide === 'left') {
+          const clampedX = clamp(tx, 45, world.w * 0.45);
+          const clampedZ = clamp(tz, 45, world.h - 45);
+          stateRef.current.targetPaddles[mySide].x = clampedX;
+          stateRef.current.targetPaddles[mySide].z = clampedZ;
+          if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
+        } else if (mySide === 'right') {
+          const clampedX = clamp(tx, world.w * 0.55, world.w - 45);
+          const clampedZ = clamp(tz, 45, world.h - 45);
+          stateRef.current.targetPaddles[mySide].x = clampedX;
+          stateRef.current.targetPaddles[mySide].z = clampedZ;
+          if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
         }
       }
     };
@@ -315,11 +342,25 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   useEffect(() => {
     if (isOfflineMode) return;
     if (isHost) {
-      const handleInput = (data: { side: Player['side']; x: number }) => {
+      const handleInput = (data: { side: Player['side']; x: number; z?: number }) => {
+        const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
         if (data.side === 'top' || data.side === 'bottom') {
-          stateRef.current.targetPaddles[data.side] = Math.max(45, Math.min(world.w - 45, data.x));
+          stateRef.current.targetPaddles[data.side].x = clamp(data.x, 45, world.w - 45);
+          if (data.z!== undefined) {
+            const minZ = data.side === 'top'? 45 : world.h*0.55;
+            const maxZ = data.side === 'top'? world.h*0.45 : world.h-45;
+            stateRef.current.targetPaddles[data.side].z = clamp(data.z, minZ, maxZ);
+          }
         } else if (data.side === 'left' || data.side === 'right') {
-          stateRef.current.targetPaddles[data.side] = Math.max(45, Math.min(world.h - 45, data.x));
+          if (data.z!== undefined) stateRef.current.targetPaddles[data.side].z = clamp(data.z, 45, world.h - 45);
+          if (data.x!== undefined) {
+            const minX = data.side === 'left'? 45 : world.w*0.55;
+            const maxX = data.side === 'left'? world.w*0.45 : world.w-45;
+            stateRef.current.targetPaddles[data.side].x = clamp(data.x, minX, maxX);
+          } else {
+            // توافق مع الكود القديم
+            stateRef.current.targetPaddles[data.side].z = clamp(data.x, 45, world.h - 45);
+          }
         }
       };
       socket.on('paddle-input', handleInput);
@@ -330,7 +371,15 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       if (serverState.ball) stateRef.current.ball = serverState.ball;
       if (serverState.paddles) {
         Object.keys(serverState.paddles).forEach((k: any) => {
-          stateRef.current.targetPaddles[k] = serverState.paddles[k];
+          const val = serverState.paddles[k];
+          if (typeof val === 'number') {
+            // توافق خلفي
+            if (k === 'top' || k === 'bottom') stateRef.current.targetPaddles[k].x = Math.max(45, Math.min(world.w - 45, val));
+            else stateRef.current.targetPaddles[k].z = Math.max(45, Math.min(world.h - 45, val));
+          } else if (val && typeof val.x === 'number') {
+            stateRef.current.targetPaddles[k].x = val.x;
+            stateRef.current.targetPaddles[k].z = val.z;
+          }
         });
       }
       if (serverState.countdown!== undefined) stateRef.current.countdown = serverState.countdown;
@@ -422,7 +471,13 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     };
     if (runsPhysics) {
       launchBall();
-      state.paddles = {...state.targetPaddles };
+      // نسخ عميق للمضارب
+      state.paddles = {
+        top: {...state.targetPaddles.top },
+        bottom: {...state.targetPaddles.bottom },
+        right: {...state.targetPaddles.right },
+        left: {...state.targetPaddles.left },
+      } as any;
     }
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2);
@@ -457,8 +512,36 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             if (!activeSide(side)) return;
             const p = playerForSide(side);
             if (isComputerSide(side, p)) {
-              if (side === 'top' || side === 'bottom') state.targetPaddles[side] = clamp(predX, 55, world.w - 55);
-              else state.targetPaddles[side] = clamp(predY, 55, world.h - 55);
+              // تم التعديل: الكمبيوتر يتحرك للأمام ايضا مثل 2D
+              if (side === 'bottom') {
+                state.targetPaddles[side].x = clamp(predX, 55, world.w - 55);
+                if (state.ball.y > world.h * 0.5) {
+                  state.targetPaddles[side].z = clamp(predY, world.h * 0.6, world.h - 55);
+                } else {
+                  state.targetPaddles[side].z = clamp(world.h * 0.78, world.h * 0.6, world.h - 55);
+                }
+              } else if (side === 'top') {
+                state.targetPaddles[side].x = clamp(predX, 55, world.w - 55);
+                if (state.ball.y < world.h * 0.5) {
+                  state.targetPaddles[side].z = clamp(predY, 55, world.h * 0.4);
+                } else {
+                  state.targetPaddles[side].z = clamp(world.h * 0.22, 55, world.h * 0.4);
+                }
+              } else if (side === 'left') {
+                state.targetPaddles[side].z = clamp(predY, 55, world.h - 55);
+                if (state.ball.x < world.w * 0.5) {
+                  state.targetPaddles[side].x = clamp(predX, 55, world.w * 0.4);
+                } else {
+                  state.targetPaddles[side].x = clamp(world.w * 0.22, 55, world.w * 0.4);
+                }
+              } else if (side === 'right') {
+                state.targetPaddles[side].z = clamp(predY, 55, world.h - 55);
+                if (state.ball.x > world.w * 0.5) {
+                  state.targetPaddles[side].x = clamp(predX, world.w * 0.6, world.w - 55);
+                } else {
+                  state.targetPaddles[side].x = clamp(world.w * 0.78, world.w * 0.6, world.w - 55);
+                }
+              }
             }
           });
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
@@ -466,45 +549,46 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             const p = playerForSide(side);
             const isHuman =!isComputerSide(side, p);
             const factor = isHuman? 0.38 : 0.18;
-            state.paddles[side] += (state.targetPaddles[side] - state.paddles[side]) * factor * delta;
+            state.paddles[side].x += (state.targetPaddles[side].x - state.paddles[side].x) * factor * delta;
+            state.paddles[side].z += (state.targetPaddles[side].z - state.paddles[side].z) * factor * delta;
           });
-    
+
           state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
           const r = 12; const paddleRadius = 24;
-          // تصادم لكل ال4
+          // تصادم لكل ال4 - تم التعديل ليستخدم x,z
           if (activeSide('bottom')) {
-            const botP = state.paddles.bottom; const paddleYBot = world.h - 52;
-            const distBot = Math.hypot(state.ball.x - botP, state.ball.y - paddleYBot);
-            if (distBot < r + paddleRadius && state.ball.vy > 0) {
-              const nx = (state.ball.x - botP) / distBot; const ny = (state.ball.y - paddleYBot) / distBot;
-              state.ball.x = botP + nx * (r + paddleRadius + 1); state.ball.y = paddleYBot + ny * (r + paddleRadius + 1);
+            const bp = state.paddles.bottom;
+            const distBot = Math.hypot(state.ball.x - bp.x, state.ball.y - bp.z);
+            if (distBot < r + paddleRadius && state.ball.vy > 0 && state.ball.y > bp.z - 20) {
+              const nx = (state.ball.x - bp.x) / distBot; const ny = (state.ball.y - bp.z) / distBot;
+              state.ball.x = bp.x + nx * (r + paddleRadius + 1); state.ball.y = bp.z + ny * (r + paddleRadius + 1);
               state.ball.vy = -Math.abs(state.ball.vy); state.ball.vx += nx * 3.5; state.rally++;
             }
           }
           if (activeSide('top')) {
-            const topP = state.paddles.top; const paddleYTop = 52;
-            const distTop = Math.hypot(state.ball.x - topP, state.ball.y - paddleYTop);
-            if (distTop < r + paddleRadius && state.ball.vy < 0) {
-              const nx = (state.ball.x - topP) / distTop; const ny = (state.ball.y - paddleYTop) / distTop;
-              state.ball.x = topP + nx * (r + paddleRadius + 1); state.ball.y = paddleYTop + ny * (r + paddleRadius + 1);
+            const tp = state.paddles.top;
+            const distTop = Math.hypot(state.ball.x - tp.x, state.ball.y - tp.z);
+            if (distTop < r + paddleRadius && state.ball.vy < 0 && state.ball.y < tp.z + 20) {
+              const nx = (state.ball.x - tp.x) / distTop; const ny = (state.ball.y - tp.z) / distTop;
+              state.ball.x = tp.x + nx * (r + paddleRadius + 1); state.ball.y = tp.z + ny * (r + paddleRadius + 1);
               state.ball.vy = Math.abs(state.ball.vy); state.ball.vx += nx * 3.5; state.rally++;
             }
           }
           if (activeSide('left')) {
-            const leftP = state.paddles.left; const paddleXLeft = 52;
-            const distLeft = Math.hypot(state.ball.x - paddleXLeft, state.ball.y - leftP);
-            if (distLeft < r + paddleRadius && state.ball.vx < 0) {
-              const nx = (state.ball.x - paddleXLeft) / distLeft; const ny = (state.ball.y - leftP) / distLeft;
-              state.ball.x = paddleXLeft + nx * (r + paddleRadius + 1); state.ball.y = leftP + ny * (r + paddleRadius + 1);
+            const lp = state.paddles.left;
+            const distLeft = Math.hypot(state.ball.x - lp.x, state.ball.y - lp.z);
+            if (distLeft < r + paddleRadius && state.ball.vx < 0 && state.ball.x > lp.x - 20) {
+              const nx = (state.ball.x - lp.x) / distLeft; const ny = (state.ball.y - lp.z) / distLeft;
+              state.ball.x = lp.x + nx * (r + paddleRadius + 1); state.ball.y = lp.z + ny * (r + paddleRadius + 1);
               state.ball.vx = Math.abs(state.ball.vx); state.ball.vy += ny * 3.5; state.rally++;
             }
           }
           if (activeSide('right')) {
-            const rightP = state.paddles.right; const paddleXRight = world.w - 52;
-            const distRight = Math.hypot(state.ball.x - paddleXRight, state.ball.y - rightP);
-            if (distRight < r + paddleRadius && state.ball.vx > 0) {
-              const nx = (state.ball.x - paddleXRight) / distRight; const ny = (state.ball.y - rightP) / distRight;
-              state.ball.x = paddleXRight + nx * (r + paddleRadius + 1); state.ball.y = rightP + ny * (r + paddleRadius + 1);
+            const rp = state.paddles.right;
+            const distRight = Math.hypot(state.ball.x - rp.x, state.ball.y - rp.z);
+            if (distRight < r + paddleRadius && state.ball.vx > 0 && state.ball.x < rp.x + 20) {
+              const nx = (state.ball.x - rp.x) / distRight; const ny = (state.ball.y - rp.z) / distRight;
+              state.ball.x = rp.x + nx * (r + paddleRadius + 1); state.ball.y = rp.z + ny * (r + paddleRadius + 1);
               state.ball.vx = -Math.abs(state.ball.vx); state.ball.vy += ny * 3.5; state.rally++;
             }
           }
@@ -531,7 +615,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         }
         if (!isOfflineMode) { socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); }
       }
-      // رسم
+      // رسم - تم التعديل ليستخدم x,z
       if (threeRef.current) {
         const { ball, paddles, camera, renderer } = threeRef.current; const c = cam.current;
         c.angle += (c.targetAngle - c.angle) * 0.1; c.distance += (c.targetDistance - c.distance) * 0.1; c.height += (c.targetHeight - c.height) * 0.1;
@@ -539,10 +623,10 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         camera.position.set(cx, c.height, cz); camera.lookAt(c.lookX, 0, c.lookZ);
         ball.position.x = state.ball.x; ball.position.z = state.ball.y;
         ball.visible = state.countdown === 0;
-        if (paddles['bottom']) paddles['bottom'].position.set(state.paddles.bottom, 12, world.h - 52);
-        if (paddles['top']) paddles['top'].position.set(state.paddles.top, 12, 52);
-        if (paddles['left']) paddles['left'].position.set(52, 12, state.paddles.left);
-        if (paddles['right']) paddles['right'].position.set(world.w - 52, 12, state.paddles.right);
+        if (paddles['bottom']) paddles['bottom'].position.set(state.paddles.bottom.x, 12, state.paddles.bottom.z);
+        if (paddles['top']) paddles['top'].position.set(state.paddles.top.x, 12, state.paddles.top.z);
+        if (paddles['left']) paddles['left'].position.set(state.paddles.left.x, 12, state.paddles.left.z);
+        if (paddles['right']) paddles['right'].position.set(state.paddles.right.x, 12, state.paddles.right.z);
         renderer.render(threeRef.current.scene, camera);
       }
       frameIdRef.current = requestAnimationFrame(tick);
@@ -552,6 +636,16 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   }, [players, settings, onGoal, onTimeUp, world, getInitialSpeed, isHost, isOfflineMode, roomCode]);
 
   function formatTime(s: number) { return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
+
+  const getNameForSide = (side: Player['side'] | null) => {
+    if (!side) return '';
+    const p = players.find(pl => pl.side === side);
+    if (p) return p.name;
+    if (side === 'top') return 'سامي';
+    if (side === 'right') return 'ليان';
+    if (side === 'left') return 'كريم';
+    return 'نورا';
+  };
 
   return (
     <main className="game-shell" style={{ background: '#000', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
@@ -578,11 +672,14 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               const sides = need === 2? SIDES_FB.slice(0,2) : need === 3? SIDES_FB.slice(0,3) : SIDES_FB.slice(0,4);
               return sides.map((side, idx) => {
                 const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top'? 'سامي' : side === 'right'? 'ليان' : side === 'left'? 'كريم' : 'نورا', color: COLORS_FB[idx], side };
+                // تم التعديل: الاسم يظهر تحت العداد
                 return (
-                  <div key={p.id + side} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#151515', border: `1px solid ${p.color}`, borderRadius: '20px', padding: '6px 12px', minWidth: '90px' }}>
-                    <span style={{ background: p.color, width: '10px', height: '10px', borderRadius: '50%', display: 'inline-block' }} />
-                    <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{p.name}</span>
-                    <strong style={{ color: p.color, marginLeft: 'auto' }}>{scores[p.id]?? 0}</strong>
+                  <div key={p.id + side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', background: '#151515', border: `1px solid ${p.color}`, borderRadius: '14px', padding: '6px 16px', minWidth: '90px' }}>
+                    <strong style={{ color: p.color, fontSize: '20px', lineHeight: '1', fontWeight: 900 }}>{scores[p.id]?? 0}</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ background: p.color, width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block' }} />
+                      <span style={{ color: '#fff', fontSize: '12px', fontWeight: 700 }}>{p.name}</span>
+                    </div>
                   </div>
                 );
               });
@@ -591,7 +688,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         </>
       )}
       <div ref={mountRef} style={{ width: '100%', flex: 1, borderRadius: '22px', overflow: 'hidden', position: 'relative', touchAction: 'none' }}>
-        {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233' }}>{countdown}</span></div>}
+        {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px' }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1 }}>{countdown}</span><span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>{getNameForSide(stateRef.current.countdownSide)}</span></div>}
         {lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
         {showCamMenu &&!hideUI && (<div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b><button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (<button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k? '#111' : '#0a0a0a', color: currentPreset === k? '#00e5ff' : '#aaa', cursor: 'pointer' }}>{isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}</button>))}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}><div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div /><button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button><button onClick={resetCamera} style={{...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button><button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button><div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div /></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle }}><ZoomIn size={18} /> {isAr? 'قرب' : 'In'}</button><button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle }}><ZoomOut size={18} /> {isAr? 'بعد' : 'Out'}</button></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle }}><RotateCcw size={16} /> {isAr? 'يسار' : 'Left'}</button><button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle }}><RotateCw size={16} /> {isAr? 'يمين' : 'Right'}</button></div><button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}><EyeOff size={16} /> {isAr? 'اخفاء كل الازرار' : 'Hide All UI'}</button><small style={{ opacity: 0.5, fontSize: 10, textAlign: 'center' }}>{isAr? 'التحكم بالماوس: اسحب للتدوير' : 'Drag table to move paddle'}</small></div>)}
       </div>
