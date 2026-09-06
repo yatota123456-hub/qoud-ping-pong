@@ -170,21 +170,22 @@ function createArenaFrame(worldW: number, worldH: number) {
 
 function getArenaWorld(count: number, size: any = 'medium') {
   const ARENA_SCALES: any = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
-  const RECT = { w: 800, h: 1250 };
-  const SQUARE = { w: 1200, h: 1200 };
+  // تم التعديل: تصغير الساحة عشان تظهر كاملة في الجوال
+  const RECT = { w: 700, h: 1050 };
+  const SQUARE = { w: 1000, h: 1000 };
   const base = count >= 3? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc };
 }
 
-// تم التصحيح: بعيدة مثل الصورة المطلوبة الثانية
+// بعيدة مثل الصورة الثانية المطلوبة
 const CAM_PRESETS_3D = {
   top: { angle: Math.PI, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
-  bottom: { angle: 0, distance: 1350, height: 1050, name: 'خلفك', nameEn: 'Behind You' },
+  bottom: { angle: 0, distance: 1550, height: 1150, name: 'خلفك', nameEn: 'Behind You' },
   topPlayer: { angle: Math.PI, distance: 650, height: 750, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
-  iso: { angle: 0.6, distance: 1150, height: 950, name: 'مائل', nameEn: 'Isometric' },
-  sideLeft: { angle: -Math.PI / 2, distance: 1000, height: 500, name: 'يسار', nameEn: 'Left' },
-  sideRight: { angle: Math.PI / 2, distance: 1000, height: 500, name: 'يمين', nameEn: 'Right' },
+  iso: { angle: 0.6, distance: 1250, height: 1050, name: 'مائل', nameEn: 'Isometric' },
+  sideLeft: { angle: -Math.PI / 2, distance: 1100, height: 600, name: 'يسار', nameEn: 'Left' },
+  sideRight: { angle: Math.PI / 2, distance: 1100, height: 600, name: 'يمين', nameEn: 'Right' },
 } as const;
 type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D;
 
@@ -200,7 +201,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   pausedRef.current = paused;
 
   const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
-  // البداية بعيدة مثل الصورة الثانية
   const initialCam = useMemo(() => {
     const preset = CAM_PRESETS_3D.bottom;
     return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
@@ -217,6 +217,12 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       left: { x: 52, z: world.h / 2 }
     } as any,
     targetPaddles: {
+      top: { x: world.w / 2, z: 52 },
+      right: { x: world.w - 52, z: world.h / 2 },
+      bottom: { x: world.w / 2, z: world.h - 52 },
+      left: { x: 52, z: world.h / 2 }
+    } as any,
+    lastPaddles: {
       top: { x: world.w / 2, z: 52 },
       right: { x: world.w - 52, z: world.h / 2 },
       bottom: { x: world.w / 2, z: world.h - 52 },
@@ -291,7 +297,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   }, []);
 
   const zoomCam = useCallback((dir: number) => {
-    cam.current.targetDistance = Math.max(300, Math.min(2000, cam.current.targetDistance * (dir > 0? 0.85 : 1.18)));
+    cam.current.targetDistance = Math.max(300, Math.min(2200, cam.current.targetDistance * (dir > 0? 0.85 : 1.18)));
   }, []);
 
   const rotateCam = useCallback((dir: 'left' | 'right' | 'up' | 'down') => {
@@ -490,6 +496,12 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         right: {...state.targetPaddles.right },
         left: {...state.targetPaddles.left },
       } as any;
+      state.lastPaddles = {
+        top: {...state.paddles.top },
+        bottom: {...state.paddles.bottom },
+        right: {...state.paddles.right },
+        left: {...state.paddles.left },
+      } as any;
     }
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2);
@@ -520,6 +532,14 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
           const predX = state.ball.x + state.ball.vx * 14;
           const predY = state.ball.y + state.ball.vy * 14;
+          // حفظ السرعة السابقة للمضارب
+          state.lastPaddles = {
+            top: {...state.paddles.top },
+            bottom: {...state.paddles.bottom },
+            right: {...state.paddles.right },
+            left: {...state.paddles.left },
+          } as any;
+
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
             const p = playerForSide(side);
@@ -566,13 +586,35 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
           state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
           const r = 12; const paddleRadius = 24;
+
+          // دالة حساب قوة الدفع الأمامي
+          const getForwardBoost = (side: Player['side']) => {
+            const cur = state.paddles[side];
+            const last = state.lastPaddles[side];
+            const vx = cur.x - last.x;
+            const vz = cur.z - last.z;
+            let forward = 0;
+            if (side === 'bottom') forward = -vz;
+            if (side === 'top') forward = vz;
+            if (side === 'left') forward = vx;
+            if (side === 'right') forward = -vx;
+            const speed = Math.hypot(vx, vz);
+            return { vx, vz, forward, speed };
+          };
+
           if (activeSide('bottom')) {
             const bp = state.paddles.bottom;
             const distBot = Math.hypot(state.ball.x - bp.x, state.ball.y - bp.z);
             if (distBot < r + paddleRadius && state.ball.vy > 0 && state.ball.y > bp.z - 20) {
               const nx = (state.ball.x - bp.x) / distBot; const ny = (state.ball.y - bp.z) / distBot;
               state.ball.x = bp.x + nx * (r + paddleRadius + 1); state.ball.y = bp.z + ny * (r + paddleRadius + 1);
-              state.ball.vy = -Math.abs(state.ball.vy); state.ball.vx += nx * 3.5; state.rally++;
+              const { vx, vz, forward, speed } = getForwardBoost('bottom');
+              let power = 1;
+              if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
+              state.ball.vy = -Math.abs(state.ball.vy) * power + vz * 0.9;
+              state.ball.vx = state.ball.vx * power + vx * 0.9 + nx * 3.5;
+              if (forward > 1) state.rally += 1;
+              state.rally++;
             }
           }
           if (activeSide('top')) {
@@ -581,7 +623,12 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             if (distTop < r + paddleRadius && state.ball.vy < 0 && state.ball.y < tp.z + 20) {
               const nx = (state.ball.x - tp.x) / distTop; const ny = (state.ball.y - tp.z) / distTop;
               state.ball.x = tp.x + nx * (r + paddleRadius + 1); state.ball.y = tp.z + ny * (r + paddleRadius + 1);
-              state.ball.vy = Math.abs(state.ball.vy); state.ball.vx += nx * 3.5; state.rally++;
+              const { vx, vz, forward } = getForwardBoost('top');
+              let power = 1;
+              if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
+              state.ball.vy = Math.abs(state.ball.vy) * power + vz * 0.9;
+              state.ball.vx = state.ball.vx * power + vx * 0.9 + nx * 3.5;
+              state.rally++;
             }
           }
           if (activeSide('left')) {
@@ -590,7 +637,12 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             if (distLeft < r + paddleRadius && state.ball.vx < 0 && state.ball.x > lp.x - 20) {
               const nx = (state.ball.x - lp.x) / distLeft; const ny = (state.ball.y - lp.z) / distLeft;
               state.ball.x = lp.x + nx * (r + paddleRadius + 1); state.ball.y = lp.z + ny * (r + paddleRadius + 1);
-              state.ball.vx = Math.abs(state.ball.vx); state.ball.vy += ny * 3.5; state.rally++;
+              const { vx, vz, forward } = getForwardBoost('left');
+              let power = 1;
+              if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
+              state.ball.vx = Math.abs(state.ball.vx) * power + vx * 0.9;
+              state.ball.vy = state.ball.vy * power + vz * 0.9 + ny * 3.5;
+              state.rally++;
             }
           }
           if (activeSide('right')) {
@@ -599,10 +651,15 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             if (distRight < r + paddleRadius && state.ball.vx > 0 && state.ball.x < rp.x + 20) {
               const nx = (state.ball.x - rp.x) / distRight; const ny = (state.ball.y - rp.z) / distRight;
               state.ball.x = rp.x + nx * (r + paddleRadius + 1); state.ball.y = rp.z + ny * (r + paddleRadius + 1);
-              state.ball.vx = -Math.abs(state.ball.vx); state.ball.vy += ny * 3.5; state.rally++;
+              const { vx, vz, forward } = getForwardBoost('right');
+              let power = 1;
+              if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
+              state.ball.vx = -Math.abs(state.ball.vx) * power + vx * 0.9;
+              state.ball.vy = state.ball.vy * power + vz * 0.9 + ny * 3.5;
+              state.rally++;
             }
           }
-          const maxBallSpeed = 26 + settings.ballSpeed * 1.1 + state.rally * 0.4;
+          const maxBallSpeed = 32 + settings.ballSpeed * 1.5 + state.rally * 0.6;
           const curSpeed = Math.hypot(state.ball.vx, state.ball.vy);
           if (curSpeed > maxBallSpeed) { const scale = maxBallSpeed / curSpeed; state.ball.vx *= scale; state.ball.vy *= scale; }
           const GOAL_W = world.w >= 1100? 300 : 260;
