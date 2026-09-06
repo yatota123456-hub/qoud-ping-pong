@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { Check, ChevronLeft, ChevronRight, LogIn, Minus, Monitor, Pause, Play, Plus, Settings2, SlidersHorizontal, Sparkles, Swords, Trophy, Volume2, X, Zap, ArrowLeft, Gamepad2, Gauge } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, LogIn, Minus, Monitor, Pause, Play, Plus, Volume2, X, Zap, ArrowLeft, Gamepad2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { GameScreen3D } from './components/GameScreen3D';
 import { socket, colyseus } from './socket.tsx';
@@ -84,7 +84,6 @@ function App() {
   const [lastGoal, setLastGoal] = useState<string | null>(null);
   const [matchPaused, setMatchPaused] = useState(false);
   const [matchKey, setMatchKey] = useState(0);
-  
   const [error, setError] = useState('');
   const [isHost, setIsHost] = useState(true);
   const [roomsCount, setRoomsCount] = useState(0);
@@ -136,6 +135,7 @@ function App() {
     const total = settings.players;
     return Array.from({ length: total }, (_, index) => ({ id: String(index), name: names[index]?.trim() || `لاعب ${index + 1}`, color: COLORS[index], side: SIDES[index], computer: index === 0? false : computers[index], }));
   }, [names, settings.players, computers]);
+
   const enterWaiting = async () => {
     const trimmed = names.slice(0, settings.players).map(n => n.trim());
     if (trimmed.some(n => n.length < 2)) { setError(isAr? 'اكتب اسم كل اللاعبين حرفين على الاقل' : 'Names must be at least 2 chars'); return; }
@@ -203,17 +203,9 @@ function App() {
     return <GameScreen key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((paused) =>!paused)} onExit={leaveMatch} />;
   }
   if (screen === 'results') return <ResultsScreen players={players} scores={scores} winner={winner} wins={wins} onAgain={startMatch} onHome={() => { void socket.leave(); setPlayers([]); setScreen('setup'); }} />;
-  const [acc,setAcc]=useState('speed');
-  <div style={{background:'#0a0a0a',border:'1px solid #222',borderRadius:12,overflow:'hidden',marginTop:12}}>
-    {[
-      {k:'speed',l:isAr?'🔴 السرعة':'Speed',c: <><input type="range" min={1} max={20} value={settings.ballSpeed} onChange={e=>onChangeSettings({ballSpeed:Number(e.target.value)})} style={{width:'100%'}}/><div className="segmented"><button className={settings.speed==='gradual'?'selected':''} onClick={()=>onChangeSettings({speed:'gradual'})}>متدرجة</button><button className={settings.speed==='fixed'?'selected':''} onClick={()=>onChangeSettings({speed:'fixed'})}>ثابتة</button></div><div className="segmented" style={{marginTop:8}}><button className={settings.start==='center'?'selected':''} onClick={()=>onChangeSettings({start:'center'})}>من المنتصف</button><button className={settings.start==='paddle'?'selected':''} onClick={()=>onChangeSettings({start:'paddle'})}>من المضرب</button></div></>},
-      {k:'arena',l:isAr?'📐 حجم الساحة':'Arena',c:<div className="segmented">{(['small','medium','large','xlarge'] as any).map((s:any)=><button key={s} className={settings.arenaSize===s?'selected':''} onClick={()=>onChangeSettings({arenaSize:s})}>{s}</button>)}</div>},
-      {k:'win',l:isAr?'🏆 الفوز':'Win',c:<><div className="segmented"><button className={settings.mode==='time'?'selected':''} onClick={()=>onChangeSettings({mode:'time'})}>بالوقت</button><button className={settings.mode==='goals'?'selected':''} onClick={()=>onChangeSettings({mode:'goals'})}>بالأهداف</button></div>{settings.mode==='time'?<input className="range" type="range" min={1} max={600} value={settings.duration} onChange={e=>onChangeSettings({duration:Number(e.target.value)})}/>:<input className="range" type="range" min={2} max={30} value={settings.goal} onChange={e=>onChangeSettings({goal:Number(e.target.value)})}/>}</>},
-      {k:'sound',l:isAr?'🔊 الصوت':'Sound',c:<div className="setting-toggle"><span><Volume2 size={17}/> {isAr?'أصوات ستريو':'Stereo Sound'}</span><button className={`toggle ${settings.sound?'on':''}`} onClick={()=>onChangeSettings({sound:!settings.sound})}><i/></button></div>},
-    ].map(s=>(
-      <div key={s.k} style={{borderBottom:'1px solid #1a1a1a'}}><button onClick={()=>setAcc(acc===s.k?'':s.k)} style={{width:'100%',textAlign:'right',padding:'12px 14px',background:acc===s.k?'#111':'transparent',border:'none',color:'#fff',fontWeight:800,display:'flex',justifyContent:'space-between'}}><span>{s.l}</span><span>{acc===s.k?'−':'+'}</span></button>{acc===s.k&&<div style={{padding:'12px',background:'#111'}}>{s.c}</div>}</div>
-    ))}
-  </div>
+
+  return <SetupScreen settings={settings} names={names} roomsCount={roomsCount} joinCode={joinCode} joinName={joinName} setJoinName={setJoinName} computers={computers} error={error} onChangeName={(index: number, value: string) => setNames((current) => current.map((name, item) => item === index? value : name))} onChangeSettings={updateSettings} onToggleComputer={(idx: number) => { if (idx === 0) return; setComputers(prev => prev.map((c, i) => i === idx?!c : c)); }} onJoinCodeChange={setJoinCode} onJoin={joinByCode} onCreate={enterWaiting} />;
+}
 
 function Brand() { const { t } = useTranslation(); return <div className="brand"><span className="brand-mark"><span/><span/><span/><span/></span><span>QOUD</span><small>{t('brand_sub')}</small></div>; }
 
@@ -221,7 +213,6 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
   const { t, i18n } = useTranslation();
   const isAr = i18n.language?.startsWith('ar')?? true;
   const [acc,setAcc]=useState('speed');
-
   return <main className="app-shell setup-shell" dir={isAr? 'rtl' : 'ltr'}>
     <header className="topbar"><Brand /><div className="topbar-actions"><button className="icon-btn" onClick={() => i18n.changeLanguage(isAr? 'en' : 'ar')} style={{ fontWeight: 900, minWidth: 42 }}>{isAr? 'EN' : 'AR'}</button><span className="online-dot"><i /> {roomsCount} {isAr? 'غرفة متاحة' : 'rooms'}</span></div></header>
     <section className="setup-grid">
@@ -234,13 +225,10 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
             <button type="button" onClick={() => onChangeSettings({ graphics: '3d' })} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: settings.graphics === '3d'? '2px solid #ff4081' : '1px solid #333', background: settings.graphics === '3d'? '#111' : '#000', color: settings.graphics === '3d'? '#ff4081' : '#888', fontWeight: 900 }}>3D LED</button>
           </div>
         </div>
-
         <div className="card-heading"><div><span className="section-kicker">{isAr? 'ابدأ الجولة' : 'Start Round'}</span><h2>{isAr? 'من حول الطاولة؟' : "Who's around?"}</h2></div></div>
         <div className="player-count"><span>{t('players_count')}</span><div className="stepper"><button onClick={() => onChangeSettings({ players: Math.max(2, settings.players - 1) })}><Minus size={15} /></button><strong>{settings.players}</strong><button onClick={() => onChangeSettings({ players: Math.min(4, settings.players + 1) })}><Plus size={15} /></button></div></div>
         <div className="name-list">{Array.from({ length: settings.players }, (_, index) => <div className="name-field" key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span className="player-dot" style={{ background: COLORS[index] }} /><input style={{ flex: 1 }} value={names[index]} onChange={(event) => onChangeName(index, event.target.value)} maxLength={14} /><span className="name-side">{[isAr? 'تحت' : 'Bottom', isAr? 'فوق' : 'Top', isAr? 'يمين' : 'Right', isAr? 'يسار' : 'Left'][index]}</span>{index > 0 && <button type="button" onClick={() => onToggleComputer(index)} style={{ border: '1px solid ' + (computers[index]? 'rgba(155,140,255,.5)' : 'rgba(97,231,194,.5)'), background: computers[index]? 'rgba(155,140,255,.15)' : 'rgba(97,231,194,.15)', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>{computers[index]? <><Monitor size={12} /> {isAr? 'كمبيوتر' : 'Computer'}</> : <><Gamepad2 size={12} /> {isAr? 'انسان' : 'Human'}</>}</button>}</div>)}</div>
         <div className="mode-switch"><button className={settings.vsComputer? 'active' : ''} onClick={() => onChangeSettings({ vsComputer: true })}><Monitor size={16} /> {t('vs_computer')}</button><button className={!settings.vsComputer? 'active' : ''} onClick={() => onChangeSettings({ vsComputer: false })}><Gamepad2 size={16} /> {t('vs_friends')}</button></div>
-
-        {/* الاكورديون هنا داخل نفس القائمة */}
         <div style={{background:'#0a0a0a',border:'1px solid #222',borderRadius:12,overflow:'hidden',marginTop:12}}>
           {[
             {k:'speed',l:isAr?'🔴 السرعة':'Speed',c: <><input type="range" min={1} max={20} value={settings.ballSpeed} onChange={e=>onChangeSettings({ballSpeed:Number(e.target.value)})} style={{width:'100%'}}/><div className="segmented"><button className={settings.speed==='gradual'?'selected':''} onClick={()=>onChangeSettings({speed:'gradual'})}>متدرجة</button><button className={settings.speed==='fixed'?'selected':''} onClick={()=>onChangeSettings({speed:'fixed'})}>ثابتة</button></div><div className="segmented" style={{marginTop:8}}><button className={settings.start==='center'?'selected':''} onClick={()=>onChangeSettings({start:'center'})}>من المنتصف</button><button className={settings.start==='paddle'?'selected':''} onClick={()=>onChangeSettings({start:'paddle'})}>من المضرب</button></div></>},
@@ -251,7 +239,6 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
             <div key={s.k} style={{borderBottom:'1px solid #1a1a1a'}}><button onClick={()=>setAcc(acc===s.k?'':s.k)} style={{width:'100%',textAlign:'right',padding:'12px 14px',background:acc===s.k?'#111':'transparent',border:'none',color:'#fff',fontWeight:800,display:'flex',justifyContent:'space-between'}}><span>{s.l}</span><span>{acc===s.k?'−':'+'}</span></button>{acc===s.k&&<div style={{padding:'12px',background:'#111'}}>{s.c}</div>}</div>
           ))}
         </div>
-
         <button className="primary-cta" onClick={onCreate} style={{marginTop:12}}><span>{t('create_room', { speed: settings.ballSpeed })}</span>{isAr? <ChevronLeft size={19} /> : <ChevronRight size={19} />}</button>
         <div className="join-divider"><span>{isAr? 'أو انضم برمز' : 'Or join with code'}</span></div>
         <div style={{ display: 'grid', gap: 8 }}>
@@ -291,6 +278,8 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const [sound, setSound] = useState(settings.sound);
   const [rally, setRally] = useState(0);
   const [isServing, setIsServing] = useState(settings.start === 'paddle');
+  const [countdown, setCountdown] = useState(0);
+  const [countdownName, setCountdownName] = useState('');
   const soundRef = useRef(sound);
   const onTimeUpRef = useRef(onTimeUp);
   const onGoalRef = useRef(onGoal);
@@ -302,16 +291,16 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const myAngle = angleMap[mySide]?? 0;
   soundRef.current = sound; onTimeUpRef.current = onTimeUp; onGoalRef.current = onGoal; pausedRef.current = paused;
   const audioCtxRef = useRef<AudioContext|null>(null);
-  const playHit = useCallback((power:number, xPos:number)=>{
+  const playHit = useCallback((power:number, xPos:number = world.w/2)=>{
     if(!soundRef.current) return;
     try{
       if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
       const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
       const pan = Math.max(-1,Math.min(1,(xPos/world.w)*2-1));
-      const panner = ctx.createStereoPanner?.(); if(panner) panner.pan.value=pan;
+      const panner = (ctx as any).createStereoPanner?.(); if(panner) panner.pan.value=pan;
       const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(90+power*800,t); o.frequency.exponentialRampToValueAtTime(35,t+0.25); g.gain.setValueAtTime(0.15+power*0.85,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.45);
       if(panner){ o.connect(g); g.connect(panner); panner.connect(ctx.destination);} else o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+0.45);
-      if(power>0.3){ const o2=ctx.createOscillator(), g2=ctx.createGain(); const p2=ctx.createStereoPanner?.(); if(p2) p2.pan.value=pan*0.8; o2.type=power>0.7?'square':'triangle'; o2.frequency.setValueAtTime(600+power*2000,t); g2.gain.setValueAtTime(0.22*power,t); g2.gain.exponentialRampToValueAtTime(0.001,t+0.18); if(p2){o2.connect(g2); g2.connect(p2); p2.connect(ctx.destination);} else o2.connect(g2).connect(ctx.destination); o2.start(t); o2.stop(t+0.2); }
+      if(power>0.3){ const o2=ctx.createOscillator(), g2=ctx.createGain(); const p2=(ctx as any).createStereoPanner?.(); if(p2) p2.pan.value=pan*0.8; o2.type=power>0.7?'square':'triangle'; o2.frequency.setValueAtTime(600+power*2000,t); g2.gain.setValueAtTime(0.22*power,t); g2.gain.exponentialRampToValueAtTime(0.001,t+0.18); if(p2){o2.connect(g2); g2.connect(p2); p2.connect(ctx.destination);} else o2.connect(g2).connect(ctx.destination); o2.start(t); o2.stop(t+0.2); }
     }catch{}
   },[world.w]);
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
@@ -339,7 +328,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       const handleInput = (data: { side: Player['side']; x: number; y: number }) => { if (stateRef.current.targetPaddles[data.side]) { stateRef.current.targetPaddles[data.side].x = data.x; stateRef.current.targetPaddles[data.side].y = data.y; } };
       socket.on('paddle-input', handleInput); return () => { socket.off('paddle-input', handleInput); };
     } else {
-      const handleState = (serverState: any) => { stateRef.current.ball = serverState.ball; Object.keys(serverState.paddles || {}).forEach((k: any) => { stateRef.current.targetPaddles[k] = serverState.paddles[k]; }); if (serverState.countdown!== undefined) stateRef.current.countdown = serverState.countdown; };
+      const handleState = (serverState: any) => { stateRef.current.ball = serverState.ball; Object.keys(serverState.paddles || {}).forEach((k: any) => { stateRef.current.targetPaddles[k] = serverState.paddles[k]; }); if (serverState.countdown!== undefined) { stateRef.current.countdown = serverState.countdown; if(serverState.countdown>0) setCountdown(serverState.countdown); } };
       socket.on('game-state', handleState); return () => { socket.off('game-state', handleState); };
     }
   }, [isHost, isOfflineMode]);
@@ -356,7 +345,13 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const requiredSides: Player['side'][] = needCount === 2? ['bottom','top'] : needCount === 3? ['bottom','top','right'] : ['bottom','top','right','left'];
     const playerForSide = (side: Player['side']) => players.find((p) => p.side === side)?? ({ id: side, name: side, color: COLORS[SIDES.indexOf(side)], side, computer: side!== 'bottom' } as Player);
     const active = (side: Player['side']) => requiredSides.includes(side);
-    const resetBall = (missedSide?: Player['side']) => { state.countdown = 3; state.countdownStart = performance.now(); state.countdownSide = missedSide || null; state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0; state.rally = 0; setRally(0); state.speedMult = 1; hasDraggedRef.current=false; noDragStartRef.current=performance.now(); if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none'; };
+    const opposite: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
+    const resetBall = (missedSide?: Player['side']) => {
+      const scorerSide = missedSide? opposite[missedSide] : null;
+      const scorer = scorerSide? playerForSide(scorerSide) : null;
+      state.countdown = 3; state.countdownStart = performance.now(); state.countdownSide = scorerSide as any; setCountdown(3); setCountdownName(scorer? scorer.name : '');
+      state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0; state.rally = 0; setRally(0); state.speedMult = 1; hasDraggedRef.current=false; noDragStartRef.current=performance.now(); if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
+    };
     const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2); state.last = now; const myPlayer = players.find(p => p.socketId === socket.id) || players[0]; const mySideLocal = (myPlayer?.side || 'bottom') as Player['side']; const isOffline =!socket.connected || players.length <= 1;
@@ -367,7 +362,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           if (state.countdown > 0) {
             const elapsed = (now - state.countdownStart) / 1000;
             if (elapsed >= 3) {
-              state.countdown = 0; const side = state.countdownSide;
+              state.countdown = 0; setCountdown(0); const side = state.countdownSide;
               if (settings.start === 'paddle' && side) {
                 servingRef.current.active = true; servingRef.current.side = side; servingRef.current.startTime = now; servingRef.current.requested = false;
                 if (side === 'bottom') { state.ball.x = state.targetPaddles.bottom.x; state.ball.y = state.targetPaddles.bottom.y - 24; }
@@ -376,7 +371,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
                 else { state.ball.x = state.targetPaddles.right.x + 24; state.ball.y = state.targetPaddles.right.y; }
                 state.ball.vx = 0; state.ball.vy = 0; setIsServing(true);
               } else { launchBall(false); setIsServing(false); servingRef.current.active = false; }
-            } else { socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); draw(context, state, players, now, true, world, myAngle); frame = requestAnimationFrame(tick); return; }
+            } else { setCountdown(Math.ceil(3-elapsed)); socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); draw(context, state, players, now, true, world, myAngle); frame = requestAnimationFrame(tick); return; }
           }
           const touch = touchControls.current; if (touch.left) controls.current.x = -1; else if (touch.right) controls.current.x = 1; else controls.current.x = 0; if (touch.up) controls.current.y = -1; else if (touch.down) controls.current.y = 1; else controls.current.y = 0; const bottomInput = touch.bottomLeft? -1 : touch.bottomRight? 1 : 0;
           const predX = state.ball.x + state.ball.vx * 12; const predY = state.ball.y + state.ball.vy * 12;
@@ -408,7 +403,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             const side = servingRef.current.side;
             if (side === 'bottom') { state.ball.x = state.paddles.bottom.x; state.ball.y = state.paddles.bottom.y - 24; } else if (side === 'top') { state.ball.x = state.paddles.top.x; state.ball.y = state.paddles.top.y + 24; } else if (side === 'left') { state.ball.x = state.paddles.left.x - 24; state.ball.y = state.paddles.left.y; } else { state.ball.x = state.paddles.right.x + 24; state.ball.y = state.paddles.right.y; }
             const player = playerForSide(side); if (player?.computer && now - servingRef.current.startTime > 900) servingRef.current.requested = true;
-            if (servingRef.current.requested) { launchBall(true); servingRef.current.active = false; servingRef.current.requested = false; setIsServing(false); playHit(0.3); }
+            if (servingRef.current.requested) { launchBall(true); servingRef.current.active = false; servingRef.current.requested = false; setIsServing(false); playHit(0.3, state.ball.x); }
             socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); draw(context, state, players, now, true, world, myAngle); frame = requestAnimationFrame(tick); return;
           }
           state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
@@ -416,10 +411,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           const prevBottom = state.prevPaddles.bottom; const prevTop = state.prevPaddles.top; const prevLeft = state.prevPaddles.left; const prevRight = state.prevPaddles.right;
           const velBottom: Vec2 = { x: state.paddles.bottom.x - prevBottom.x, y: state.paddles.bottom.y - prevBottom.y }; const velTop: Vec2 = { x: state.paddles.top.x - prevTop.x, y: state.paddles.top.y - prevTop.y }; const velLeft: Vec2 = { x: state.paddles.left.x - prevLeft.x, y: state.paddles.left.y - prevLeft.y }; const velRight: Vec2 = { x: state.paddles.right.x - prevRight.x, y: state.paddles.right.y - prevRight.y };
           const THRUST = 6.0; const BASE_BOOST = 0.8; const PADDLE_POWER = 1.9;
-          if (!active('top') && state.ball.y - r < 22) { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy) * 1.1; playHit(0.15); }
-          if (!active('bottom') && state.ball.y + r > world.h - 22) { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy) * 1.1; playHit(0.15); }
-          if (!active('left') && state.ball.x - r < 22) { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx) * 1.1; playHit(0.15); }
-          if (!active('right') && state.ball.x + r > world.w - 22) { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx) * 1.1; playHit(0.15); }
+          if (!active('top') && state.ball.y - r < 22) { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy) * 1.1; playHit(0.15, state.ball.x); }
+          if (!active('bottom') && state.ball.y + r > world.h - 22) { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy) * 1.1; playHit(0.15, state.ball.x); }
+          if (!active('left') && state.ball.x - r < 22) { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx) * 1.1; playHit(0.15, state.ball.x); }
+          if (!active('right') && state.ball.x + r > world.w - 22) { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx) * 1.1; playHit(0.15, state.ball.x); }
           const checkHit = (side: Player['side'], vel: Vec2)=>{
             const dx = state.ball.x - state.paddles[side].x; const dy = state.ball.y - state.paddles[side].y; const dist = Math.sqrt(dx*dx+dy*dy);
             if(dist <= HIT_DIST+14 && dist>=0.5){
@@ -434,18 +429,18 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               state.speedMult = Math.min(2.8, (state.speedMult||1)*1.14); state.rally++;
               if(side==='top' || side==='bottom'){ state.ball.vx = (dx/PADDLE_R)*6.2 + vel.x*PADDLE_POWER; state.ball.vy = (side==='bottom'? -Math.abs(newSpeed) : Math.abs(newSpeed))*powerMult; }
               else { state.ball.vy = (dy/PADDLE_R)*6.2 + vel.y*PADDLE_POWER; state.ball.vx = (side==='left'? Math.abs(newSpeed) : -Math.abs(newSpeed))*powerMult; }
-              playHit(hitPower); state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: COLORS[SIDES.indexOf(side)], power: hitPower });
+              playHit(hitPower, state.ball.x); state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: COLORS[SIDES.indexOf(side)], power: hitPower });
             }
           };
           if(active('top')) checkHit('top', velTop); if(active('bottom')) checkHit('bottom', velBottom); if(active('left')) checkHit('left', velLeft); if(active('right')) checkHit('right', velRight);
           const maxSpd = 7 + settings.ballSpeed * 0.85 + state.rally * 0.55; state.ball.vx = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vx)); state.ball.vy = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vy));
           state.prevPaddles = { top: { x: state.paddles.top.x, y: state.paddles.top.y }, bottom: { x: state.paddles.bottom.x, y: state.paddles.bottom.y }, left: { x: state.paddles.left.x, y: state.paddles.left.y }, right: { x: state.paddles.right.x, y: state.paddles.right.y }, };
           const GOAL_W = players.length === 2? 260 : 300; const GOAL_X1 = (world.w - GOAL_W) / 2; const GOAL_X2 = GOAL_X1 + GOAL_W; const GOAL_Y1 = (world.h - GOAL_W) / 2; const GOAL_Y2 = GOAL_Y1 + GOAL_W; const inGoalX = (x: number) => x >= GOAL_X1 && x <= GOAL_X2; const inGoalY = (y: number) => y >= GOAL_Y1 && y <= GOAL_Y2; let missed: Player | undefined;
-          if (state.ball.y - r < 22) { if (active('top')) { if (inGoalX(state.ball.x)) missed = playerForSide('top'); else { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy); playHit(0.15); } } else { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy); } }
-          if (!missed && state.ball.y + r > world.h - 22) { if (active('bottom')) { if (inGoalX(state.ball.x)) missed = playerForSide('bottom'); else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); playHit(0.15); } } else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); } }
-          if (!missed && state.ball.x - r < 22) { if (active('left')) { if (inGoalY(state.ball.y)) missed = playerForSide('left'); else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); playHit(0.15); } } else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); } }
-          if (!missed && state.ball.x + r > world.w - 22) { if (active('right')) { if (inGoalY(state.ball.y)) missed = playerForSide('right'); else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); playHit(0.15); } } else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); } }
-          if (missed) { state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: missed.color, power: 0.9 }); playHit(0.9); onGoalRef.current(playerForSide(missed.side)); resetBall(missed.side); }
+          if (state.ball.y - r < 22) { if (active('top')) { if (inGoalX(state.ball.x)) missed = playerForSide('top'); else { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy); playHit(0.15, state.ball.x); } } else { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy); } }
+          if (!missed && state.ball.y + r > world.h - 22) { if (active('bottom')) { if (inGoalX(state.ball.x)) missed = playerForSide('bottom'); else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); playHit(0.15, state.ball.x); } } else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); } }
+          if (!missed && state.ball.x - r < 22) { if (active('left')) { if (inGoalY(state.ball.y)) missed = playerForSide('left'); else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); playHit(0.15, state.ball.x); } } else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); } }
+          if (!missed && state.ball.x + r > world.w - 22) { if (active('right')) { if (inGoalY(state.ball.y)) missed = playerForSide('right'); else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); playHit(0.15, state.ball.x); } } else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); } }
+          if (missed) { state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: missed.color, power: 0.9 }); playHit(0.9, state.ball.x); onGoalRef.current(playerForSide(missed.side)); resetBall(missed.side); }
           setRally(state.rally); socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
         }
       }
@@ -493,12 +488,14 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   return <main className="game-shell" dir="ltr" style={{ touchAction: 'none' }} onContextMenu={e => e.preventDefault()}>
     <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
     <header className="game-topbar"><Brand /><div className="match-meta"><span><i className="live-dot" /></span><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | {mySide}</div><div className="game-actions"><button className="game-icon" onClick={() => setSound((value) =>!value)}><Volume2 size={18} /></button><button className="game-icon" onClick={onPause}>{paused? <Play size={18} /> : <Pause size={18} />}</button><button className="game-icon" onClick={onExit}><X size={18} /></button></div></header>
-    <div className="score-strip">{players.map((player) => <div className="score-chip" key={player.id} style={{border: player.side===mySide?`2px solid ${player.color}`:undefined}}><span className="score-color" style={{ background: player.color }} /><span>{player.name}{player.side===mySide?' (أنت)':''}</span><strong>{scores[player.id]?? 0}</strong></div>)}<div className="rally-meter"><span>Rally</span><b>{rally}</b><Sparkles size={14} /></div></div>
+    <div className="score-strip">{players.map((player) => <div className="score-chip" key={player.id} style={{border: player.side===mySide?`2px solid ${player.color}`:undefined}}><span className="score-color" style={{ background: player.color }} /><span>{player.name}{player.side===mySide?' (أنت)':''}</span><strong>{scores[player.id]?? 0}</strong></div>)}<div className="rally-meter"><span>Rally</span><b>{rally}</b></div></div>
     <section className="arena-stage" style={{ width: '100%', maxWidth: '100vw', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div className="arena-frame" ref={arenaRef} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} style={{ touchAction: 'none', position:'relative', width: `min(95vw, 760px, ${(88 * (world.w / world.h)).toFixed(2)}vh)`, aspectRatio: `${world.w} / ${world.h}`, margin: '0 auto', borderRadius: '32px', overflow: 'hidden', background: '#000', boxShadow: '0 0 0 2px #111, 0 0 40px rgba(0,229,255,0.25)', }}>
         <canvas ref={canvasRef} style={{ touchAction: 'none', width: '100%', height: '100%' }} />
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
+        {countdown>0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}><span style={{ fontSize: '110px', fontWeight: 900, color: '#ff2233' }}>{countdown}</span><span style={{ background: '#222', color: '#fff', padding: '8px 18px', borderRadius: 999, fontWeight: 800 }}>{countdownName} سجل!</span></div>}
+        {lastGoal && <div style={{ position: 'absolute', top: '48%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.92)', color: '#fff', padding: '12px 22px', borderRadius: 12, fontWeight: 900, zIndex: 11 }}>هدف! {lastGoal}</div>}
       </div>
     </section>
     <div className="touch-controls"><button {...bindTouch('bottomRight')}><ChevronRight size={24} /></button><button {...bindTouch('bottomLeft')}><ChevronLeft size={24} /></button></div>
