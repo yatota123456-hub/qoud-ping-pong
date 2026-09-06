@@ -317,6 +317,26 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       if(power>0.3){ const o2=ctx.createOscillator(), g2=ctx.createGain(); const p2=(ctx as any).createStereoPanner?.(); if(p2) p2.pan.value=pan*0.8; o2.type=power>0.7?'square':'triangle'; o2.frequency.setValueAtTime(600+power*2000,t); g2.gain.setValueAtTime(0.22*power,t); g2.gain.exponentialRampToValueAtTime(0.001,t+0.18); if(p2){o2.connect(g2); g2.connect(p2); p2.connect(ctx.destination);} else o2.connect(g2).connect(ctx.destination); o2.start(t); o2.stop(t+0.2); }
     }catch{}
   },[world.w]);
+  const playGoalSound = useCallback(()=>{
+    if(!soundRef.current) return;
+    try{
+      if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
+      const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t = ctx.currentTime;
+      const notes = [440, 554.37, 659.25, 880]; // A - C# - E - A نجاح
+      notes.forEach((freq,i)=>{
+        const o = ctx.createOscillator(); const g = ctx.createGain(); const p = (ctx as any).createStereoPanner?.();
+        if(p) p.pan.value = i%2===0? -0.15 : 0.15;
+        o.type = i<2? 'sine' : 'triangle'; o.frequency.setValueAtTime(freq, t+i*0.11);
+        g.gain.setValueAtTime(0, t+i*0.11); g.gain.linearRampToValueAtTime(0.22, t+i*0.11+0.02); g.gain.exponentialRampToValueAtTime(0.001, t+i*0.11+0.45);
+        if(p){ o.connect(g); g.connect(p); p.connect(ctx.destination);} else o.connect(g).connect(ctx.destination);
+        o.start(t+i*0.11); o.stop(t+i*0.11+0.5);
+      });
+      const oB = ctx.createOscillator(); const gB = ctx.createGain();
+      oB.type='sine'; oB.frequency.setValueAtTime(110,t); oB.frequency.exponentialRampToValueAtTime(45,t+0.55);
+      gB.gain.setValueAtTime(0.35,t); gB.gain.exponentialRampToValueAtTime(0.001,t+0.6);
+      oB.connect(gB).connect(ctx.destination); oB.start(t); oB.stop(t+0.6);
+    }catch{}
+  },[world.w]);
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
   const getInitialSpeed = useCallback(() => 2.8 + settings.ballSpeed * 0.48, [settings.ballSpeed]);
   const stateRef = useRef({
@@ -454,7 +474,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           if (!missed && state.ball.y + r > world.h - 22) { if (active('bottom')) { if (inGoalX(state.ball.x)) missed = playerForSide('bottom'); else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); playHit(0.15, state.ball.x); } } else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); } }
           if (!missed && state.ball.x - r < 22) { if (active('left')) { if (inGoalY(state.ball.y)) missed = playerForSide('left'); else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); playHit(0.15, state.ball.x); } } else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); } }
           if (!missed && state.ball.x + r > world.w - 22) { if (active('right')) { if (inGoalY(state.ball.y)) missed = playerForSide('right'); else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); playHit(0.15, state.ball.x); } } else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); } }
-          if (missed) { state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: missed.color, power: 0.9 }); playHit(0.9, state.ball.x); onGoalRef.current(playerForSide(missed.side)); resetBall(missed.side); }
+          if (missed) { state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: missed.color, power: 0.9 }); playHit(0.9, state.ball.x); playGoalSound(); onGoalRef.current(playerForSide(missed.side)); resetBall(missed.side); }
           setRally(state.rally); socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
         }
       }

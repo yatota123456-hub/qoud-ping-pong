@@ -557,7 +557,20 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           }
         } catch {}
       }
-
+      const playGoalSound = () => {
+        if(!settings.sound) return;
+        try{
+          if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
+          const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t = ctx.currentTime;
+          [440,554,659,880].forEach((freq,i)=>{
+            const o = ctx.createOscillator(); const g = ctx.createGain(); const p = (ctx as any).createStereoPanner?.(); if(p) p.pan.value = i%2===0? -0.2:0.2;
+            o.type = i<2?'sine':'triangle'; o.frequency.setValueAtTime(freq, t+i*0.11);
+            g.gain.setValueAtTime(0,t+i*0.11); g.gain.linearRampToValueAtTime(0.22,t+i*0.11+0.02); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.11+0.45);
+            if(p){o.connect(g); g.connect(p); p.connect(ctx.destination);} else o.connect(g).connect(ctx.destination);
+            o.start(t+i*0.11); o.stop(t+i*0.11+0.5);
+          });
+        }catch{}
+      };
       if (!threeRef.current?.hitGroup) return;
       const group = threeRef.current.hitGroup;
       const col = p > 0.7? '#ff2233' : p > 0.4? color : '#ffffff';
@@ -768,6 +781,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           if (!missed && state.ball.x + r >= world.w) { if (activeSide('right')) { if (inGoalY(state.ball.y)) missed = playerForSide('right'); else { state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx); } } else { state.ball.x = world.w - r - 1; state.ball.vx = -Math.abs(state.ball.vx); } }
           if (missed) {
             const realMissed = playerForSide(missed.side)?? missed;
+            playGoalSound();
             onGoal(realMissed);
             const opposite: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
             const scorerSide = opposite[missed.side] as Player['side'];
