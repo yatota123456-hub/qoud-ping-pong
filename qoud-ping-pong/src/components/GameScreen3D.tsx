@@ -533,70 +533,57 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           const panVal = Math.max(-1, Math.min(1, (x / world.w) * 2 - 1));
           const panner = (ctx as any).createStereoPanner? (ctx as any).createStereoPanner() : null;
           if (panner) panner.pan.value = panVal;
-          const o = ctx.createOscillator();
-          const g = ctx.createGain();
-          o.type = 'sine';
-          o.frequency.setValueAtTime(90 + p * 800, t);
-          o.frequency.exponentialRampToValueAtTime(35, t + 0.25);
-          g.gain.setValueAtTime(0.15 + p * 0.85, t);
-          g.gain.exponentialRampToValueAtTime(0.01, t + 0.4 + p * 0.25);
+          const o = ctx.createOscillator(); const g = ctx.createGain();
+          o.type = 'sine'; o.frequency.setValueAtTime(90 + p * 800, t); o.frequency.exponentialRampToValueAtTime(35, t + 0.25);
+          g.gain.setValueAtTime(0.15 + p * 0.85, t); g.gain.exponentialRampToValueAtTime(0.01, t + 0.4 + p * 0.25);
           if (panner) { o.connect(g); g.connect(panner); panner.connect(ctx.destination); } else { o.connect(g).connect(ctx.destination); }
           o.start(t); o.stop(t + 0.45);
           if (p > 0.3) {
-            const o2 = ctx.createOscillator();
-            const g2 = ctx.createGain();
-            const p2 = (ctx as any).createStereoPanner? (ctx as any).createStereoPanner() : null;
+            const o2 = ctx.createOscillator(); const g2 = ctx.createGain(); const p2 = (ctx as any).createStereoPanner? (ctx as any).createStereoPanner() : null;
             if (p2) p2.pan.value = panVal * 0.8;
-            o2.type = p > 0.7? 'square' : 'triangle';
-            o2.frequency.setValueAtTime(600 + p * 2000, t);
-            o2.frequency.exponentialRampToValueAtTime(180, t + 0.15);
-            g2.gain.setValueAtTime(0.22 * p, t);
-            g2.gain.exponentialRampToValueAtTime(0.01, t + 0.18);
+            o2.type = p > 0.7? 'square' : 'triangle'; o2.frequency.setValueAtTime(600 + p * 2000, t); o2.frequency.exponentialRampToValueAtTime(180, t + 0.15);
+            g2.gain.setValueAtTime(0.22 * p, t); g2.gain.exponentialRampToValueAtTime(0.01, t + 0.18);
             if (p2) { o2.connect(g2); g2.connect(p2); p2.connect(ctx.destination); } else o2.connect(g2).connect(ctx.destination);
             o2.start(t); o2.stop(t + 0.2);
           }
         } catch {}
       }
-      const playGoalSound = () => {
-        if(!settings.sound) return;
-        try{
-          if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
-          const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t = ctx.currentTime;
-          [440,554,659,880].forEach((freq,i)=>{
-            const o = ctx.createOscillator(); const g = ctx.createGain(); const p = (ctx as any).createStereoPanner?.(); if(p) p.pan.value = i%2===0? -0.2:0.2;
-            o.type = i<2?'sine':'triangle'; o.frequency.setValueAtTime(freq, t+i*0.11);
-            g.gain.setValueAtTime(0,t+i*0.11); g.gain.linearRampToValueAtTime(0.22,t+i*0.11+0.02); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.11+0.45);
-            if(p){o.connect(g); g.connect(p); p.connect(ctx.destination);} else o.connect(g).connect(ctx.destination);
-            o.start(t+i*0.11); o.stop(t+i*0.11+0.5);
-          });
-        }catch{}
-      };
       if (!threeRef.current?.hitGroup) return;
       const group = threeRef.current.hitGroup;
       const col = p > 0.7? '#ff2233' : p > 0.4? color : '#ffffff';
       const ringGeo = new THREE.RingGeometry(8, 12 + p * 26, 32);
       const ringMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(x, 15.5, z);
-      group.add(ring);
+      const ring = new THREE.Mesh(ringGeo, ringMat); ring.rotation.x = -Math.PI / 2; ring.position.set(x, 15.5, z); group.add(ring);
       hitEffectsRef.current.push({ mesh: ring, born: performance.now(), power: p, isCore: false });
-
       if (p > 0.45) {
-        const coreGeo = new THREE.CircleGeometry(4 + p * 10, 24);
-        const coreMat = new THREE.MeshBasicMaterial({ color: '#ffcf5a', transparent: true, opacity: 0.9 });
-        const core = new THREE.Mesh(coreGeo, coreMat);
-        core.rotation.x = -Math.PI / 2;
-        core.position.set(x, 15.8, z);
-        group.add(core);
+        const coreGeo = new THREE.CircleGeometry(4 + p * 10, 24); const coreMat = new THREE.MeshBasicMaterial({ color: '#ffcf5a', transparent: true, opacity: 0.9 });
+        const core = new THREE.Mesh(coreGeo, coreMat); core.rotation.x = -Math.PI / 2; core.position.set(x, 15.8, z); group.add(core);
         hitEffectsRef.current.push({ mesh: core, born: performance.now(), power: p * 1.3, isCore: true });
       }
       shakeRef.current.intensity = Math.max(shakeRef.current.intensity, p * 18);
       if (threeRef.current?.ball) {
         const ballMat = threeRef.current.ball.material as THREE.MeshStandardMaterial;
-        ballMat.emissiveIntensity = 0.85 + p * 3.5;
-        setTimeout(() => { if (ballMat) ballMat.emissiveIntensity = 0.85; }, 120 + p * 80);
+        ballMat.emissiveIntensity = 0.85 + p * 3.5; setTimeout(() => { if (ballMat) ballMat.emissiveIntensity = 0.85; }, 120 + p * 80);
       }
+    };
+
+    const playGoalSound = () => {
+      if(!settings.sound) return;
+      try{
+        if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
+        const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t = ctx.currentTime;
+        [440,554,659,880].forEach((freq,i)=>{
+          const o = ctx.createOscillator(); const g = ctx.createGain(); const p = (ctx as any).createStereoPanner?.(); if(p) p.pan.value = i%2===0? -0.2:0.2;
+          o.type = i<2?'sine':'triangle'; o.frequency.setValueAtTime(freq, t+i*0.11);
+          g.gain.setValueAtTime(0,t+i*0.11); g.gain.linearRampToValueAtTime(0.22,t+i*0.11+0.02); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.11+0.45);
+          if(p){o.connect(g); g.connect(p); p.connect(ctx.destination);} else o.connect(g).connect(ctx.destination);
+          o.start(t+i*0.11); o.stop(t+i*0.11+0.5);
+        });
+        const oB = ctx.createOscillator(); const gB = ctx.createGain();
+        oB.type='sine'; oB.frequency.setValueAtTime(110,t); oB.frequency.exponentialRampToValueAtTime(45,t+0.55);
+        gB.gain.setValueAtTime(0.35,t); gB.gain.exponentialRampToValueAtTime(0.001,t+0.6);
+        oB.connect(gB).connect(ctx.destination); oB.start(t); oB.stop(t+0.6);
+      }catch{}
     };
 
     const tick = (now: number) => {
