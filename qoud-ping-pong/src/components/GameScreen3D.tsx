@@ -177,10 +177,11 @@ function getArenaWorld(count: number, size: any = 'medium') {
   return { w: base.w * sc, h: base.h * sc };
 }
 
+// تم التعديل: كاميرا البداية مثل الصورة - خلفك
 const CAM_PRESETS_3D = {
   top: { angle: 0, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
-  bottom: { angle: Math.PI, distance: 500, height: 650, name: 'خلفك', nameEn: 'Behind You' },
-  topPlayer: { angle: 0, distance: 500, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+  bottom: { angle: 0, distance: 680, height: 620, name: 'خلفك', nameEn: 'Behind You' },
+  topPlayer: { angle: Math.PI, distance: 500, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
   iso: { angle: 0.6, distance: 1150, height: 950, name: 'مائل', nameEn: 'Isometric' },
   sideLeft: { angle: -Math.PI / 2, distance: 1000, height: 500, name: 'يسار', nameEn: 'Left' },
   sideRight: { angle: Math.PI / 2, distance: 1000, height: 500, name: 'يمين', nameEn: 'Right' },
@@ -199,16 +200,16 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   pausedRef.current = paused;
 
   const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
+  // تم التعديل: البداية تكون مثل الصورة
   const initialCam = useMemo(() => {
-    const camDist = players.length >= 3? 1350 : 1350;
-    return { angle: 0, targetAngle: 0, distance: camDist, targetDistance: camDist, height: 950, targetHeight: 950, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
-  }, [world, players.length]);
+    const preset = CAM_PRESETS_3D.bottom;
+    return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
+  }, [world]);
 
   const cam = useRef({...initialCam });
   const threeRef = useRef<any>(null);
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
-    // تم التعديل: المضرب صار {x,z} عشان يتحرك للأمام مثل 2D
     paddles: {
       top: { x: world.w / 2, z: 52 },
       right: { x: world.w - 52, z: world.h / 2 },
@@ -234,7 +235,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
   const [showCamMenu, setShowCamMenu] = useState(false);
   const [hideUI, setHideUI] = useState(false);
-  const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('iso');
+  const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('bottom');
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 6 + settings.ballSpeed * 0.5, [settings.ballSpeed]);
@@ -264,7 +265,22 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     return group;
   }, []);
 
-  const resetCamera = useCallback(() => { cam.current = {...initialCam }; setCurrentPreset('iso'); }, [initialCam]);
+  const resetCamera = useCallback(() => {
+    const preset = CAM_PRESETS_3D.bottom;
+    cam.current = {
+      angle: preset.angle,
+      targetAngle: preset.angle,
+      distance: preset.distance,
+      targetDistance: preset.distance,
+      height: preset.height,
+      targetHeight: preset.height,
+      targetX: world.w / 2,
+      targetZ: world.h / 2,
+      lookX: world.w / 2,
+      lookZ: world.h / 2
+    };
+    setCurrentPreset('bottom');
+  }, [world]);
 
   const applyPreset = useCallback((key: Cam3DPresetKey) => {
     const p = CAM_PRESETS_3D[key];
@@ -285,7 +301,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     if (dir === 'down') cam.current.targetHeight = Math.max(250, cam.current.targetHeight - 120);
   }, []);
 
-  // تم التعديل: حركة 2D كاملة في 3D (X و Z) للاعب
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -358,7 +373,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             const maxX = data.side === 'left'? world.w*0.45 : world.w-45;
             stateRef.current.targetPaddles[data.side].x = clamp(data.x, minX, maxX);
           } else {
-            // توافق مع الكود القديم
             stateRef.current.targetPaddles[data.side].z = clamp(data.x, 45, world.h - 45);
           }
         }
@@ -373,7 +387,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         Object.keys(serverState.paddles).forEach((k: any) => {
           const val = serverState.paddles[k];
           if (typeof val === 'number') {
-            // توافق خلفي
             if (k === 'top' || k === 'bottom') stateRef.current.targetPaddles[k].x = Math.max(45, Math.min(world.w - 45, val));
             else stateRef.current.targetPaddles[k].z = Math.max(45, Math.min(world.h - 45, val));
           } else if (val && typeof val.x === 'number') {
@@ -404,7 +417,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     const dir = new THREE.DirectionalLight(0xffffff, 0.9);
     dir.position.set(200, 900, 300);
     scene.add(dir);
-    const camera = new THREE.PerspectiveCamera(38, mount.clientWidth / mount.clientHeight, 10, 5000);
+    // تم التعديل: FOV اوسع مثل الصورة
+    const camera = new THREE.PerspectiveCamera(50, mount.clientWidth / mount.clientHeight, 10, 5000);
     const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", alpha: false, stencil: false, depth: true });
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.setPixelRatio(1);
@@ -471,7 +485,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     };
     if (runsPhysics) {
       launchBall();
-      // نسخ عميق للمضارب
       state.paddles = {
         top: {...state.targetPaddles.top },
         bottom: {...state.targetPaddles.bottom },
@@ -494,7 +507,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           if (e >= 3) {
             state.countdown = 0; setCountdown(0); state.countdownSide = null;
             state.serving.active = false;
-            launchBall(); // من المنتصف لكل ال4
+            launchBall();
           } else {
             setCountdown(Math.ceil(3 - e));
           }
@@ -512,7 +525,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             if (!activeSide(side)) return;
             const p = playerForSide(side);
             if (isComputerSide(side, p)) {
-              // تم التعديل: الكمبيوتر يتحرك للأمام ايضا مثل 2D
               if (side === 'bottom') {
                 state.targetPaddles[side].x = clamp(predX, 55, world.w - 55);
                 if (state.ball.y > world.h * 0.5) {
@@ -555,7 +567,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
           state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
           const r = 12; const paddleRadius = 24;
-          // تصادم لكل ال4 - تم التعديل ليستخدم x,z
           if (activeSide('bottom')) {
             const bp = state.paddles.bottom;
             const distBot = Math.hypot(state.ball.x - bp.x, state.ball.y - bp.z);
@@ -615,7 +626,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         }
         if (!isOfflineMode) { socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); }
       }
-      // رسم - تم التعديل ليستخدم x,z
       if (threeRef.current) {
         const { ball, paddles, camera, renderer } = threeRef.current; const c = cam.current;
         c.angle += (c.targetAngle - c.angle) * 0.1; c.distance += (c.targetDistance - c.distance) * 0.1; c.height += (c.targetHeight - c.height) * 0.1;
@@ -672,7 +682,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               const sides = need === 2? SIDES_FB.slice(0,2) : need === 3? SIDES_FB.slice(0,3) : SIDES_FB.slice(0,4);
               return sides.map((side, idx) => {
                 const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top'? 'سامي' : side === 'right'? 'ليان' : side === 'left'? 'كريم' : 'نورا', color: COLORS_FB[idx], side };
-                // تم التعديل: الاسم يظهر تحت العداد
                 return (
                   <div key={p.id + side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', background: '#151515', border: `1px solid ${p.color}`, borderRadius: '14px', padding: '6px 16px', minWidth: '90px' }}>
                     <strong style={{ color: p.color, fontSize: '20px', lineHeight: '1', fontWeight: 900 }}>{scores[p.id]?? 0}</strong>
