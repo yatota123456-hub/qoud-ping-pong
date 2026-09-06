@@ -194,6 +194,10 @@ type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D;
 export function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, paused, onGoal, onTimeUp, onPause, onExit }: { roomCode: string; isHost: boolean; players: Player[]; settings: Settings; scores: Scores; lastGoal: string | null; paused: boolean; onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; }) {
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
+  const hintDotRef = useRef<HTMLDivElement>(null);
+  const hintTextRef = useRef<HTMLDivElement>(null);
+  const hasDraggedRef = useRef(false);
+  const noDragStartRef = useRef(performance.now());
   const [timeLeft, setTimeLeft] = useState(settings.mode === 'time'? settings.duration : 0);
   const [rally, setRally] = useState(0);
   const [countdown, setCountdown] = useState(0);
@@ -321,9 +325,12 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
     const handlePointerMove = (e: PointerEvent) => {
       if (!e.isPrimary ||!threeRef.current) return;
+      hasDraggedRef.current = true;
+      if(hintDotRef.current) hintDotRef.current.style.display='none';
+      if(hintTextRef.current) hintTextRef.current.style.display='none';
       const mySide = getMySide();
       const isTouch = (e as any).pointerType === 'touch' || (e as any).pointerType === 'pen';
-      const OFFSET = isTouch? 50 : 26;
+      const OFFSET = isTouch? 75 : 40;
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -590,6 +597,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             launchBall();
           } else {
             setCountdown(Math.ceil(3 - e));
+            if(hintDotRef.current) hintDotRef.current.style.display='none';
+            if(hintTextRef.current) hintTextRef.current.style.display='none';
           }
         } else {
           const mySide = (players.find((p:any) => p.socketId === socket.id)?.side?? 'bottom') as any;
@@ -756,6 +765,10 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
             state.countdown = 3; state.countdownStart = now; state.countdownSide = missed.side;
             setCountdown(3); state.rally = 0; setRally(0);
+            hasDraggedRef.current = false;
+            noDragStartRef.current = now;
+            if(hintDotRef.current) hintDotRef.current.style.display='none';
+            if(hintTextRef.current) hintTextRef.current.style.display='none';
           } else { setRally(state.rally); }
         }
         if (!isOfflineMode) { socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); }
@@ -780,6 +793,27 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         if (paddles['top']) paddles['top'].position.set(state.paddles.top.x, 12, state.paddles.top.z);
         if (paddles['left']) paddles['left'].position.set(state.paddles.left.x, 12, state.paddles.left.z);
         if (paddles['right']) paddles['right'].position.set(state.paddles.right.x, 12, state.paddles.right.z);
+
+        if(!hasDraggedRef.current && hintDotRef.current && hintTextRef.current && mountRef.current){
+          const elapsed = now - noDragStartRef.current;
+          if(elapsed>3000 && state.countdown===0 &&!pausedRef.current &&!gameEndedRef.current){
+            const mySide = getMySide();
+            const p = state.paddles[mySide];
+            const vec = new THREE.Vector3(p.x, 12, p.z);
+            vec.project(camera);
+            if(vec.z < 1 && vec.z > -1){
+              const rect = mountRef.current.getBoundingClientRect();
+              const sx = (vec.x * 0.5 + 0.5) * rect.width;
+              const sy = (-vec.y * 0.5 + 0.5) * rect.height;
+              hintDotRef.current.style.left = `${sx}px`;
+              hintDotRef.current.style.top = `${sy+45}px`;
+              hintDotRef.current.style.display = 'block';
+              hintTextRef.current.style.left = `${sx+20}px`;
+              hintTextRef.current.style.top = `${sy+30}px`;
+              hintTextRef.current.style.display = 'block';
+            }
+          }
+        }
 
         const nowMs = performance.now();
         hitEffectsRef.current = hitEffectsRef.current.filter((e: any) => {
@@ -824,7 +858,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       {!hideUI && (
         <>
           <header className="game-topbar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', alignItems: 'center', zIndex: 10, background: '#0a0a0a', borderBottom: '1px solid #1a1a1a' }}>
-            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • HD • 863</div>
+            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • HD</div>
             <div className="match-meta" style={{ color: '#fff' }}><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | Rally: {rally}</div>
             <div className="game-actions" style={{ display: 'flex', gap: '6px' }}>
               <button className="game-icon" onClick={() => setShowCamMenu(v =>!v)} title={isAr? 'الكاميرا' : 'Camera'} style={{ background: showCamMenu? '#00e5ff' : '#111', color: showCamMenu? '#000' : '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>
@@ -858,6 +892,9 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         </>
       )}
       <div ref={mountRef} style={{ width: '100%', flex: 1, borderRadius: '22px', overflow: 'hidden', position: 'relative', touchAction: 'none' }}>
+        <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
+        <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
+        <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
         {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px' }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1 }}>{countdown}</span><span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>{getNameForSide(stateRef.current.countdownSide)}</span></div>}
         {lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
         {showCamMenu &&!hideUI && (<div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b><button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (<button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k? '#111' : '#0a0a0a', color: currentPreset === k? '#00e5ff' : '#aaa', cursor: 'pointer' }}>{isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}</button>))}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}><div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div /><button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button><button onClick={resetCamera} style={{...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button><button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button><div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div /></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle }}><ZoomIn size={18} /> {isAr? 'قرب' : 'In'}</button><button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle }}><ZoomOut size={18} /> {isAr? 'بعد' : 'Out'}</button></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle }}><RotateCcw size={16} /> {isAr? 'يسار' : 'Left'}</button><button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle }}><RotateCw size={16} /> {isAr? 'يمين' : 'Right'}</button></div><button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}><EyeOff size={16} /> {isAr? 'اخفاء كل الازرار' : 'Hide All UI'}</button></div>)}
