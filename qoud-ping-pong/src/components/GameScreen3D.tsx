@@ -170,7 +170,6 @@ function createArenaFrame(worldW: number, worldH: number) {
 
 function getArenaWorld(count: number, size: any = 'medium') {
   const ARENA_SCALES: any = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
-  // تم التعديل: تصغير الساحة عشان تظهر كاملة في الجوال
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
   const base = count >= 3? SQUARE : RECT;
@@ -178,7 +177,6 @@ function getArenaWorld(count: number, size: any = 'medium') {
   return { w: base.w * sc, h: base.h * sc };
 }
 
-// بعيدة مثل الصورة الثانية المطلوبة
 const CAM_PRESETS_3D = {
   top: { angle: Math.PI, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
   bottom: { angle: 0, distance: 1550, height: 1150, name: 'خلفك', nameEn: 'Behind You' },
@@ -208,6 +206,9 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
   const cam = useRef({...initialCam });
   const threeRef = useRef<any>(null);
+  const audioCtxRef = useRef<AudioContext|null>(null);
+  const hitEffectsRef = useRef<any[]>([]);
+  const shakeRef = useRef({ intensity: 0 });
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
     paddles: {
@@ -452,7 +453,9 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       scene.add(g);
       paddles[side] = g;
     });
-    threeRef.current = { scene, camera, renderer, ball, paddles, surfaceTexture, tableMaterial };
+    const hitGroup = new THREE.Group();
+    scene.add(hitGroup);
+    threeRef.current = { scene, camera, renderer, ball, paddles, hitGroup, surfaceTexture, tableMaterial };
     const ro = new ResizeObserver(() => {
       if (!mountRef.current ||!threeRef.current) return;
       camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
@@ -503,6 +506,67 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         left: {...state.paddles.left },
       } as any;
     }
+
+    // صوت + تأثير قوي
+    const triggerHitEffect = (x: number, z: number, power: number, color: string) => {
+      const p = Math.max(0, Math.min(1, power));
+      // صوت
+      try {
+        if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const ctx = audioCtxRef.current;
+        if (ctx.state === 'suspended') ctx.resume();
+        const t = ctx.currentTime;
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(90 + p * 700, t);
+        o.frequency.exponentialRampToValueAtTime(35, t + 0.22);
+        g.gain.setValueAtTime(0.15 + p * 0.8, t);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.3 + p * 0.25);
+        o.connect(g).connect(ctx.destination);
+        o.start(t); o.stop(t + 0.35);
+        if (p > 0.35) {
+          const o2 = ctx.createOscillator();
+          const g2 = ctx.createGain();
+          o2.type = p > 0.7? 'square' : 'triangle';
+          o2.frequency.setValueAtTime(500 + p * 1800, t);
+          o2.frequency.exponentialRampToValueAtTime(200, t + 0.12);
+          g2.gain.setValueAtTime(0.18 * p, t);
+          g2.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+          o2.connect(g2).connect(ctx.destination);
+          o2.start(t); o2.stop(t + 0.18);
+        }
+      } catch {}
+
+      // تأثير بصري
+      if (!threeRef.current?.hitGroup) return;
+      const group = threeRef.current.hitGroup;
+      const col = p > 0.7? '#ff2233' : p > 0.4? color : '#ffffff';
+      const ringGeo = new THREE.RingGeometry(8, 12 + p * 26, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, 15.5, z);
+      group.add(ring);
+      hitEffectsRef.current.push({ mesh: ring, born: performance.now(), power: p, isCore: false });
+
+      if (p > 0.45) {
+        const coreGeo = new THREE.CircleGeometry(4 + p * 10, 24);
+        const coreMat = new THREE.MeshBasicMaterial({ color: '#ffcf5a', transparent: true, opacity: 0.9 });
+        const core = new THREE.Mesh(coreGeo, coreMat);
+        core.rotation.x = -Math.PI / 2;
+        core.position.set(x, 15.8, z);
+        group.add(core);
+        hitEffectsRef.current.push({ mesh: core, born: performance.now(), power: p * 1.3, isCore: true });
+      }
+      shakeRef.current.intensity = Math.max(shakeRef.current.intensity, p * 18);
+      if (threeRef.current?.ball) {
+        const ballMat = threeRef.current.ball.material as THREE.MeshStandardMaterial;
+        ballMat.emissiveIntensity = 0.85 + p * 3.5;
+        setTimeout(() => { if (ballMat) ballMat.emissiveIntensity = 0.85; }, 120 + p * 80);
+      }
+    };
+
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2);
       state.last = now;
@@ -532,7 +596,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
           const predX = state.ball.x + state.ball.vx * 14;
           const predY = state.ball.y + state.ball.vy * 14;
-          // حفظ السرعة السابقة للمضارب
           state.lastPaddles = {
             top: {...state.paddles.top },
             bottom: {...state.paddles.bottom },
@@ -587,7 +650,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
           const r = 12; const paddleRadius = 24;
 
-          // دالة حساب قوة الدفع الأمامي
           const getForwardBoost = (side: Player['side']) => {
             const cur = state.paddles[side];
             const last = state.lastPaddles[side];
@@ -613,7 +675,9 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
               state.ball.vy = -Math.abs(state.ball.vy) * power + vz * 0.9;
               state.ball.vx = state.ball.vx * power + vx * 0.9 + nx * 3.5;
-              if (forward > 1) state.rally += 1;
+              const hitPower = Math.min(1, (forward * 0.12 + speed * 0.08 + 0.15));
+              const col = playerForSide('bottom')?.color || '#ffcf5a';
+              triggerHitEffect(state.ball.x, state.ball.y, hitPower, col);
               state.rally++;
             }
           }
@@ -623,11 +687,14 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             if (distTop < r + paddleRadius && state.ball.vy < 0 && state.ball.y < tp.z + 20) {
               const nx = (state.ball.x - tp.x) / distTop; const ny = (state.ball.y - tp.z) / distTop;
               state.ball.x = tp.x + nx * (r + paddleRadius + 1); state.ball.y = tp.z + ny * (r + paddleRadius + 1);
-              const { vx, vz, forward } = getForwardBoost('top');
+              const { vx, vz, forward, speed } = getForwardBoost('top');
               let power = 1;
               if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
               state.ball.vy = Math.abs(state.ball.vy) * power + vz * 0.9;
               state.ball.vx = state.ball.vx * power + vx * 0.9 + nx * 3.5;
+              const hitPower = Math.min(1, (forward * 0.12 + speed * 0.08 + 0.15));
+              const col = playerForSide('top')?.color || '#ff6b8b';
+              triggerHitEffect(state.ball.x, state.ball.y, hitPower, col);
               state.rally++;
             }
           }
@@ -637,11 +704,14 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             if (distLeft < r + paddleRadius && state.ball.vx < 0 && state.ball.x > lp.x - 20) {
               const nx = (state.ball.x - lp.x) / distLeft; const ny = (state.ball.y - lp.z) / distLeft;
               state.ball.x = lp.x + nx * (r + paddleRadius + 1); state.ball.y = lp.z + ny * (r + paddleRadius + 1);
-              const { vx, vz, forward } = getForwardBoost('left');
+              const { vx, vz, forward, speed } = getForwardBoost('left');
               let power = 1;
               if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
               state.ball.vx = Math.abs(state.ball.vx) * power + vx * 0.9;
               state.ball.vy = state.ball.vy * power + vz * 0.9 + ny * 3.5;
+              const hitPower = Math.min(1, (forward * 0.12 + speed * 0.08 + 0.15));
+              const col = playerForSide('left')?.color || '#9b8cff';
+              triggerHitEffect(state.ball.x, state.ball.y, hitPower, col);
               state.rally++;
             }
           }
@@ -651,15 +721,18 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             if (distRight < r + paddleRadius && state.ball.vx > 0 && state.ball.x < rp.x + 20) {
               const nx = (state.ball.x - rp.x) / distRight; const ny = (state.ball.y - rp.z) / distRight;
               state.ball.x = rp.x + nx * (r + paddleRadius + 1); state.ball.y = rp.z + ny * (r + paddleRadius + 1);
-              const { vx, vz, forward } = getForwardBoost('right');
+              const { vx, vz, forward, speed } = getForwardBoost('right');
               let power = 1;
               if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
               state.ball.vx = -Math.abs(state.ball.vx) * power + vx * 0.9;
               state.ball.vy = state.ball.vy * power + vz * 0.9 + ny * 3.5;
+              const hitPower = Math.min(1, (forward * 0.12 + speed * 0.08 + 0.15));
+              const col = playerForSide('right')?.color || '#61e7c2';
+              triggerHitEffect(state.ball.x, state.ball.y, hitPower, col);
               state.rally++;
             }
           }
-          const maxBallSpeed = 32 + settings.ballSpeed * 1.5 + state.rally * 0.6;
+          const maxBallSpeed = 34 + settings.ballSpeed * 1.6 + state.rally * 0.7;
           const curSpeed = Math.hypot(state.ball.vx, state.ball.vy);
           if (curSpeed > maxBallSpeed) { const scale = maxBallSpeed / curSpeed; state.ball.vx *= scale; state.ball.vy *= scale; }
           const GOAL_W = world.w >= 1100? 300 : 260;
@@ -683,16 +756,43 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         if (!isOfflineMode) { socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); }
       }
       if (threeRef.current) {
-        const { ball, paddles, camera, renderer } = threeRef.current; const c = cam.current;
+        const { ball, paddles, camera, renderer, hitGroup } = threeRef.current; const c = cam.current;
         c.angle += (c.targetAngle - c.angle) * 0.1; c.distance += (c.targetDistance - c.distance) * 0.1; c.height += (c.targetHeight - c.height) * 0.1;
-        const cx = c.lookX + Math.sin(c.angle) * c.distance; const cz = c.lookZ + Math.cos(c.angle) * c.distance;
-        camera.position.set(cx, c.height, cz); camera.lookAt(c.lookX, 0, c.lookZ);
+        let cx = c.lookX + Math.sin(c.angle) * c.distance;
+        let cz = c.lookZ + Math.cos(c.angle) * c.distance;
+        let cy = c.height;
+        if (shakeRef.current.intensity > 0.1) {
+          cx += (Math.random() - 0.5) * shakeRef.current.intensity;
+          cz += (Math.random() - 0.5) * shakeRef.current.intensity;
+          cy += (Math.random() - 0.5) * shakeRef.current.intensity * 0.5;
+          shakeRef.current.intensity *= 0.88;
+          if (shakeRef.current.intensity < 0.1) shakeRef.current.intensity = 0;
+        }
+        camera.position.set(cx, cy, cz); camera.lookAt(c.lookX, 0, c.lookZ);
         ball.position.x = state.ball.x; ball.position.z = state.ball.y;
         ball.visible = state.countdown === 0;
         if (paddles['bottom']) paddles['bottom'].position.set(state.paddles.bottom.x, 12, state.paddles.bottom.z);
         if (paddles['top']) paddles['top'].position.set(state.paddles.top.x, 12, state.paddles.top.z);
         if (paddles['left']) paddles['left'].position.set(state.paddles.left.x, 12, state.paddles.left.z);
         if (paddles['right']) paddles['right'].position.set(state.paddles.right.x, 12, state.paddles.right.z);
+
+        const nowMs = performance.now();
+        hitEffectsRef.current = hitEffectsRef.current.filter((e: any) => {
+          const age = (nowMs - e.born) / 1000;
+          const life = 0.45 + e.power * 0.35;
+          if (age > life) {
+            hitGroup.remove(e.mesh);
+            e.mesh.geometry.dispose();
+            (e.mesh.material as any).dispose();
+            return false;
+          }
+          const scale = 1 + age * (5 + e.power * 8);
+          if (!e.isCore) e.mesh.scale.set(scale, scale, 1);
+          else e.mesh.scale.set(1 + age * 2, 1 + age * 2, 1);
+          (e.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (e.isCore? 0.9 : 0.95) - age * (1.8 - e.power * 0.5));
+          return true;
+        });
+
         renderer.render(threeRef.current.scene, camera);
       }
       frameIdRef.current = requestAnimationFrame(tick);
