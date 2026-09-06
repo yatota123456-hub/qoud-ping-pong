@@ -572,17 +572,15 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       try{
         if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
         const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t = ctx.currentTime;
-        [440,554,659,880].forEach((freq,i)=>{
-          const o = ctx.createOscillator(); const g = ctx.createGain(); const p = (ctx as any).createStereoPanner?.(); if(p) p.pan.value = i%2===0? -0.2:0.2;
-          o.type = i<2?'sine':'triangle'; o.frequency.setValueAtTime(freq, t+i*0.11);
-          g.gain.setValueAtTime(0,t+i*0.11); g.gain.linearRampToValueAtTime(0.22,t+i*0.11+0.02); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.11+0.45);
-          if(p){o.connect(g); g.connect(p); p.connect(ctx.destination);} else o.connect(g).connect(ctx.destination);
-          o.start(t+i*0.11); o.stop(t+i*0.11+0.5);
+        const master = ctx.createGain(); master.gain.value=1.2; master.connect(ctx.destination);
+        [261.63,329.63,392,523.25,659.25].forEach((freq,i)=>{
+          const o=ctx.createOscillator(); const g=ctx.createGain(); const p=(ctx as any).createStereoPanner?.(); if(p) p.pan.value=i%2===0?-0.35:0.35;
+          o.type='square'; o.frequency.setValueAtTime(freq,t+i*0.08);
+          g.gain.setValueAtTime(0,t+i*0.08); g.gain.linearRampToValueAtTime(0.85,t+i*0.08+0.015); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.08+0.7);
+          if(p){o.connect(g); g.connect(p); p.connect(master);}else o.connect(g).connect(master);
+          o.start(t+i*0.08); o.stop(t+i*0.08+0.75);
         });
-        const oB = ctx.createOscillator(); const gB = ctx.createGain();
-        oB.type='sine'; oB.frequency.setValueAtTime(110,t); oB.frequency.exponentialRampToValueAtTime(45,t+0.55);
-        gB.gain.setValueAtTime(0.35,t); gB.gain.exponentialRampToValueAtTime(0.001,t+0.6);
-        oB.connect(gB).connect(ctx.destination); oB.start(t); oB.stop(t+0.6);
+        const oB=ctx.createOscillator(); const gB=ctx.createGain(); oB.type='sine'; oB.frequency.setValueAtTime(180,t); oB.frequency.exponentialRampToValueAtTime(35,t+0.6); gB.gain.setValueAtTime(1.0,t); gB.gain.exponentialRampToValueAtTime(0.001,t+0.75); oB.connect(gB).connect(master); oB.start(t); oB.stop(t+0.8);
       }catch{}
     };
 

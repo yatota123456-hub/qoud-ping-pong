@@ -322,19 +322,26 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     try{
       if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
       const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t = ctx.currentTime;
-      const notes = [440, 554.37, 659.25, 880]; // A - C# - E - A نجاح
+      // ماستر عالي
+      const master = ctx.createGain(); master.gain.value = 1.3; master.connect(ctx.destination);
+      // نغمات نجاح قوية C-E-G-C-E
+      const notes = [261.63, 329.63, 392.00, 523.25, 659.25];
       notes.forEach((freq,i)=>{
         const o = ctx.createOscillator(); const g = ctx.createGain(); const p = (ctx as any).createStereoPanner?.();
-        if(p) p.pan.value = i%2===0? -0.15 : 0.15;
-        o.type = i<2? 'sine' : 'triangle'; o.frequency.setValueAtTime(freq, t+i*0.11);
-        g.gain.setValueAtTime(0, t+i*0.11); g.gain.linearRampToValueAtTime(0.22, t+i*0.11+0.02); g.gain.exponentialRampToValueAtTime(0.001, t+i*0.11+0.45);
-        if(p){ o.connect(g); g.connect(p); p.connect(ctx.destination);} else o.connect(g).connect(ctx.destination);
-        o.start(t+i*0.11); o.stop(t+i*0.11+0.5);
+        if(p) p.pan.value = i%2===0? -0.4 : 0.4;
+        o.type = 'square'; // square اعلى من sine
+        o.frequency.setValueAtTime(freq, t+i*0.07);
+        g.gain.setValueAtTime(0, t+i*0.07); 
+        g.gain.linearRampToValueAtTime(0.9, t+i*0.07+0.01); // 0.9 عالي
+        g.gain.exponentialRampToValueAtTime(0.001, t+i*0.07+0.65);
+        if(p){ o.connect(g); g.connect(p); p.connect(master);} else o.connect(g).connect(master);
+        o.start(t+i*0.07); o.stop(t+i*0.07+0.7);
       });
+      // بيس قوي
       const oB = ctx.createOscillator(); const gB = ctx.createGain();
-      oB.type='sine'; oB.frequency.setValueAtTime(110,t); oB.frequency.exponentialRampToValueAtTime(45,t+0.55);
-      gB.gain.setValueAtTime(0.35,t); gB.gain.exponentialRampToValueAtTime(0.001,t+0.6);
-      oB.connect(gB).connect(ctx.destination); oB.start(t); oB.stop(t+0.6);
+      oB.type='sine'; oB.frequency.setValueAtTime(180,t); oB.frequency.exponentialRampToValueAtTime(40,t+0.6);
+      gB.gain.setValueAtTime(1.0,t); gB.gain.exponentialRampToValueAtTime(0.001,t+0.7);
+      oB.connect(gB).connect(master); oB.start(t); oB.stop(t+0.8);
     }catch{}
   },[world.w]);
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
@@ -568,6 +575,40 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
 function formatTime(seconds: number) { return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`; }
 function ResultsScreen({ players, scores, winner, wins, onAgain, onHome }: any) {
   const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
-  return <main className="app-shell results-shell" dir={isAr? 'rtl' : 'ltr'}><header className="topbar"><Brand /></header><section style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, height: '100%' }}><div style={{ background: '#111', padding: 32, borderRadius: 24, textAlign: 'center', border: '2px solid #333', width: '100%', maxWidth: 400 }}><h1 style={{ color: '#00e5ff', fontSize: '2rem', marginBottom: 24 }}>{winner? `${winner.name} ${isAr? 'فاز!' : 'Wins!'}` : (isAr? 'انتهت' : 'Game Over')}</h1><div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}><button className="primary-cta" onClick={onAgain} style={{ flex: 1 }}>{isAr? 'مرة أخرى' : 'Again'}</button><button className="secondary-btn" onClick={onHome} style={{ flex: 1 }}>{isAr? 'الرئيسية' : 'Home'}</button></div></div></section></main>;
+  const sortedCurrent = [...players].sort((a:any,b:any)=>(scores[b.id]??0)-(scores[a.id]??0));
+  const sortedAllTime = Object.entries(wins as Record<string,number>).sort((a:any,b:any)=>b[1]-a[1]).slice(0,20);
+  return <main className="app-shell results-shell" dir={isAr? 'rtl' : 'ltr'}>
+    <header className="topbar"><Brand /></header>
+    <section style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap:16, padding: 16, minHeight:'100%' }}>
+      <div style={{ background: '#111', padding: 24, borderRadius: 24, textAlign: 'center', border: '2px solid #ffcf5a', width: '100%', maxWidth: 460 }}>
+        <h1 style={{ color: '#ffcf5a', fontSize: '2rem', marginBottom: 8 }}>🏆 {winner? `${winner.name} ${isAr? 'فاز!' : 'Wins!'}` : (isAr? 'انتهت' : 'Game Over')}</h1>
+        <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:16}}>
+          <b style={{color:'#fff'}}>{isAr?'ترتيب هذه المباراة':'This Match Ranking'}</b>
+          {sortedCurrent.map((p:any, idx:number)=>(
+            <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',background: idx===0?'#1a1a00':'#0a0a0a',border:`1px solid ${p.color}`,borderRadius:10,padding:'10px 12px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontWeight:900,width:20}}>{idx+1}</span><span style={{width:10,height:10,borderRadius:'50%',background:p.color}}/><span style={{color:'#fff',fontWeight:700}}>{p.name}</span>{winner?.id===p.id&&<span>👑</span>}</div>
+              <strong style={{color:p.color,fontSize:18}}>{scores[p.id]??0}</strong>
+            </div>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:10,marginTop:18}}>
+          <button className="primary-cta" onClick={onAgain} style={{ flex: 1 }}>{isAr? 'مرة أخرى' : 'Again'}</button>
+          <button className="secondary-btn" onClick={onHome} style={{ flex: 1 }}>{isAr? 'الرئيسية' : 'Home'}</button>
+        </div>
+      </div>
+      <div style={{ background: '#0a0a0a', border:'1px solid #222', borderRadius:16, padding:16, width:'100%', maxWidth:460 }}>
+        <b style={{color:'#00e5ff'}}>📊 {isAr?'ترتيب الفائزين المحفوظ':'All-Time Leaderboard'}</b>
+        <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:10}}>
+          {sortedAllTime.length===0&&<span style={{color:'#666'}}>{isAr?'لا يوجد فائزين بعد':'No winners yet'}</span>}
+          {sortedAllTime.map(([name,count]:any, idx:number)=>(
+            <div key={name} style={{display:'flex',justifyContent:'space-between',background:'#111',borderRadius:8,padding:'8px 12px'}}>
+              <span style={{color:'#fff'}}>{idx+1}. {name} {winner?.name===name&&' (آخر فائز)'}</span><b style={{color:'#ffcf5a'}}>{count} {isAr?'فوز':'wins'}</b>
+            </div>
+          ))}
+        </div>
+        <button onClick={()=>{localStorage.removeItem('qoud-ping-pong-wins'); location.reload();}} style={{marginTop:12,background:'transparent',border:'1px solid #333',color:'#666',borderRadius:8,padding:'6px 10px',fontSize:12}}>{isAr?'مسح السجل':'Clear History'}</button>
+      </div>
+    </section>
+  </main>;
 }
 export default App;
