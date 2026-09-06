@@ -177,11 +177,11 @@ function getArenaWorld(count: number, size: any = 'medium') {
   return { w: base.w * sc, h: base.h * sc };
 }
 
-// تم التعديل: كاميرا البداية مثل الصورة - خلفك
+// تم التصحيح: بعيدة مثل الصورة المطلوبة الثانية
 const CAM_PRESETS_3D = {
-  top: { angle: 0, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
-  bottom: { angle: 0, distance: 680, height: 620, name: 'خلفك', nameEn: 'Behind You' },
-  topPlayer: { angle: Math.PI, distance: 500, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+  top: { angle: Math.PI, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
+  bottom: { angle: 0, distance: 1350, height: 1050, name: 'خلفك', nameEn: 'Behind You' },
+  topPlayer: { angle: Math.PI, distance: 650, height: 750, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
   iso: { angle: 0.6, distance: 1150, height: 950, name: 'مائل', nameEn: 'Isometric' },
   sideLeft: { angle: -Math.PI / 2, distance: 1000, height: 500, name: 'يسار', nameEn: 'Left' },
   sideRight: { angle: Math.PI / 2, distance: 1000, height: 500, name: 'يمين', nameEn: 'Right' },
@@ -200,7 +200,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   pausedRef.current = paused;
 
   const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
-  // تم التعديل: البداية تكون مثل الصورة
+  // البداية بعيدة مثل الصورة الثانية
   const initialCam = useMemo(() => {
     const preset = CAM_PRESETS_3D.bottom;
     return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
@@ -417,8 +417,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     const dir = new THREE.DirectionalLight(0xffffff, 0.9);
     dir.position.set(200, 900, 300);
     scene.add(dir);
-    // تم التعديل: FOV اوسع مثل الصورة
-    const camera = new THREE.PerspectiveCamera(50, mount.clientWidth / mount.clientHeight, 10, 5000);
+    const camera = new THREE.PerspectiveCamera(38, mount.clientWidth / mount.clientHeight, 10, 5000);
     const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", alpha: false, stencil: false, depth: true });
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.setPixelRatio(1);
