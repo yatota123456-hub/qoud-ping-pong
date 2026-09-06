@@ -84,7 +84,7 @@ function App() {
   const [lastGoal, setLastGoal] = useState<string | null>(null);
   const [matchPaused, setMatchPaused] = useState(false);
   const [matchKey, setMatchKey] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
+  
   const [error, setError] = useState('');
   const [isHost, setIsHost] = useState(true);
   const [roomsCount, setRoomsCount] = useState(0);
@@ -203,35 +203,56 @@ function App() {
     return <GameScreen key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((paused) =>!paused)} onExit={leaveMatch} />;
   }
   if (screen === 'results') return <ResultsScreen players={players} scores={scores} winner={winner} wins={wins} onAgain={startMatch} onHome={() => { void socket.leave(); setPlayers([]); setScreen('setup'); }} />;
-  return <SetupScreen settings={settings} names={names} roomsCount={roomsCount} joinCode={joinCode} joinName={joinName} setJoinName={setJoinName} showSettings={showSettings} computers={computers} error={error} onChangeName={(index: number, value: string) => setNames((current) => current.map((name, item) => item === index? value : name))} onChangeSettings={updateSettings} onToggleComputer={(idx: number) => { if (idx === 0) return; setComputers(prev => prev.map((c, i) => i === idx?!c : c)); }} onJoinCodeChange={setJoinCode} onJoin={joinByCode} onCreate={enterWaiting} onSettings={() => setShowSettings(true)} onCloseSettings={() => setShowSettings(false)} />;
-}
+  const [acc,setAcc]=useState('speed');
+  <div style={{background:'#0a0a0a',border:'1px solid #222',borderRadius:12,overflow:'hidden',marginTop:12}}>
+    {[
+      {k:'speed',l:isAr?'🔴 السرعة':'Speed',c: <><input type="range" min={1} max={20} value={settings.ballSpeed} onChange={e=>onChangeSettings({ballSpeed:Number(e.target.value)})} style={{width:'100%'}}/><div className="segmented"><button className={settings.speed==='gradual'?'selected':''} onClick={()=>onChangeSettings({speed:'gradual'})}>متدرجة</button><button className={settings.speed==='fixed'?'selected':''} onClick={()=>onChangeSettings({speed:'fixed'})}>ثابتة</button></div><div className="segmented" style={{marginTop:8}}><button className={settings.start==='center'?'selected':''} onClick={()=>onChangeSettings({start:'center'})}>من المنتصف</button><button className={settings.start==='paddle'?'selected':''} onClick={()=>onChangeSettings({start:'paddle'})}>من المضرب</button></div></>},
+      {k:'arena',l:isAr?'📐 حجم الساحة':'Arena',c:<div className="segmented">{(['small','medium','large','xlarge'] as any).map((s:any)=><button key={s} className={settings.arenaSize===s?'selected':''} onClick={()=>onChangeSettings({arenaSize:s})}>{s}</button>)}</div>},
+      {k:'win',l:isAr?'🏆 الفوز':'Win',c:<><div className="segmented"><button className={settings.mode==='time'?'selected':''} onClick={()=>onChangeSettings({mode:'time'})}>بالوقت</button><button className={settings.mode==='goals'?'selected':''} onClick={()=>onChangeSettings({mode:'goals'})}>بالأهداف</button></div>{settings.mode==='time'?<input className="range" type="range" min={1} max={600} value={settings.duration} onChange={e=>onChangeSettings({duration:Number(e.target.value)})}/>:<input className="range" type="range" min={2} max={30} value={settings.goal} onChange={e=>onChangeSettings({goal:Number(e.target.value)})}/>}</>},
+      {k:'sound',l:isAr?'🔊 الصوت':'Sound',c:<div className="setting-toggle"><span><Volume2 size={17}/> {isAr?'أصوات ستريو':'Stereo Sound'}</span><button className={`toggle ${settings.sound?'on':''}`} onClick={()=>onChangeSettings({sound:!settings.sound})}><i/></button></div>},
+    ].map(s=>(
+      <div key={s.k} style={{borderBottom:'1px solid #1a1a1a'}}><button onClick={()=>setAcc(acc===s.k?'':s.k)} style={{width:'100%',textAlign:'right',padding:'12px 14px',background:acc===s.k?'#111':'transparent',border:'none',color:'#fff',fontWeight:800,display:'flex',justifyContent:'space-between'}}><span>{s.l}</span><span>{acc===s.k?'−':'+'}</span></button>{acc===s.k&&<div style={{padding:'12px',background:'#111'}}>{s.c}</div>}</div>
+    ))}
+  </div>
 
 function Brand() { const { t } = useTranslation(); return <div className="brand"><span className="brand-mark"><span/><span/><span/><span/></span><span>QOUD</span><small>{t('brand_sub')}</small></div>; }
 
-function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinName, showSettings, computers, error, onChangeName, onChangeSettings, onToggleComputer, onJoinCodeChange, onJoin, onCreate, onSettings, onCloseSettings }: any) {
-  const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
+function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinName, computers, error, onChangeName, onChangeSettings, onToggleComputer, onJoinCodeChange, onJoin, onCreate }: any) {
+  const { t, i18n } = useTranslation();
+  const isAr = i18n.language?.startsWith('ar')?? true;
+  const [acc,setAcc]=useState('speed');
+
   return <main className="app-shell setup-shell" dir={isAr? 'rtl' : 'ltr'}>
-    <header className="topbar"><Brand /><div className="topbar-actions"><button className="icon-btn" onClick={() => i18n.changeLanguage(isAr? 'en' : 'ar')} style={{ fontWeight: 900, minWidth: 42 }}>{isAr? 'EN' : 'AR'}</button><span className="online-dot"><i /> {roomsCount} {isAr? 'غرفة متاحة' : 'rooms'}</span><button className="icon-btn" onClick={onSettings}><Settings2 size={19} /></button></div></header>
+    <header className="topbar"><Brand /><div className="topbar-actions"><button className="icon-btn" onClick={() => i18n.changeLanguage(isAr? 'en' : 'ar')} style={{ fontWeight: 900, minWidth: 42 }}>{isAr? 'EN' : 'AR'}</button><span className="online-dot"><i /> {roomsCount} {isAr? 'غرفة متاحة' : 'rooms'}</span></div></header>
     <section className="setup-grid">
       <div className="setup-copy"><div className="eyebrow"><Zap size={14} /> Air LED Table</div><h1>{t('title_1')} <br /><em>{t('title_2')}</em></h1><p>{t('desc')}</p><div className="copy-stats"><span><strong>LED</strong><small>{isAr? 'نيون حقيقي' : 'Real Neon'}</small></span><span><strong>1-20</strong><small>{isAr? 'سرعة' : 'Speed'}</small></span><span><strong>🔴</strong><small>{isAr? 'كرة حمراء' : 'Red Ball'}</small></span></div>{error && <div style={{ background: '#ff6b8b', color: '#fff', padding: '12px', borderRadius: '10px', fontWeight: 700, marginTop: '12px' }}>{error}</div>}</div>
       <div className="setup-card-wrap"><div className="setup-card">
         <div style={{ background: '#0a0a0a', color: '#fff', padding: '16px', borderRadius: '14px', marginBottom: '16px', border: '2px solid #222' }}>
           <div style={{ fontWeight: 900, fontSize: '14px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between' }}><span>🎮 {t('mode')}</span><span style={{ color: '#00e5ff' }}>LED TABLE • 42px</span></div>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-            <button type="button" onClick={() => onChangeSettings({ graphics: '2d' })} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: settings.graphics === '2d'? '2px solid #00e5ff' : '1px solid #333', background: settings.graphics === '2d'? '#111' : '#000', color: settings.graphics === '2d'? '#00e5ff' : '#888', fontWeight: 900 }}>2D LED<br/><span style={{ fontSize: '10px' }}>{isAr? 'مطابق للصورة' : 'Same as image'}</span></button>
-            <button type="button" onClick={() => onChangeSettings({ graphics: '3d' })} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: settings.graphics === '3d'? '2px solid #ff4081' : '1px solid #333', background: settings.graphics === '3d'? '#111' : '#000', color: settings.graphics === '3d'? '#ff4081' : '#888', fontWeight: 900 }}>3D LED<br/><span style={{ fontSize: '10px' }}>{isAr? 'إطار لامع' : 'Glossy Frame'}</span></button>
-          </div>
-          <div style={{ background: '#111', padding: '10px', borderRadius: '8px' }}>
-            <label style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between' }}><span>🔴 {t('ball_speed', { speed: settings.ballSpeed })}</span><span style={{ color: settings.speed === 'fixed'? '#ffcf5a' : '#61e7c2' }}>{settings.speed === 'fixed'? (isAr? 'ثابتة' : 'Fixed') : (isAr? 'متدرجة' : 'Gradual')}</span></label>
-            <input type="range" min={1} max={20} value={settings.ballSpeed} onChange={e => onChangeSettings({ ballSpeed: Number(e.target.value) })} style={{ width: '100%' }} />
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button type="button" onClick={() => onChangeSettings({ graphics: '2d' })} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: settings.graphics === '2d'? '2px solid #00e5ff' : '1px solid #333', background: settings.graphics === '2d'? '#111' : '#000', color: settings.graphics === '2d'? '#00e5ff' : '#888', fontWeight: 900 }}>2D LED</button>
+            <button type="button" onClick={() => onChangeSettings({ graphics: '3d' })} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: settings.graphics === '3d'? '2px solid #ff4081' : '1px solid #333', background: settings.graphics === '3d'? '#111' : '#000', color: settings.graphics === '3d'? '#ff4081' : '#888', fontWeight: 900 }}>3D LED</button>
           </div>
         </div>
+
         <div className="card-heading"><div><span className="section-kicker">{isAr? 'ابدأ الجولة' : 'Start Round'}</span><h2>{isAr? 'من حول الطاولة؟' : "Who's around?"}</h2></div></div>
         <div className="player-count"><span>{t('players_count')}</span><div className="stepper"><button onClick={() => onChangeSettings({ players: Math.max(2, settings.players - 1) })}><Minus size={15} /></button><strong>{settings.players}</strong><button onClick={() => onChangeSettings({ players: Math.min(4, settings.players + 1) })}><Plus size={15} /></button></div></div>
         <div className="name-list">{Array.from({ length: settings.players }, (_, index) => <div className="name-field" key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span className="player-dot" style={{ background: COLORS[index] }} /><input style={{ flex: 1 }} value={names[index]} onChange={(event) => onChangeName(index, event.target.value)} maxLength={14} /><span className="name-side">{[isAr? 'تحت' : 'Bottom', isAr? 'فوق' : 'Top', isAr? 'يمين' : 'Right', isAr? 'يسار' : 'Left'][index]}</span>{index > 0 && <button type="button" onClick={() => onToggleComputer(index)} style={{ border: '1px solid ' + (computers[index]? 'rgba(155,140,255,.5)' : 'rgba(97,231,194,.5)'), background: computers[index]? 'rgba(155,140,255,.15)' : 'rgba(97,231,194,.15)', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>{computers[index]? <><Monitor size={12} /> {isAr? 'كمبيوتر' : 'Computer'}</> : <><Gamepad2 size={12} /> {isAr? 'انسان' : 'Human'}</>}</button>}</div>)}</div>
         <div className="mode-switch"><button className={settings.vsComputer? 'active' : ''} onClick={() => onChangeSettings({ vsComputer: true })}><Monitor size={16} /> {t('vs_computer')}</button><button className={!settings.vsComputer? 'active' : ''} onClick={() => onChangeSettings({ vsComputer: false })}><Gamepad2 size={16} /> {t('vs_friends')}</button></div>
-        {settings.vsComputer && <div className="difficulty-row"><span>{isAr? 'الصعوبة' : 'Difficulty'}</span><div className="difficulty-options">{(['easy', 'normal', 'hard'] as Difficulty[]).map((difficulty) => <button key={difficulty} className={settings.difficulty === difficulty? 'selected' : ''} onClick={() => onChangeSettings({ difficulty })}>{difficulty === 'easy'? (isAr? 'خفيف' : 'Easy') : difficulty === 'normal'? (isAr? 'متوازن' : 'Normal') : (isAr? 'شرس' : 'Hard')}</button>)}</div></div>}
-        <button className="primary-cta" onClick={onCreate}><span>{t('create_room', { speed: settings.ballSpeed })}</span>{isAr? <ChevronLeft size={19} /> : <ChevronRight size={19} />}</button>
+
+        {/* الاكورديون هنا داخل نفس القائمة */}
+        <div style={{background:'#0a0a0a',border:'1px solid #222',borderRadius:12,overflow:'hidden',marginTop:12}}>
+          {[
+            {k:'speed',l:isAr?'🔴 السرعة':'Speed',c: <><input type="range" min={1} max={20} value={settings.ballSpeed} onChange={e=>onChangeSettings({ballSpeed:Number(e.target.value)})} style={{width:'100%'}}/><div className="segmented"><button className={settings.speed==='gradual'?'selected':''} onClick={()=>onChangeSettings({speed:'gradual'})}>متدرجة</button><button className={settings.speed==='fixed'?'selected':''} onClick={()=>onChangeSettings({speed:'fixed'})}>ثابتة</button></div><div className="segmented" style={{marginTop:8}}><button className={settings.start==='center'?'selected':''} onClick={()=>onChangeSettings({start:'center'})}>من المنتصف</button><button className={settings.start==='paddle'?'selected':''} onClick={()=>onChangeSettings({start:'paddle'})}>من المضرب</button></div></>},
+            {k:'arena',l:isAr?'📐 حجم الساحة':'Arena',c:<div className="segmented">{(['small','medium','large','xlarge'] as any).map((s:any)=><button key={s} className={settings.arenaSize===s?'selected':''} onClick={()=>onChangeSettings({arenaSize:s})}>{s}</button>)}</div>},
+            {k:'win',l:isAr?'🏆 الفوز':'Win',c:<><div className="segmented"><button className={settings.mode==='time'?'selected':''} onClick={()=>onChangeSettings({mode:'time'})}>بالوقت</button><button className={settings.mode==='goals'?'selected':''} onClick={()=>onChangeSettings({mode:'goals'})}>بالأهداف</button></div>{settings.mode==='time'?<input className="range" type="range" min={1} max={600} value={settings.duration} onChange={e=>onChangeSettings({duration:Number(e.target.value)})}/>:<input className="range" type="range" min={2} max={30} value={settings.goal} onChange={e=>onChangeSettings({goal:Number(e.target.value)})}/>}</>},
+            {k:'sound',l:isAr?'🔊 الصوت':'Sound',c:<div className="setting-toggle"><span><Volume2 size={17}/> {isAr?'أصوات ستريو':'Stereo Sound'}</span><button className={`toggle ${settings.sound?'on':''}`} onClick={()=>onChangeSettings({sound:!settings.sound})}><i/></button></div>},
+          ].map(s=>(
+            <div key={s.k} style={{borderBottom:'1px solid #1a1a1a'}}><button onClick={()=>setAcc(acc===s.k?'':s.k)} style={{width:'100%',textAlign:'right',padding:'12px 14px',background:acc===s.k?'#111':'transparent',border:'none',color:'#fff',fontWeight:800,display:'flex',justifyContent:'space-between'}}><span>{s.l}</span><span>{acc===s.k?'−':'+'}</span></button>{acc===s.k&&<div style={{padding:'12px',background:'#111'}}>{s.c}</div>}</div>
+          ))}
+        </div>
+
+        <button className="primary-cta" onClick={onCreate} style={{marginTop:12}}><span>{t('create_room', { speed: settings.ballSpeed })}</span>{isAr? <ChevronLeft size={19} /> : <ChevronRight size={19} />}</button>
         <div className="join-divider"><span>{isAr? 'أو انضم برمز' : 'Or join with code'}</span></div>
         <div style={{ display: 'grid', gap: 8 }}>
           <input placeholder={isAr? 'اكتب اسمك قبل الانضمام' : 'Your name before join'} value={joinName} onChange={(e) => { const v = e.target.value.slice(0, 15); setJoinName(v); localStorage.setItem('qoud_name', v); onChangeName(0, v); }} maxLength={15} style={{ height: 44, background: '#202630', border: '1px solid rgba(255,207,90,.55)', borderRadius: 10, color: '#fff', padding: '0 12px', fontWeight: 700 }} />
@@ -239,23 +260,9 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
         </div>
       </div></div>
     </section>
-    <footer className="setup-footer"><span>QOUD LED • {isAr? 'نسخة مطابقة للصورة المرجعية' : 'Exact replica'}</span><button onClick={onSettings}><SlidersHorizontal size={15} /> {t('settings')}</button></footer>
-    {showSettings && <SettingsModal settings={settings} onChange={onChangeSettings} onClose={onCloseSettings} />}
   </main>;
 }
-function SettingsModal({ settings, onChange, onClose }: any) {
-  const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
-  return <div className="modal-backdrop" dir={isAr? 'rtl' : 'ltr'}><div className="settings-modal"><div className="modal-head"><div><span className="section-kicker">{isAr? 'ضبط الطاولة' : 'Table Setup'}</span><h2>{isAr? 'إعدادات السرعة والبداية' : 'Speed & Start Settings'}</h2></div><button className="icon-btn" onClick={onClose}><X size={19} /></button></div>
-      <div className="setting-block"><label>🔴 {t('ball_speed', { speed: settings.ballSpeed })} <b style={{ color: '#ff2233' }}>{settings.ballSpeed} / 20</b></label><input className="range" type="range" min={1} max={20} value={settings.ballSpeed} onChange={(e) => onChange({ ballSpeed: Number(e.target.value) })} /><div className="range-labels"><span>1 {isAr? 'بطيء جداً' : 'Very Slow'}</span><span>20 {isAr? 'صاروخ' : 'Rocket'}</span></div></div>
-      <div className="setting-block"><label>📐 {isAr? 'حجم ساحة اللعبة' : 'Arena Size'}</label><div className="segmented">{(['small', 'medium', 'large', 'xlarge'] as ArenaSize[]).map((size) => <button key={size} className={settings.arenaSize === size? 'selected' : ''} onClick={() => onChange({ arenaSize: size })}>{size}</button>)}</div></div>
-      <div className="setting-block"><label>{isAr? 'بداية الكرة' : 'Ball Start'}</label><div className="segmented"><button className={settings.start === 'center'? 'selected' : ''} onClick={() => onChange({ start: 'center' })}>{isAr? 'من المنتصف' : 'Center'}</button><button className={settings.start === 'paddle'? 'selected' : ''} onClick={() => onChange({ start: 'paddle' })}>{isAr? 'من المضرب' : 'Paddle'}</button></div></div>
-      <div className="setting-block"><label>{isAr? 'طريقة الفوز' : 'Win Mode'}</label><div className="segmented"><button className={settings.mode === 'time'? 'selected' : ''} onClick={() => onChange({ mode: 'time' })}>{isAr? 'بالوقت' : 'By Time'}</button><button className={settings.mode === 'goals'? 'selected' : ''} onClick={() => onChange({ mode: 'goals' })}>{isAr? 'بالأهداف' : 'By Goals'}</button></div></div>
-      {settings.mode === 'time'? <div className="setting-block"><label>{isAr? 'مدة الجولة' : 'Duration'} <b>{settings.duration}s</b></label><input className="range" type="range" min={1} max={600} value={settings.duration} onChange={(e) => onChange({ duration: Number(e.target.value) })} /></div> : <div className="setting-block"><label>{isAr? `الفوز عند ${settings.goal}` : `Win at ${settings.goal}`}</label><input className="range" type="range" min={2} max={30} value={settings.goal} onChange={(e) => onChange({ goal: Number(e.target.value) })} /></div>}
-      <div className="setting-block"><label>{isAr? 'نمط السرعة' : 'Speed Mode'}</label><div className="segmented"><button className={settings.speed === 'gradual'? 'selected' : ''} onClick={() => onChange({ speed: 'gradual' })}><Gauge size={15} /> {isAr? 'متدرجة' : 'Gradual'}</button><button className={settings.speed === 'fixed'? 'selected' : ''} onClick={() => onChange({ speed: 'fixed' })}><Swords size={15} /> {isAr? 'ثابتة' : 'Fixed'}</button></div></div>
-      <div className="setting-toggle"><span><Volume2 size={17} /> {isAr? 'أصوات' : 'Sounds'}</span><button className={`toggle ${settings.sound? 'on' : ''}`} onClick={() => onChange({ sound:!settings.sound })}><i /></button></div>
-      <button className="primary-cta modal-done" onClick={onClose}><Check size={17} /> {isAr? 'حفظ' : 'Save'}</button>
-    </div></div>;
-}
+
 function WaitingRoom({ room, players, isHost, error, onBack, onStart, onRefresh }: any) {
   const [copied, setCopied] = useState(false); const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
   const copyCode = async () => { try { await navigator.clipboard.writeText(room); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
@@ -294,18 +301,19 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const angleMap: any = { bottom: 0, top: Math.PI, right: Math.PI/2, left: -Math.PI/2 };
   const myAngle = angleMap[mySide]?? 0;
   soundRef.current = sound; onTimeUpRef.current = onTimeUp; onGoalRef.current = onGoal; pausedRef.current = paused;
-  const playHit = useCallback((power:number)=>{
+  const audioCtxRef = useRef<AudioContext|null>(null);
+  const playHit = useCallback((power:number, xPos:number)=>{
     if(!soundRef.current) return;
     try{
-      const ctx = new (window.AudioContext||(window as any).webkitAudioContext)();
-      const t = ctx.currentTime;
-      const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.type='sine'; o.frequency.setValueAtTime(90+power*700,t); o.frequency.exponentialRampToValueAtTime(35,t+0.22);
-      g.gain.setValueAtTime(0.12+power*0.8,t); g.gain.exponentialRampToValueAtTime(0.01,t+0.3+power*0.2);
-      o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+0.35);
-      if(power>0.35){ const o2 = ctx.createOscillator(); const g2 = ctx.createGain(); o2.type=power>0.7?'square':'triangle'; o2.frequency.setValueAtTime(500+power*1800,t); g2.gain.setValueAtTime(0.18*power,t); g2.gain.exponentialRampToValueAtTime(0.01,t+0.15); o2.connect(g2).connect(ctx.destination); o2.start(t); o2.stop(t+0.18); }
+      if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
+      const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
+      const pan = Math.max(-1,Math.min(1,(xPos/world.w)*2-1));
+      const panner = ctx.createStereoPanner?.(); if(panner) panner.pan.value=pan;
+      const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(90+power*800,t); o.frequency.exponentialRampToValueAtTime(35,t+0.25); g.gain.setValueAtTime(0.15+power*0.85,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.45);
+      if(panner){ o.connect(g); g.connect(panner); panner.connect(ctx.destination);} else o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+0.45);
+      if(power>0.3){ const o2=ctx.createOscillator(), g2=ctx.createGain(); const p2=ctx.createStereoPanner?.(); if(p2) p2.pan.value=pan*0.8; o2.type=power>0.7?'square':'triangle'; o2.frequency.setValueAtTime(600+power*2000,t); g2.gain.setValueAtTime(0.22*power,t); g2.gain.exponentialRampToValueAtTime(0.001,t+0.18); if(p2){o2.connect(g2); g2.connect(p2); p2.connect(ctx.destination);} else o2.connect(g2).connect(ctx.destination); o2.start(t); o2.stop(t+0.2); }
     }catch{}
-  }, []);
+  },[world.w]);
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
   const getInitialSpeed = useCallback(() => 2.8 + settings.ballSpeed * 0.48, [settings.ballSpeed]);
   const stateRef = useRef({

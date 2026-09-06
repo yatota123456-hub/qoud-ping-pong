@@ -341,24 +341,24 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         let tz = target.z;
         if (mySide === 'top') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz + OFFSET, 45, world.h * 0.45);
+          const clampedZ = clamp(tz + OFFSET, 45, world.h * 0.32);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
         } else if (mySide === 'bottom') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, world.h * 0.55, world.h - 45);
+          const clampedZ = clamp(tz - OFFSET, world.h * 0.68, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
         } else if (mySide === 'left') {
-          const clampedX = clamp(tx + OFFSET, 45, world.w * 0.45);
+          const clampedX = clamp(tx + OFFSET, 45, world.w * 0.32);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
         } else if (mySide === 'right') {
-          const clampedX = clamp(tx - OFFSET, world.w * 0.55, world.w - 45);
+          const clampedX = clamp(tx - OFFSET, world.w * 0.68, world.w - 45);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
@@ -382,15 +382,15 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         if (data.side === 'top' || data.side === 'bottom') {
           stateRef.current.targetPaddles[data.side].x = clamp(data.x, 45, world.w - 45);
           if (data.z!== undefined) {
-            const minZ = data.side === 'top'? 45 : world.h*0.55;
-            const maxZ = data.side === 'top'? world.h*0.45 : world.h-45;
+            const minZ = data.side === 'top'? 45 : world.h*0.68;
+            const maxZ = data.side === 'top'? world.h*0.32 : world.h-45;
             stateRef.current.targetPaddles[data.side].z = clamp(data.z, minZ, maxZ);
           }
         } else if (data.side === 'left' || data.side === 'right') {
           if (data.z!== undefined) stateRef.current.targetPaddles[data.side].z = clamp(data.z, 45, world.h - 45);
           if (data.x!== undefined) {
-            const minX = data.side === 'left'? 45 : world.w*0.55;
-            const maxX = data.side === 'left'? world.w*0.45 : world.w-45;
+            const minX = data.side === 'left'? 45 : world.w*0.68;
+            const maxX = data.side === 'left'? world.w*0.32 : world.w-45;
             stateRef.current.targetPaddles[data.side].x = clamp(data.x, minX, maxX);
           } else {
             stateRef.current.targetPaddles[data.side].z = clamp(data.x, 45, world.h - 45);
@@ -524,32 +524,39 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
     const triggerHitEffect = (x: number, z: number, power: number, color: string) => {
       const p = Math.max(0, Math.min(1, power));
-      try {
-        if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const ctx = audioCtxRef.current;
-        if (ctx.state === 'suspended') ctx.resume();
-        const t = ctx.currentTime;
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = 'sine';
-        o.frequency.setValueAtTime(90 + p * 700, t);
-        o.frequency.exponentialRampToValueAtTime(35, t + 0.22);
-        g.gain.setValueAtTime(0.15 + p * 0.8, t);
-        g.gain.exponentialRampToValueAtTime(0.01, t + 0.3 + p * 0.25);
-        o.connect(g).connect(ctx.destination);
-        o.start(t); o.stop(t + 0.35);
-        if (p > 0.35) {
-          const o2 = ctx.createOscillator();
-          const g2 = ctx.createGain();
-          o2.type = p > 0.7? 'square' : 'triangle';
-          o2.frequency.setValueAtTime(500 + p * 1800, t);
-          o2.frequency.exponentialRampToValueAtTime(200, t + 0.12);
-          g2.gain.setValueAtTime(0.18 * p, t);
-          g2.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
-          o2.connect(g2).connect(ctx.destination);
-          o2.start(t); o2.stop(t + 0.18);
-        }
-      } catch {}
+      if (settings.sound) {
+        try {
+          if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const ctx = audioCtxRef.current;
+          if (ctx.state === 'suspended') ctx.resume();
+          const t = ctx.currentTime;
+          const panVal = Math.max(-1, Math.min(1, (x / world.w) * 2 - 1));
+          const panner = (ctx as any).createStereoPanner? (ctx as any).createStereoPanner() : null;
+          if (panner) panner.pan.value = panVal;
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.setValueAtTime(90 + p * 800, t);
+          o.frequency.exponentialRampToValueAtTime(35, t + 0.25);
+          g.gain.setValueAtTime(0.15 + p * 0.85, t);
+          g.gain.exponentialRampToValueAtTime(0.01, t + 0.4 + p * 0.25);
+          if (panner) { o.connect(g); g.connect(panner); panner.connect(ctx.destination); } else { o.connect(g).connect(ctx.destination); }
+          o.start(t); o.stop(t + 0.45);
+          if (p > 0.3) {
+            const o2 = ctx.createOscillator();
+            const g2 = ctx.createGain();
+            const p2 = (ctx as any).createStereoPanner? (ctx as any).createStereoPanner() : null;
+            if (p2) p2.pan.value = panVal * 0.8;
+            o2.type = p > 0.7? 'square' : 'triangle';
+            o2.frequency.setValueAtTime(600 + p * 2000, t);
+            o2.frequency.exponentialRampToValueAtTime(180, t + 0.15);
+            g2.gain.setValueAtTime(0.22 * p, t);
+            g2.gain.exponentialRampToValueAtTime(0.01, t + 0.18);
+            if (p2) { o2.connect(g2); g2.connect(p2); p2.connect(ctx.destination); } else o2.connect(g2).connect(ctx.destination);
+            o2.start(t); o2.stop(t + 0.2);
+          }
+        } catch {}
+      }
 
       if (!threeRef.current?.hitGroup) return;
       const group = threeRef.current.hitGroup;
@@ -624,30 +631,30 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               if (side === 'bottom') {
                 state.targetPaddles[side].x = clamp(predX, 55, world.w - 55);
                 if (state.ball.y > world.h * 0.5) {
-                  state.targetPaddles[side].z = clamp(predY, world.h * 0.6, world.h - 55);
+                  state.targetPaddles[side].z = clamp(predY, world.h * 0.68, world.h - 55);
                 } else {
-                  state.targetPaddles[side].z = clamp(world.h * 0.78, world.h * 0.6, world.h - 55);
+                  state.targetPaddles[side].z = clamp(world.h * 0.78, world.h * 0.68, world.h - 55);
                 }
               } else if (side === 'top') {
                 state.targetPaddles[side].x = clamp(predX, 55, world.w - 55);
                 if (state.ball.y < world.h * 0.5) {
-                  state.targetPaddles[side].z = clamp(predY, 55, world.h * 0.4);
+                  state.targetPaddles[side].z = clamp(predY, 55, world.h * 0.32);
                 } else {
-                  state.targetPaddles[side].z = clamp(world.h * 0.22, 55, world.h * 0.4);
+                  state.targetPaddles[side].z = clamp(world.h * 0.22, 55, world.h * 0.32);
                 }
               } else if (side === 'left') {
                 state.targetPaddles[side].z = clamp(predY, 55, world.h - 55);
                 if (state.ball.x < world.w * 0.5) {
-                  state.targetPaddles[side].x = clamp(predX, 55, world.w * 0.4);
+                  state.targetPaddles[side].x = clamp(predX, 55, world.w * 0.32);
                 } else {
-                  state.targetPaddles[side].x = clamp(world.w * 0.22, 55, world.w * 0.4);
+                  state.targetPaddles[side].x = clamp(world.w * 0.22, 55, world.w * 0.32);
                 }
               } else if (side === 'right') {
                 state.targetPaddles[side].z = clamp(predY, 55, world.h - 55);
                 if (state.ball.x > world.w * 0.5) {
-                  state.targetPaddles[side].x = clamp(predX, world.w * 0.6, world.w - 55);
+                  state.targetPaddles[side].x = clamp(predX, world.w * 0.68, world.w - 55);
                 } else {
-                  state.targetPaddles[side].x = clamp(world.w * 0.78, world.w * 0.6, world.w - 55);
+                  state.targetPaddles[side].x = clamp(world.w * 0.78, world.w * 0.68, world.w - 55);
                 }
               }
             }
@@ -762,8 +769,11 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           if (missed) {
             const realMissed = playerForSide(missed.side)?? missed;
             onGoal(realMissed);
+            const opposite: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
+            const scorerSide = opposite[missed.side] as Player['side'];
+            const scorer = playerForSide(scorerSide);
             state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
-            state.countdown = 3; state.countdownStart = now; state.countdownSide = missed.side;
+            state.countdown = 3; state.countdownStart = now; state.countdownSide = scorer? scorer.side : scorerSide;
             setCountdown(3); state.rally = 0; setRally(0);
             hasDraggedRef.current = false;
             noDragStartRef.current = now;
@@ -858,7 +868,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       {!hideUI && (
         <>
           <header className="game-topbar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', alignItems: 'center', zIndex: 10, background: '#0a0a0a', borderBottom: '1px solid #1a1a1a' }}>
-            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • HD</div>
+            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • HD • STEREO</div>
             <div className="match-meta" style={{ color: '#fff' }}><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | Rally: {rally}</div>
             <div className="game-actions" style={{ display: 'flex', gap: '6px' }}>
               <button className="game-icon" onClick={() => setShowCamMenu(v =>!v)} title={isAr? 'الكاميرا' : 'Camera'} style={{ background: showCamMenu? '#00e5ff' : '#111', color: showCamMenu? '#000' : '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>
@@ -895,7 +905,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-        {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px' }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1 }}>{countdown}</span><span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>{getNameForSide(stateRef.current.countdownSide)}</span></div>}
+        {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px' }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1 }}>{countdown}</span><span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>{getNameForSide(stateRef.current.countdownSide)} {isAr? 'سجل!' : 'Scored!'}</span></div>}
         {lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
         {showCamMenu &&!hideUI && (<div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b><button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (<button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k? '#111' : '#0a0a0a', color: currentPreset === k? '#00e5ff' : '#aaa', cursor: 'pointer' }}>{isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}</button>))}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}><div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div /><button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button><button onClick={resetCamera} style={{...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button><button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button><div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div /></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle }}><ZoomIn size={18} /> {isAr? 'قرب' : 'In'}</button><button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle }}><ZoomOut size={18} /> {isAr? 'بعد' : 'Out'}</button></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle }}><RotateCcw size={16} /> {isAr? 'يسار' : 'Left'}</button><button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle }}><RotateCw size={16} /> {isAr? 'يمين' : 'Right'}</button></div><button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}><EyeOff size={16} /> {isAr? 'اخفاء كل الازرار' : 'Hide All UI'}</button></div>)}
       </div>
