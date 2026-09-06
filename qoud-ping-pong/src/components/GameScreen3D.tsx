@@ -10,8 +10,8 @@ type Scores = Record<string | number, number>;
 
 function createAirHockeySurface(worldW: number, worldH: number) {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 1024;
+  canvas.width = 1024;
+  canvas.height = 2048;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   ctx.fillStyle = '#ffffff';
@@ -25,7 +25,7 @@ function createAirHockeySurface(worldW: number, worldH: number) {
     for (let x = spacingX / 2; x < canvas.width; x += spacingX) {
       const offset = (Math.floor(y / spacingY) % 2 === 0)? 0 : spacingX/2;
       ctx.beginPath();
-      ctx.arc(x + offset, y, 2.2, 0, Math.PI * 2);
+      ctx.arc(x + offset, y, 3.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -33,14 +33,17 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(worldW / 380, worldH / 380);
-  tex.anisotropy = 4;
+  tex.anisotropy = 16;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
   return tex;
 }
 
 function createNeonGradientTexture() {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 32;
+  canvas.width = 1024;
+  canvas.height = 64;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
@@ -55,10 +58,11 @@ function createNeonGradientTexture() {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
   return tex;
 }
 
-function buildRoundedRectPoints(w: number, h: number, r: number, segmentsPerCorner = 8) {
+function buildRoundedRectPoints(w: number, h: number, r: number, segmentsPerCorner = 16) {
   const pts: THREE.Vector3[] = [];
   const addArc = (cx: number, cz: number, a0: number, a1: number) => {
     for (let i = 0; i <= segmentsPerCorner; i++) {
@@ -119,9 +123,9 @@ function createArenaFrame(worldW: number, worldH: number) {
     group.add(mesh);
   });
   const neonRadius = Math.min(42, Math.min(worldW, worldH) * 0.065);
-  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, 12);
+  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, 16);
   const neonCurve = new THREE.CatmullRomCurve3(neonPts, true, 'catmullrom', 0.15);
-  const neonGeo = new THREE.TubeGeometry(neonCurve, 160, 6.5, 10, true);
+  const neonGeo = new THREE.TubeGeometry(neonCurve, 220, 6.5, 16, true);
   const neonTex = createNeonGradientTexture();
   const neonMat = new THREE.MeshStandardMaterial({
     map: neonTex || undefined,
@@ -137,9 +141,9 @@ function createArenaFrame(worldW: number, worldH: number) {
   const outerRadius = neonRadius + bezelThickness * 0.6;
   const outerW = worldW + bezelThickness * 0.8;
   const outerH = worldH + bezelThickness * 0.8;
-  const outerPts = buildRoundedRectPoints(outerW, outerH, outerRadius, 12);
+  const outerPts = buildRoundedRectPoints(outerW, outerH, outerRadius, 16);
   const outerCurve = new THREE.CatmullRomCurve3(outerPts.map(p => new THREE.Vector3(p.x - bezelThickness*0.4, 0, p.z - bezelThickness*0.4)), true, 'catmullrom', 0.15);
-  const outerGeo = new THREE.TubeGeometry(outerCurve, 160, 1.8, 6, true);
+  const outerGeo = new THREE.TubeGeometry(outerCurve, 220, 1.8, 12, true);
   const outerMat = new THREE.MeshBasicMaterial({
     map: neonTex || undefined,
     transparent: true,
@@ -262,11 +266,11 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       emissive: new THREE.Color(color),
       emissiveIntensity: 0.45
     });
-    const base = new THREE.Mesh(new THREE.TorusGeometry(24, 7, 16, 24), mat);
+    const base = new THREE.Mesh(new THREE.TorusGeometry(24, 7, 24, 32), mat);
     base.rotation.x = Math.PI / 2;
     base.position.y = 7;
     group.add(base);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(18, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(18, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), mat);
     dome.position.y = 14;
     group.add(dome);
     return group;
@@ -308,7 +312,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     if (dir === 'down') cam.current.targetHeight = Math.max(250, cam.current.targetHeight - 120);
   }, []);
 
-  // تم التعديل: مسك من تحت المضرب وليس عليه مباشرة
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -320,7 +323,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       if (!e.isPrimary ||!threeRef.current) return;
       const mySide = getMySide();
       const isTouch = (e as any).pointerType === 'touch' || (e as any).pointerType === 'pen';
-      const OFFSET = isTouch? 110 : 55; // الجوال يكون ابعد عشان يبين المضرب
+      const OFFSET = isTouch? 50 : 26;
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -428,10 +431,11 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     dir.position.set(200, 900, 300);
     scene.add(dir);
     const camera = new THREE.PerspectiveCamera(38, mount.clientWidth / mount.clientHeight, 10, 5000);
-    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", alpha: false, stencil: false, depth: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
     renderer.setSize(mount.clientWidth, mount.clientHeight);
-    renderer.setPixelRatio(1);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = false;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
     const tableGroup = new THREE.Group();
     const surfaceTexture = createAirHockeySurface(world.w, world.h);
@@ -442,7 +446,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     scene.add(tableGroup);
     const frame = createArenaFrame(world.w, world.h);
     scene.add(frame);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(12, 24, 24), new THREE.MeshStandardMaterial({ color: '#ff1a2e', emissive: '#ff0011', emissiveIntensity: 0.85 }));
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(12, 32, 32), new THREE.MeshStandardMaterial({ color: '#ff1a2e', emissive: '#ff0011', emissiveIntensity: 0.85 }));
     ball.position.y = 23;
     scene.add(ball);
     const paddles: Record<string, THREE.Group> = {};
@@ -464,6 +468,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     });
     ro.observe(mount);
     return () => {
@@ -819,7 +824,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       {!hideUI && (
         <>
           <header className="game-topbar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', alignItems: 'center', zIndex: 10, background: '#0a0a0a', borderBottom: '1px solid #1a1a1a' }}>
-            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • {players.length >= 3? (isAr? 'مربع' : 'Square') : (isAr? 'مستطيل' : 'Rect')}</div>
+            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • HD • 863</div>
             <div className="match-meta" style={{ color: '#fff' }}><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | Rally: {rally}</div>
             <div className="game-actions" style={{ display: 'flex', gap: '6px' }}>
               <button className="game-icon" onClick={() => setShowCamMenu(v =>!v)} title={isAr? 'الكاميرا' : 'Camera'} style={{ background: showCamMenu? '#00e5ff' : '#111', color: showCamMenu? '#000' : '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>
@@ -855,7 +860,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       <div ref={mountRef} style={{ width: '100%', flex: 1, borderRadius: '22px', overflow: 'hidden', position: 'relative', touchAction: 'none' }}>
         {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px' }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1 }}>{countdown}</span><span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>{getNameForSide(stateRef.current.countdownSide)}</span></div>}
         {lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
-        {showCamMenu &&!hideUI && (<div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b><button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (<button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k? '#111' : '#0a0a0a', color: currentPreset === k? '#00e5ff' : '#aaa', cursor: 'pointer' }}>{isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}</button>))}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}><div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div /><button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button><button onClick={resetCamera} style={{...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button><button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button><div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div /></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle }}><ZoomIn size={18} /> {isAr? 'قرب' : 'In'}</button><button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle }}><ZoomOut size={18} /> {isAr? 'بعد' : 'Out'}</button></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle }}><RotateCcw size={16} /> {isAr? 'يسار' : 'Left'}</button><button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle }}><RotateCw size={16} /> {isAr? 'يمين' : 'Right'}</button></div><button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}><EyeOff size={16} /> {isAr? 'اخفاء كل الازرار' : 'Hide All UI'}</button><small style={{ opacity: 0.5, fontSize: 10, textAlign: 'center' }}>{isAr? 'التحكم: اسحب في أي مكان تحت المضرب' : 'Drag anywhere below paddle'}</small></div>)}
+        {showCamMenu &&!hideUI && (<div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b><button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (<button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k? '#111' : '#0a0a0a', color: currentPreset === k? '#00e5ff' : '#aaa', cursor: 'pointer' }}>{isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}</button>))}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}><div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div /><button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button><button onClick={resetCamera} style={{...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button><button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button><div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div /></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle }}><ZoomIn size={18} /> {isAr? 'قرب' : 'In'}</button><button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle }}><ZoomOut size={18} /> {isAr? 'بعد' : 'Out'}</button></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle }}><RotateCcw size={16} /> {isAr? 'يسار' : 'Left'}</button><button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle }}><RotateCw size={16} /> {isAr? 'يمين' : 'Right'}</button></div><button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}><EyeOff size={16} /> {isAr? 'اخفاء كل الازرار' : 'Hide All UI'}</button></div>)}
       </div>
     </main>
   );

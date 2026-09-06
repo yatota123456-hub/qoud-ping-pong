@@ -468,7 +468,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     if (paused) return; if (isServing) { requestLaunch(); return; }
     (event.currentTarget as any).setPointerCapture?.(event.pointerId);
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 110 : 50;
+    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 180 : 90;
     let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
     hasDraggedRef.current=true; if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     drag.current = { side: mySide, x: tx, y: ty };
