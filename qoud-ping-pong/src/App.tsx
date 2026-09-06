@@ -574,18 +574,74 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
 }
 function formatTime(seconds: number) { return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`; }
 function ResultsScreen({ players, scores, winner, wins, onAgain, onHome }: any) {
-  const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
+  const { t, i18n } = useTranslation();
+  const isAr = i18n.language?.startsWith('ar')?? true;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [showFire, setShowFire] = useState(true);
   const sortedCurrent = [...players].sort((a:any,b:any)=>(scores[b.id]??0)-(scores[a.id]??0));
   const sortedAllTime = Object.entries(wins as Record<string,number>).sort((a:any,b:any)=>b[1]-a[1]).slice(0,20);
-  return <main className="app-shell results-shell" dir={isAr? 'rtl' : 'ltr'}>
+
+  useEffect(()=>{
+    // صوت جمهور + تصفير
+    try{
+      const ctx = new (window.AudioContext||(window as any).webkitAudioContext)();
+      const master = ctx.createGain(); master.gain.value=1.2; master.connect(ctx.destination);
+      // جمهور - ضوضاء وردية
+      const bufferSize = ctx.sampleRate*2; const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0);
+      for(let i=0;i<bufferSize;i++){ data[i]=(Math.random()*2-1)*0.5*Math.sin(Math.PI*i/bufferSize); }
+      const crowd = ctx.createBufferSource(); crowd.buffer=buffer; const gCrowd=ctx.createGain(); const f=ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=1200;
+      gCrowd.gain.setValueAtTime(0.9,ctx.currentTime); gCrowd.gain.exponentialRampToValueAtTime(0.4,ctx.currentTime+5);
+      crowd.connect(f).connect(gCrowd).connect(master); crowd.start();
+      // تصفير حكم
+      [0,0.35,0.7].forEach((d,i)=>{
+        const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(1800+i*200,t=>2000); o.frequency.linearRampToValueAtTime(2500,ctx.currentTime+d+0.25);
+        g.gain.setValueAtTime(0,ctx.currentTime+d); g.gain.linearRampToValueAtTime(0.9,ctx.currentTime+d+0.02); g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+d+0.4);
+        o.connect(g).connect(master); o.start(ctx.currentTime+d); o.stop(ctx.currentTime+d+0.45);
+      });
+      // نغمة فوز عالية
+      [523,659,783,1046].forEach((freq,i)=>{
+        const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='square'; o.frequency.value=freq;
+        g.gain.setValueAtTime(0,ctx.currentTime+i*0.12); g.gain.linearRampToValueAtTime(0.7,ctx.currentTime+i*0.12+0.02); g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+i*0.12+0.5);
+        o.connect(g).connect(master); o.start(ctx.currentTime+i*0.12); o.stop(ctx.currentTime+i*0.12+0.6);
+      });
+    }catch{}
+
+    // particles العاب نارية متساقطة
+    const canvas = canvasRef.current; if(!canvas) return; const c = canvas.getContext('2d'); if(!c) return;
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    const colors = ['#ffcf5a','#ff6b8b','#61e7c2','#00e5ff','#ff2d78','#ffffff'];
+    type P = {x:number,y:number,vx:number,vy:number,color:string,life:number,size:number};
+    let particles: P[] = Array.from({length:180},()=>({x:Math.random()*canvas.width, y:Math.random()*-canvas.height, vx:(Math.random()-0.5)*6, vy:Math.random()*6+3, color:colors[Math.floor(Math.random()*colors.length)], life:1, size:Math.random()*4+2}));
+    let raf=0; const start=performance.now();
+    const loop = (now:number)=>{
+      const elapsed = now-start; if(elapsed>5000){ setShowFire(false); return; }
+      c.clearRect(0,0,canvas.width,canvas.height);
+      particles.forEach(p=>{
+        p.x+=p.vx; p.y+=p.vy; p.vy+=0.08; p.life-=0.003;
+        c.fillStyle=p.color; c.globalAlpha=Math.max(0,p.life); c.beginPath(); c.arc(p.x,p.y,p.size,0,Math.PI*2); c.fill();
+        if(p.y>canvas.height){ p.y=-20; p.x=Math.random()*canvas.width; p.vy=Math.random()*4+2; }
+      });
+      c.globalAlpha=1; raf=requestAnimationFrame(loop);
+    };
+    raf=requestAnimationFrame(loop);
+    return ()=>cancelAnimationFrame(raf);
+  },[]);
+
+  return <main className="app-shell results-shell" dir={isAr? 'rtl' : 'ltr'} style={{position:'relative',overflow:'hidden'}}>
+    <style>{`@keyframes flash {0%{background:rgba(255,255,255,0)}10%{background:rgba(255,255,255,0.9)}20%{background:rgba(255,207,90,0.6)}30%{background:rgba(0,0,0,0)}100%{background:transparent}}`}</style>
+    {showFire&&<>
+      <div style={{position:'fixed',inset:0,background:'transparent',animation:'flash 0.6s ease 2',pointerEvents:'none',zIndex:20}}/>
+      <canvas ref={canvasRef} style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:15}}/>
+    </>}
     <header className="topbar"><Brand /></header>
-    <section style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap:16, padding: 16, minHeight:'100%' }}>
-      <div style={{ background: '#111', padding: 24, borderRadius: 24, textAlign: 'center', border: '2px solid #ffcf5a', width: '100%', maxWidth: 460 }}>
-        <h1 style={{ color: '#ffcf5a', fontSize: '2rem', marginBottom: 8 }}>🏆 {winner? `${winner.name} ${isAr? 'فاز!' : 'Wins!'}` : (isAr? 'انتهت' : 'Game Over')}</h1>
+    <section style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap:16, padding: 16, minHeight:'100%', position:'relative', zIndex:10 }}>
+      <div style={{ background: '#111', padding: 24, borderRadius: 24, textAlign: 'center', border: '2px solid #ffcf5a', width: '100%', maxWidth: 460, boxShadow: showFire?'0 0 40px #ffcf5a':'' }}>
+        <h1 style={{ color: '#ffcf5a', fontSize: '2.2rem', marginBottom: 8 }}>🏆 {winner? `${winner.name} ${isAr? 'فاز!' : 'Wins!'}` : (isAr? 'انتهت' : 'Game Over')}</h1>
+        {showFire&&<div style={{color:'#00e5ff',fontWeight:900,animation:'flash 0.5s infinite'}}>🎉 {isAr?'تصفيق الجمهور!':'Crowd Cheering!'} 🎉</div>}
         <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:16}}>
           <b style={{color:'#fff'}}>{isAr?'ترتيب هذه المباراة':'This Match Ranking'}</b>
           {sortedCurrent.map((p:any, idx:number)=>(
-            <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',background: idx===0?'#1a1a00':'#0a0a0a',border:`1px solid ${p.color}`,borderRadius:10,padding:'10px 12px'}}>
+            <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',background: idx===0?'#2a2200':'#0a0a0a',border:`1px solid ${p.color}`,borderRadius:10,padding:'10px 12px'}}>
               <div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontWeight:900,width:20}}>{idx+1}</span><span style={{width:10,height:10,borderRadius:'50%',background:p.color}}/><span style={{color:'#fff',fontWeight:700}}>{p.name}</span>{winner?.id===p.id&&<span>👑</span>}</div>
               <strong style={{color:p.color,fontSize:18}}>{scores[p.id]??0}</strong>
             </div>
@@ -602,11 +658,10 @@ function ResultsScreen({ players, scores, winner, wins, onAgain, onHome }: any) 
           {sortedAllTime.length===0&&<span style={{color:'#666'}}>{isAr?'لا يوجد فائزين بعد':'No winners yet'}</span>}
           {sortedAllTime.map(([name,count]:any, idx:number)=>(
             <div key={name} style={{display:'flex',justifyContent:'space-between',background:'#111',borderRadius:8,padding:'8px 12px'}}>
-              <span style={{color:'#fff'}}>{idx+1}. {name} {winner?.name===name&&' (آخر فائز)'}</span><b style={{color:'#ffcf5a'}}>{count} {isAr?'فوز':'wins'}</b>
+              <span style={{color:'#fff'}}>{idx+1}. {name}</span><b style={{color:'#ffcf5a'}}>{count} {isAr?'فوز':'wins'}</b>
             </div>
           ))}
         </div>
-        <button onClick={()=>{localStorage.removeItem('qoud-ping-pong-wins'); location.reload();}} style={{marginTop:12,background:'transparent',border:'1px solid #333',color:'#666',borderRadius:8,padding:'6px 10px',fontSize:12}}>{isAr?'مسح السجل':'Clear History'}</button>
       </div>
     </section>
   </main>;
