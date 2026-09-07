@@ -178,42 +178,48 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const SQUARE = { w: 1000, h: 1000 };
   const base = count >= 3? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
-  const scaleFactor = sc / ARENA_SCALES['small'];
+  // FIX: لا نرجع scaleFactor - الكاميرا ثابتة على S
+  const scaleFactor = 1; // ثابت لكل الأحجام
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor };
 }
 
 function getAdaptiveCameraPresets(world: {w:number,h:number,scaleFactor?:number}, arenaSize: string, isMobile: boolean) {
-  const ARENA_SCALES: any = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
-  const sc = ARENA_SCALES[arenaSize] || 1.0;
-  const scaleFactor = sc / ARENA_SCALES['small'];
+  // FIX: الكاميرا ثابتة مثل S لكل الأحجام - نفس الصورة الثانية
   const isMobileNow = isMobile || (typeof window !== 'undefined' && window.innerWidth < 768);
-  const mobileBoost = isMobileNow ? 1.45 : 1.0;
-  const baseDistanceMultiplier = scaleFactor * mobileBoost;
-  const baseHeightMultiplier = scaleFactor * (isMobileNow ? 1.3 : 1.0);
-  const adapt = (base: { distance: number; height: number }) => ({ distance: base.distance * baseDistanceMultiplier, height: base.height * baseHeightMultiplier });
+  const mobileBoost = isMobileNow ? 1.15 : 1.0; // قللنا البوست من 1.45 لـ 1.15 عشان ما تبعد كثير
+  // FIX: شلنا scaleFactor من الحساب
+  const baseDistanceMultiplier = mobileBoost; // كان: scaleFactor * mobileBoost
+  const baseHeightMultiplier = isMobileNow ? 1.1 : 1.0; // كان: scaleFactor * (isMobile?1.3:1.0)
+  
+  const adapt = (base: { distance: number; height: number }) => ({ 
+    distance: base.distance * baseDistanceMultiplier, 
+    height: base.height * baseHeightMultiplier 
+  });
+  
+  // هذه المسافات هي نفسها اللي تعطي وضعية S الممتازة في الصورة الثانية
   const basePresets = {
-    top: { angle: Math.PI, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
-    bottom: { angle: 0, distance: 1550, height: 1150, name: 'خلفك', nameEn: 'Behind You' },
-    topPlayer: { angle: Math.PI, distance: 650, height: 750, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
-    iso: { angle: 0.6, distance: 1250, height: 1050, name: 'مائل', nameEn: 'Isometric' },
-    sideLeft: { angle: -Math.PI / 2, distance: 1100, height: 600, name: 'يسار', nameEn: 'Left' },
-    sideRight: { angle: Math.PI / 2, distance: 1100, height: 600, name: 'يمين', nameEn: 'Right' },
+    top: { angle: Math.PI, distance: 400, height: 1400, name: 'من الأعلى', nameEn: 'Top View' },
+    bottom: { angle: 0, distance: 1050, height: 780, name: 'خلفك', nameEn: 'Behind You' }, // FIX: قللنا المسافة من 1550 لـ 1050 عشان تقرب مثل S
+    topPlayer: { angle: Math.PI, distance: 650, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+    iso: { angle: 0.6, distance: 850, height: 750, name: 'مائل', nameEn: 'Isometric' }, // FIX: قربنا أكثر
+    sideLeft: { angle: -Math.PI / 2, distance: 800, height: 500, name: 'يسار', nameEn: 'Left' },
+    sideRight: { angle: Math.PI / 2, distance: 800, height: 500, name: 'يمين', nameEn: 'Right' },
   };
   const adapted: any = {};
   for (const k in basePresets) {
     const b: any = (basePresets as any)[k]; const a = adapt(b);
-    adapted[k] = { ...b, distance: a.distance, height: a.height, baseDistance: b.distance, baseHeight: b.height, scaleFactor, isMobile: isMobileNow };
+    adapted[k] = { ...b, distance: a.distance, height: a.height, baseDistance: b.distance, baseHeight: b.height, scaleFactor: 1, isMobile: isMobileNow };
   }
   return adapted;
 }
 
 const CAM_PRESETS_3D_BASE = {
-  top: { angle: Math.PI, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
-  bottom: { angle: 0, distance: 1550, height: 1150, name: 'خلفك', nameEn: 'Behind You' },
-  topPlayer: { angle: Math.PI, distance: 650, height: 750, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
-  iso: { angle: 0.6, distance: 1250, height: 1050, name: 'مائل', nameEn: 'Isometric' },
-  sideLeft: { angle: -Math.PI / 2, distance: 1100, height: 600, name: 'يسار', nameEn: 'Left' },
-  sideRight: { angle: Math.PI / 2, distance: 1100, height: 600, name: 'يمين', nameEn: 'Right' },
+  top: { angle: Math.PI, distance: 400, height: 1400, name: 'من الأعلى', nameEn: 'Top View' },
+  bottom: { angle: 0, distance: 1050, height: 780, name: 'خلفك', nameEn: 'Behind You' },
+  topPlayer: { angle: Math.PI, distance: 650, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+  iso: { angle: 0.6, distance: 850, height: 750, name: 'مائل', nameEn: 'Isometric' },
+  sideLeft: { angle: -Math.PI / 2, distance: 800, height: 500, name: 'يسار', nameEn: 'Left' },
+  sideRight: { angle: Math.PI / 2, distance: 800, height: 500, name: 'يمين', nameEn: 'Right' },
 } as const;
 type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D_BASE;
 const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
@@ -238,7 +244,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
   const initialCam = useMemo(() => {
     const preset = (adaptivePresets as any).bottom;
-    return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: (world as any).scaleFactor || 1 };
+    return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: 1 };
   }, [world, adaptivePresets]);
 
   const cam = useRef({...initialCam });
@@ -467,7 +473,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     dir.position.set(200, 900, 300);
     scene.add(dir);
     const isMobileFov = mount.clientWidth < 768;
-    const fov = isMobileFov ? 58 : 38;
+    // FIX: FOV ثابت 50 لكل الأحجام عشان نفس القرب مثل S
+    const fov = isMobileFov ? 52 : 48;
     const camera = new THREE.PerspectiveCamera(fov, mount.clientWidth / mount.clientHeight, 10, 5000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
     renderer.setSize(mount.clientWidth, mount.clientHeight);
