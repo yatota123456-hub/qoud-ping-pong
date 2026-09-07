@@ -156,9 +156,9 @@ const resources = {
 };
 
 i18n
-  .use(LanguageDetector)
-  .use(initReactI18next)
-  .init({
+ .use(LanguageDetector)
+ .use(initReactI18next)
+ .init({
     resources,
     fallbackLng: 'ar',
     lng: localStorage.getItem('qoud_lang') || undefined,
@@ -169,13 +169,12 @@ i18n
     }
   });
 
-// حفظ اللغة - بدون Capacitor الآن
 i18n.on('languageChanged', (lng) => {
   localStorage.setItem('qoud_lang', lng);
-  document.documentElement.dir = lng.startsWith('ar') ? 'rtl' : 'ltr';
+  document.documentElement.dir = lng.startsWith('ar')? 'rtl' : 'ltr';
   document.documentElement.lang = lng;
 });
 
-document.documentElement.dir = i18n.language?.startsWith('ar') ? 'rtl' : 'ltr';
+document.documentElement.dir = i18n.language?.startsWith('ar')? 'rtl' : 'ltr';
 
 export default i18n;
