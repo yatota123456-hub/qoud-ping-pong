@@ -113,7 +113,6 @@ function App() {
     };
     const onGameStarted = () => { setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); setMatchKey((k) => k + 1); setScreen('game'); };
     const onMatchFinished = ({ winnerId, scores: serverScores }: any) => {
-      // اذا جت من السيرفر بعد الاحتفال، روح مباشرة للنتائج
       if (celebratingRef.current) {
         setScores(serverScores); setWinner(playersRef.current.find((p) => p.id === winnerId)?? celebratingRef.current); setScreen('results'); setCelebrating(null); setMatchPaused(false);
       } else {
@@ -177,11 +176,9 @@ function App() {
 
   const finishMatch = useCallback((champion: Player) => {
     if (celebratingRef.current) return;
-    console.log('FINISH MATCH - celebrating', champion.name);
     setCelebrating(champion);
     celebratingRef.current = champion;
     setMatchPaused(true);
-    // احتفال 8 ثواني فوق الساحة
     setTimeout(() => {
       setWinner(champion);
       setWins((current) => {
@@ -219,7 +216,6 @@ function App() {
       const updated = {...current }; updated[scorer.id] = (updated[scorer.id]?? 0) + 1;
       if (!isOffline && socket.connected) socket.emit('goal-scored', { missedSide: missed.side, scores: updated });
       if (settings.mode === 'goals' && (updated[scorer.id]?? 0) >= settings.goal) {
-        // مهم: نستدعي finishMatch بعد ما يتحدث الـ state
         setTimeout(() => finishMatch(scorer), 100);
       }
       return updated;
@@ -242,55 +238,171 @@ function App() {
 }
 
 function Brand() {
-  const { t } = useTranslation();
   return (
-    <div className="brand">
-      <span className="brand-mark"><span/><span/><span/><span/></span>
-      <span>QOUD</span>
-      <small>{t('brand_sub')}</small>
+    <div className="flex items-center gap-2">
+      <div className="w-9 h-9 bg-black text-[#f6f0d2] border-[2.5px] border-black rounded-[9px] grid place-items-center font-black text-[18px]">Q</div>
+      <div className="leading-none"><div className="font-black text-[18px] tracking-tight">QOUD</div><div className="text-[11px] font-bold -mt-1 opacity-70">LED TABLE • 42px</div></div>
     </div>
   );
 }
 
+// ===================== SETUP SCREEN - MATCHES SCREENSHOT EXACTLY =====================
 function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinName, computers, error, onChangeName, onChangeSettings, onToggleComputer, onJoinCodeChange, onJoin, onCreate }: any) {
   const { t, i18n } = useTranslation();
   const isAr = i18n.language?.startsWith('ar')?? true;
-  const [acc,setAcc]=useState('speed');
   return (
-    <main className="app-shell setup-shell" dir={isAr? 'rtl' : 'ltr'}>
-      <header className="topbar"><Brand /><div className="topbar-actions"><button className="icon-btn" onClick={() => i18n.changeLanguage(isAr? 'en' : 'ar')} style={{ fontWeight: 900, minWidth: 42 }}>{isAr? 'EN' : 'AR'}</button><span className="online-dot"><i /> {roomsCount} {isAr? 'غرفة متاحة' : 'rooms'}</span></div></header>
-      <section className="setup-grid">
-        <div className="setup-copy"><div className="eyebrow"><Zap size={14} /> Air LED Table</div><h1>{t('title_1')} <br /><em>{t('title_2')}</em></h1><p>{t('desc')}</p><div className="copy-stats"><span><strong>LED</strong><small>{isAr? 'نيون حقيقي' : 'Real Neon'}</small></span><span><strong>1-20</strong><small>{isAr? 'سرعة' : 'Speed'}</small></span><span><strong>🔴</strong><small>{isAr? 'كرة حمراء' : 'Red Ball'}</small></span></div>{error && <div style={{ background: '#ff6b8b', color: '#fff', padding: '12px', borderRadius: '10px', fontWeight: 700, marginTop: '12px' }}>{error}</div>}</div>
-        <div className="setup-card-wrap"><div className="setup-card">
-          <div style={{ background: '#0a0a0a', color: '#fff', padding: '16px', borderRadius: '14px', marginBottom: '16px', border: '2px solid #222' }}>
-            <div style={{ fontWeight: 900, fontSize: '14px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between' }}><span>🎮 {t('mode')}</span><span style={{ color: '#00e5ff' }}>LED TABLE • 42px</span></div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="button" onClick={() => onChangeSettings({ graphics: '2d' })} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: settings.graphics === '2d'? '2px solid #00e5ff' : '1px solid #333', background: settings.graphics === '2d'? '#111' : '#000', color: settings.graphics === '2d'? '#00e5ff' : '#888', fontWeight: 900 }}>2D LED</button>
-              <button type="button" onClick={() => onChangeSettings({ graphics: '3d' })} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: settings.graphics === '3d'? '2px solid #ff4081' : '1px solid #333', background: settings.graphics === '3d'? '#111' : '#000', color: settings.graphics === '3d'? '#ff4081' : '#888', fontWeight: 900 }}>3D LED</button>
+    <main className="min-h-screen w-full bg-[#e9dfb1] text-black flex justify-center py-3 px-2" dir={isAr? 'rtl' : 'ltr'}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@600;700&family=Space+Grotesk:wght@600;700&display=swap');
+        *{font-family: ${isAr? "'IBM Plex Sans Arabic', system-ui" : "'Space Grotesk', system-ui"} !important;}
+        input[type=range]{-webkit-appearance:none; appearance:none; height:34px; background:transparent;}
+        input[type=range]::-webkit-slider-runnable-track{height:14px; background:#fff; border:2.5px solid #000; border-radius:999px;}
+        input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:28px; height:28px; margin-top:-10px; background:#000; border:2.5px solid #000; border-radius:50%; box-shadow:0 0 0 2.5px #fff inset; cursor:pointer;}
+        @keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:translateY(0)}}
+      `}</style>
+      <div className="w-full max-w-[420px] flex flex-col gap-[14px]">
+        {/* Topbar like screenshot */}
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <button onClick={() => i18n.changeLanguage(isAr? 'en' : 'ar')} className="h-[34px] px-3 rounded-full border-[2.5px] border-black bg-white font-black text-[13px]">{isAr? 'EN' : 'عربي'}</button>
+            <span className="h-[34px] px-3 rounded-full border-[2.5px] border-black bg-white font-black text-[11px] flex items-center gap-1"><span className="w-2 h-2 bg-[#ff2d2d] rounded-full animate-pulse" />{roomsCount} غرفة</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-[34px] px-3 rounded-full border-[2.5px] border-black bg-black text-white font-black text-[11px] flex items-center">LED TABLE • 42px</span>
+            <Brand />
+          </div>
+        </div>
+
+        {/* Title like screenshot */}
+        <div className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px] text-center">
+          <div className="text-[10px] font-black tracking-widest opacity-60 mb-1">طاولة LED</div>
+          <h1 className="font-black text-[20px] leading-[1.1]">صمم مباراتك<br/>البطولية</h1>
+        </div>
+
+        {error && <div className="bg-[#ff2d2d] text-white border-[2.5px] border-black rounded-[14px] p-3 font-black text-[13px]">{error}</div>}
+
+        {/* Mode 2D/3D - exact like screenshot */}
+        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
+          <div className="grid grid-cols-2 gap-[10px]">
+            <button onClick={() => onChangeSettings({ graphics: '2d' })} className={`h-[46px] rounded-full border-[2.5px] border-black font-black text-[13px] ${settings.graphics==='2d'?'bg-black text-white':'bg-white'}`}>2D LED</button>
+            <button onClick={() => onChangeSettings({ graphics: '3d' })} className={`h-[46px] rounded-full border-[2.5px] border-black font-black text-[13px] ${settings.graphics==='3d'?'bg-black text-white':'bg-white'}`}>3D LED</button>
+          </div>
+          <div className="flex items-center justify-between mt-3">
+            <span className="font-black text-[13px]">عدد اللاعبين</span>
+            <div className="flex items-center gap-2 bg-black text-white rounded-full px-2 h-[32px] border-[2.5px] border-black">
+              <button onClick={() => onChangeSettings({ players: Math.min(4, settings.players + 1) })} className="w-6 h-6 grid place-items-center"><Plus size={14} /></button>
+              <span className="w-6 text-center font-black">{settings.players}</span>
+              <button onClick={() => onChangeSettings({ players: Math.max(2, settings.players - 1) })} className="w-6 h-6 grid place-items-center"><Minus size={14} /></button>
             </div>
           </div>
-          <div className="card-heading"><div><span className="section-kicker">{isAr? 'ابدأ الجولة' : 'Start Round'}</span><h2>{isAr? 'من حول الطاولة؟' : "Who's around?"}</h2></div></div>
-          <div className="player-count"><span>{t('players_count')}</span><div className="stepper"><button onClick={() => onChangeSettings({ players: Math.max(2, settings.players - 1) })}><Minus size={15} /></button><strong>{settings.players}</strong><button onClick={() => onChangeSettings({ players: Math.min(4, settings.players + 1) })}><Plus size={15} /></button></div></div>
-          <div className="name-list">{Array.from({ length: settings.players }, (_, index) => <div className="name-field" key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span className="player-dot" style={{ background: COLORS[index] }} /><input style={{ flex: 1 }} value={names[index]} onChange={(event) => onChangeName(index, event.target.value)} maxLength={14} /><span className="name-side">{[isAr? 'تحت' : 'Bottom', isAr? 'فوق' : 'Top', isAr? 'يمين' : 'Right', isAr? 'يسار' : 'Left'][index]}</span>{index > 0 && <button type="button" onClick={() => onToggleComputer(index)} style={{ border: '1px solid ' + (computers[index]? 'rgba(155,140,255,.5)' : 'rgba(97,231,194,.5)'), background: computers[index]? 'rgba(155,140,255,.15)' : 'rgba(97,231,194,.15)', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>{computers[index]? <><Monitor size={12} /> {isAr? 'كمبيوتر' : 'Computer'}</> : <><Gamepad2 size={12} /> {isAr? 'انسان' : 'Human'}</>}</button>}</div>)}</div>
-          <div className="mode-switch"><button className={settings.vsComputer? 'active' : ''} onClick={() => onChangeSettings({ vsComputer: true })}><Monitor size={16} /> {t('vs_computer')}</button><button className={!settings.vsComputer? 'active' : ''} onClick={() => onChangeSettings({ vsComputer: false })}><Gamepad2 size={16} /> {t('vs_friends')}</button></div>
-          <div style={{background:'#0a0a0a',border:'1px solid #222',borderRadius:12,overflow:'hidden',marginTop:12}}>
-            {[
-              {k:'speed',l:isAr?'🔴 السرعة':'Speed',c: <><div className="segmented" style={{marginBottom:10}}><button className={settings.speed==='gradual'?'selected':''} onClick={()=>onChangeSettings({speed:'gradual'})}>متدرجة</button><button className={settings.speed==='fixed'?'selected':''} onClick={()=>onChangeSettings({speed:'fixed'})}>ثابتة</button></div>{settings.speed==='fixed' && <><div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span>{isAr?'سرعة الكرة':'Ball Speed'}</span><b style={{color:'#00e5ff'}}>{settings.ballSpeed} / 20</b></div><input type="range" min={1} max={20} step={1} value={settings.ballSpeed} onChange={e=>onChangeSettings({ballSpeed:Number(e.target.value)})} style={{width:'100%'}}/></>}<div className="segmented" style={{marginTop:8}}><button className={settings.start==='center'?'selected':''} onClick={()=>onChangeSettings({start:'center'})}>من المنتصف</button><button className={settings.start==='paddle'?'selected':''} onClick={()=>onChangeSettings({start:'paddle'})}>من المضرب</button></div></>},
-              {k:'arena',l:isAr?'📐 حجم الساحة':'Arena',c:<div className="segmented">{(['small','medium','large','xlarge'] as any).map((s:any)=><button key={s} className={settings.arenaSize===s?'selected':''} onClick={()=>onChangeSettings({arenaSize:s})}>{s}</button>)}</div>},
-              {k:'win',l:isAr?'🏆 الفوز':'Win',c:<><div className="segmented"><button className={settings.mode==='time'?'selected':''} onClick={()=>onChangeSettings({mode:'time'})}>⏱</button><button className={settings.mode==='goals'?'selected':''} onClick={()=>onChangeSettings({mode:'goals'})}>🎯</button></div>{settings.mode==='time'?<><div style={{display:'flex',justifyContent:'space-between',margin:'10px 0 6px'}}><span>{isAr?'مدة المباراة':'Duration'}</span><b style={{color:'#ffcf5a'}}>{Math.floor(settings.duration/60)}:{String(settings.duration%60).padStart(2,'0')} / 30:00</b></div><input className="range" type="range" min={30} max={1800} step={30} value={settings.duration} onChange={e=>onChangeSettings({duration:Number(e.target.value)})} style={{width:'100%'}}/></>:<><div style={{display:'flex',justifyContent:'space-between',margin:'10px 0 6px'}}><span>{isAr?'عدد الأهداف للفوز':'Goals to win'}</span><b style={{color:'#ffcf5a'}}>{settings.goal} / 100</b></div><input className="range" type="range" min={2} max={100} step={1} value={settings.goal} onChange={e=>onChangeSettings({goal:Number(e.target.value)})} style={{width:'100%'}}/></>}</>},
-              {k:'sound',l:isAr?'🔊 الصوت':'Sound',c:<div className="setting-toggle"><span><Volume2 size={17}/> {isAr?'أصوات ستريو':'Stereo Sound'}</span><button className={`toggle ${settings.sound?'on':''}`} onClick={()=>onChangeSettings({sound:!settings.sound})}><i/></button></div>},
-            ].map(s=>(
-              <div key={s.k} style={{borderBottom:'1px solid #1a1a1a'}}><button onClick={()=>setAcc(acc===s.k?'':s.k)} style={{width:'100%',textAlign:'right',padding:'12px 14px',background:acc===s.k?'#111':'transparent',border:'none',color:'#fff',fontWeight:800,display:'flex',justifyContent:'space-between'}}><span>{s.l}</span><span>{acc===s.k?'−':'+'}</span></button>{acc===s.k&&<div style={{padding:'12px',background:'#111'}}>{s.c}</div>}</div>
+        </section>
+
+        {/* Players names like screenshot */}
+        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
+          <div className="flex items-center justify-between mb-3"><span className="bg-black text-white text-[10px] font-black px-2 py-1 rounded-full">PLAYERS {settings.players}</span><span className="font-black text-[12px]">من حول الطاولة؟</span></div>
+          <div className="flex flex-col gap-[8px]">
+            {Array.from({ length: settings.players }, (_, i) => (
+              <div key={i} className="flex gap-[8px] items-center">
+                <div className="w-[32px] h-[20px] rounded-full border-[2px] border-black bg-white flex items-center justify-between px-1">
+                  <div className="w-3 h-3 rounded-full" style={{background: i===0? '#fff' : COLORS[i], border: '1.5px solid #000'}} />
+                  <div className="w-3 h-3 rounded-full bg-black" />
+                </div>
+                <input value={names[i]} onChange={(e) => onChangeName(i, e.target.value)} className="flex-1 h-[38px] rounded-full border-[2px] border-black bg-white px-3 font-bold text-[13px] outline-none" />
+                <div className="w-6 h-6 rounded-full border-[2px] border-black grid place-items-center" style={{background: COLORS[i]}}><span className="text-[10px]">●</span></div>
+              </div>
             ))}
           </div>
-          <button className="primary-cta" onClick={onCreate} style={{marginTop:12}}><span>{t('create_room', { speed: settings.ballSpeed })}</span>{isAr? <ChevronLeft size={19} /> : <ChevronRight size={19} />}</button>
-          <div className="join-divider"><span>{isAr? 'أو انضم برمز' : 'Or join with code'}</span></div>
-          <div style={{ display: 'grid', gap: 8 }}>
-            <input placeholder={isAr? 'اكتب اسمك قبل الانضمام' : 'Your name before join'} value={joinName} onChange={(e) => { const v = e.target.value.slice(0, 15); setJoinName(v); localStorage.setItem('qoud_name', v); onChangeName(0, v); }} maxLength={15} style={{ height: 44, background: '#202630', border: '1px solid rgba(255,207,90,.55)', borderRadius: 10, color: '#fff', padding: '0 12px', fontWeight: 700 }} />
-            <div className="join-row"><input value={joinCode} onChange={(event) => onJoinCodeChange(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))} placeholder="BZYF" maxLength={4} dir="ltr" style={{ letterSpacing: '.2em', textAlign: 'center', fontWeight: 900 }} /><button onClick={() => onJoin(joinName)} disabled={joinCode.length!== 4 || joinName.trim().length < 2}><LogIn size={16} /> {isAr? `انضم كـ ${joinName || 'لاعب'}` : `Join as ${joinName || 'Player'}`}</button></div>
+          <div className="grid grid-cols-2 gap-[8px] mt-3">
+            <button onClick={() => onChangeSettings({ vsComputer: false })} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] ${!settings.vsComputer?'bg-black text-white':'bg-white'}`}>مع الأصدقاء</button>
+            <button onClick={() => onChangeSettings({ vsComputer: true })} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.vsComputer?'bg-black text-white':'bg-white'}`}>ضد الكمبيوتر</button>
           </div>
-        </div></div>
-      </section>
+        </section>
+
+        {/* Speed - 4 cards with icons EXACT like screenshot */}
+        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2"><span className="bg-[#ffcf5a] border-[2px] border-black rounded-full px-2 text-[10px] font-black">MODE 4</span><span className="font-black text-[13px]">السرعة</span></div>
+            <div className="w-5 h-5 rounded-full border-[2px] border-black bg-white grid place-items-center text-[10px] font-black">1</div>
+          </div>
+          <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
+            <button onClick={()=>onChangeSettings({speed:'fixed'})} className={`relative h-[96px] rounded-[14px] border-[2.5px] border-black overflow-hidden ${settings.speed==='fixed'?'bg-black':'bg-white'}`}>
+              <div className="absolute top-2 right-2 flex gap-1"><span className="w-2 h-2 rounded-full bg-[#ff2d2d]" /><span className="text-[9px] font-black px-1 rounded-full bg-white text-black border border-black">ثابتة</span></div>
+              <div className="absolute inset-0 grid place-items-center"><div className="w-[54px] h-[26px] rounded-[6px] bg-black border border-white flex items-center justify-center"><div className="w-[14px] h-[14px] rounded-full bg-[#ff2d2d] border-[2px] border-white" /></div></div>
+              {settings.speed==='fixed' && <div className="absolute top-1 left-1 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[10px] font-black">✓</div>}
+            </button>
+            <button onClick={()=>onChangeSettings({speed:'gradual'})} className={`relative h-[96px] rounded-[14px] border-[2.5px] border-black overflow-hidden ${settings.speed==='gradual'?'bg-black':'bg-white'}`}>
+              <div className="absolute top-2 right-2 text-[9px] font-black px-1 rounded-full bg-white text-black border border-black">متدرجة</div>
+              <svg viewBox="0 0 120 86" className="w-full h-full"><rect width="120" height="86" fill={settings.speed==='gradual'?'#111':'#fff9dc'} /><rect x="20" y="30" width="80" height="26" rx="6" fill="#000" stroke="#000" /><circle cx="60" cy="43" r="9" fill="#ff2d2d" opacity="0.25"/><circle cx="42" cy="43" r="7.5" fill="#ff2d2d" opacity="0.45"/><circle cx="27" cy="43" r="6" fill="#ff2d2d" opacity="0.65"/><circle cx="14" cy="43" r="4.5" fill="#ff2d2d" opacity="0.9"/></svg>
+              {settings.speed==='gradual' && <div className="absolute top-1 left-1 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[10px] font-black">✓</div>}
+            </button>
+            <button onClick={()=>onChangeSettings({start:'paddle'})} className={`relative h-[96px] rounded-[14px] border-[2.5px] border-black overflow-hidden ${settings.start==='paddle'?'bg-black':'bg-white'}`}>
+              <div className="absolute top-2 right-2 text-[9px] font-black px-1 rounded-full bg-white text-black border border-black">من المضرب</div>
+              <svg viewBox="0 0 120 86" className="w-full h-full"><rect width="120" height="86" fill={settings.start==='paddle'?'#111':'#fff9dc'} /><rect x="20" y="22" width="80" height="38" rx="8" fill="none" stroke={settings.start==='paddle'?'#fff':'#000'} strokeWidth="2"/><rect x="45" y="52" width="30" height="6" rx="3" fill={settings.start==='paddle'?'#fff':'#000'}/><circle cx="60" cy="44" r="6" fill="#ff2d2d" stroke="#000" strokeWidth="1.5"/></svg>
+              {settings.start==='paddle' && <div className="absolute top-1 left-1 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[10px] font-black">✓</div>}
+            </button>
+            <button onClick={()=>onChangeSettings({start:'center'})} className={`relative h-[96px] rounded-[14px] border-[2.5px] border-black overflow-hidden ${settings.start==='center'?'bg-black':'bg-white'}`}>
+              <div className="absolute top-2 right-2 text-[9px] font-black px-1 rounded-full bg-white text-black border border-black">من المنتصف</div>
+              <svg viewBox="0 0 120 86" className="w-full h-full"><rect width="120" height="86" fill={settings.start==='center'?'#111':'#fff9dc'} /><rect x="20" y="22" width="80" height="38" rx="8" fill="none" stroke={settings.start==='center'?'#fff':'#000'} strokeWidth="2"/><line x1="20" y1="40" x2="100" y2="40" stroke={settings.start==='center'?'#fff':'#000'} strokeWidth="1" strokeDasharray="3 3"/><circle cx="60" cy="40" r="6" fill="#ff2d2d" stroke="#000" strokeWidth="1.5"/></svg>
+              {settings.start==='center' && <div className="absolute top-1 left-1 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[10px] font-black">✓</div>}
+            </button>
+          </div>
+          {settings.speed==='fixed' && (
+            <div className="bg-white border-[2.5px] border-black rounded-[14px] p-[12px] animate-[fadeIn_.2s]">
+              <div className="flex justify-between mb-2"><span className="font-black text-[12px] flex items-center gap-1"><span className="w-2 h-2 bg-black rounded-full" /> سرعة الكرة</span><span className="font-black text-[11px] bg-black text-white px-2 rounded-full">{settings.ballSpeed} / 10 - 20</span></div>
+              <input type="range" min={1} max={20} value={settings.ballSpeed} onChange={e=>onChangeSettings({ballSpeed:Number(e.target.value)})} className="w-full" />
+              <div className="flex justify-between text-[10px] font-black opacity-60 mt-1"><span>بطيء</span><span>سريع</span></div>
+            </div>
+          )}
+        </section>
+
+        {/* Arena - S M L XL with icons */}
+        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
+          <div className="flex items-center justify-between mb-3"><span className="font-black text-[13px]">📐 حجم الساحة</span><div className="w-5 h-5 rounded-full border-[2px] border-black bg-white grid place-items-center text-[10px] font-black">2</div></div>
+          <div className="grid grid-cols-4 gap-[8px]">
+            <button onClick={()=>onChangeSettings({arenaSize:'small'})} className={`h-[38px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.arenaSize==='small'?'bg-black text-white':'bg-white'}`}>S</button>
+            <button onClick={()=>onChangeSettings({arenaSize:'medium'})} className={`h-[38px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.arenaSize==='medium'?'bg-black text-white':'bg-white'}`}>M</button>
+            <button onClick={()=>onChangeSettings({arenaSize:'large'})} className={`h-[38px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.arenaSize==='large'?'bg-black text-white':'bg-white'}`}>L</button>
+            <button onClick={()=>onChangeSettings({arenaSize:'xlarge'})} className={`h-[38px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.arenaSize==='xlarge'?'bg-black text-white':'bg-white'}`}>XL</button>
+          </div>
+        </section>
+
+        {/* Win - بدون كلمة بالوقت / بالأهداف */}
+        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
+          <div className="flex items-center justify-between mb-3"><span className="font-black text-[13px]">طريقة الفوز</span><div className="w-5 h-5 rounded-full border-[2px] border-black bg-white grid place-items-center text-[10px] font-black">3</div></div>
+          <div className="flex items-center justify-between bg-white border-[2px] border-black rounded-full h-[42px] px-2 mb-2">
+            <button onClick={()=>onChangeSettings({duration: Math.max(30, settings.duration-30)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Minus size={14} /></button>
+            <div className="flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-black text-white grid place-items-center text-[12px]">⏱</span><span className="font-black text-[14px] bg-black text-white px-2 rounded-full">{Math.floor(settings.duration/60)} - 3</span></div>
+            <button onClick={()=>onChangeSettings({duration: Math.min(1800, settings.duration+30)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Plus size={14} /></button>
+          </div>
+          <div className="flex items-center justify-between bg-white border-[2px] border-black rounded-full h-[42px] px-2">
+            <button onClick={()=>onChangeSettings({goal: Math.max(2, settings.goal-1)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Minus size={14} /></button>
+            <div className="flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-[#ffcf5a] border-[2px] border-black grid place-items-center text-[12px]">🎯</span><span className="font-black text-[14px] bg-black text-white px-2 rounded-full">{settings.goal} - 7</span></div>
+            <button onClick={()=>onChangeSettings({goal: Math.min(100, settings.goal+1)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Plus size={14} /></button>
+          </div>
+          <div className="grid grid-cols-2 gap-[8px] mt-3">
+            <button onClick={()=>onChangeSettings({mode:'time'})} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.mode==='time'?'bg-black text-white':'bg-white'}`}>⏱ وقت</button>
+            <button onClick={()=>onChangeSettings({mode:'goals'})} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.mode==='goals'?'bg-black text-white':'bg-white'}`}>🎯 أهداف</button>
+          </div>
+        </section>
+
+        <button onClick={onCreate} className="h-[56px] rounded-[18px] border-[2.5px] border-black bg-black text-[#f6f0d2] font-black text-[15px] active:scale-[0.98] transition">أنشئ غرفة و سرعة {settings.ballSpeed} • 50</button>
+        <div className="text-center text-[10px] font-black opacity-60">طاولة LED - تصميم البطولة</div>
+
+        <div className="grid grid-cols-3 gap-[8px]">
+          <div className="h-[38px] rounded-full border-[2px] border-black bg-white flex items-center justify-center gap-1 font-black text-[11px]"><span className="w-2 h-2 bg-[#ff2d2d] rounded-full" /> كود الغرفة</div>
+          <div className="h-[38px] rounded-full border-[2px] border-black bg-white flex items-center justify-center font-black text-[11px]">{settings.ballSpeed} / 20 سرعة</div>
+          <div className="h-[38px] rounded-full border-[2px] border-black bg-white flex items-center justify-center font-black text-[11px]">LED طاولة خشب</div>
+        </div>
+
+        <div className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
+          <div className="flex gap-[10px]">
+            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="flex-1 h-[42px] rounded-full border-[2px] border-black bg-white px-3 font-bold text-[13px]" />
+            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4))} placeholder="BZYF" className="w-[80px] h-[42px] rounded-full border-[2px] border-black bg-black text-white text-center font-black tracking-[0.2em]" />
+            <button onClick={()=>onJoin(joinName)} className="w-[42px] h-[42px] rounded-full border-[2px] border-black bg-[#ff2d2d] grid place-items-center text-white"><LogIn size={18} /></button>
+          </div>
+        </div>
+        <div className="h-6" />
+      </div>
     </main>
   );
 }
@@ -299,13 +411,16 @@ function WaitingRoom({ room, players, isHost, error, onBack, onStart, onRefresh 
   const [copied, setCopied] = useState(false); const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
   const copyCode = async () => { try { await navigator.clipboard.writeText(room); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
   return (
-    <main className="app-shell waiting-shell" dir={isAr? 'rtl' : 'ltr'}>
-      <header className="topbar"><Brand /><div className="topbar-actions"><button className="icon-btn" onClick={() => i18n.changeLanguage(isAr? 'en' : 'ar')} style={{ fontWeight: 900, minWidth: 42 }}>{isAr? 'EN' : 'AR'}</button><button className="icon-btn" onClick={onBack}><ArrowLeft size={18} /></button></div></header>
-      <section className="waiting-card"><div className="waiting-head"><div><h1>{t('waiting_title')}</h1><p>{t('waiting_desc')}</p></div><button className="room-code" onClick={copyCode} title={t('copy')}><span>{t('room_code')}</span><strong>{room}</strong><span className="copy-hint">{copied? t('copied') : t('copy')}</span></button></div>
-        {error && <div style={{ background: '#ff6b8b', color: '#fff', padding: '12px', borderRadius: '10px', fontWeight: 700, marginBottom: '12px' }}>{error}</div>}
-        <div className="waiting-players"><h3>{t('players')} • {players.length}</h3><div className="player-chips">{players.map((p: any, i: number) => <span key={p.id} className="player-chip" style={{ borderColor: COLORS[i] }}><span className="dot" style={{ background: COLORS[i] }} />{p.name}</span>)}</div><div className="waiting-note">{isHost? t('you_host') : t('you_joined')}</div></div>
-        <div className="waiting-actions"><button className="secondary-btn" onClick={onRefresh}>{isAr? 'تحديث' : 'Refresh'}</button>{isHost && <button className="primary-cta" onClick={onStart}><span>{t('start')}</span>{isAr? <ChevronLeft size={18} /> : <ChevronRight size={18} />}</button>}</div>
-      </section>
+    <main className="min-h-screen w-full bg-[#e9dfb1] flex justify-center p-3" dir={isAr? 'rtl' : 'ltr'}>
+      <div className="w-full max-w-[420px] flex flex-col gap-3">
+        <div className="flex justify-between"><Brand /><button onClick={onBack} className="w-9 h-9 rounded-full border-[2.5px] border-black bg-white grid place-items-center"><ArrowLeft size={18} /></button></div>
+        <div className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-4">
+          <div className="flex justify-between items-center"><h1 className="font-black text-[18px]">الكل جاهز؟</h1><button onClick={copyCode} className="border-[2.5px] border-black rounded-full px-3 h-8 bg-black text-white font-black text-[13px]">{room} {copied?'✓':'📋'}</button></div>
+          {error && <div className="mt-3 bg-[#ff2d2d] text-white border-[2.5px] border-black rounded-[12px] p-2 font-black text-[12px]">{error}</div>}
+          <div className="mt-3 flex flex-wrap gap-2">{players.map((p:any,i:number)=><span key={p.id} className="px-3 h-8 rounded-full border-[2.5px] border-black bg-white font-black text-[12px] flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{background: COLORS[i]}} />{p.name}</span>)}</div>
+          <div className="mt-4 flex gap-2"><button onClick={onRefresh} className="flex-1 h-[46px] rounded-[12px] border-[2.5px] border-black bg-white font-black">تحديث</button>{isHost && <button onClick={onStart} className="flex-1 h-[46px] rounded-[12px] border-[2.5px] border-black bg-black text-white font-black">ابدأ</button>}</div>
+        </div>
+      </div>
     </main>
   );
 }
@@ -341,7 +456,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   soundRef.current = sound; onTimeUpRef.current = onTimeUp; onGoalRef.current = onGoal; pausedRef.current = paused;
   useEffect(()=>{ celebratingRef.current = celebrating; },[celebrating]);
   const audioCtxRef = useRef<AudioContext|null>(null);
-
   const playHit = useCallback((power:number, xPos:number = world.w/2)=>{
     if(!soundRef.current) return;
     try{
@@ -350,7 +464,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(90+power*800,t); o.frequency.exponentialRampToValueAtTime(35,t+0.25); g.gain.setValueAtTime(0.15+power*0.85,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.45); o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+0.45);
     }catch{}
   },[world.w]);
-
   const playGoalSound = useCallback(()=>{
     if(!soundRef.current) return;
     try{
@@ -360,7 +473,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       [261,329,392,523,659].forEach((freq,i)=>{ const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='square'; o.frequency.setValueAtTime(freq,t+i*0.07); g.gain.setValueAtTime(0,t+i*0.07); g.gain.linearRampToValueAtTime(0.9,t+i*0.07+0.01); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.07+0.6); o.connect(g).connect(master); o.start(t+i*0.07); o.stop(t+i*0.07+0.7); });
     }catch{}
   },[]);
-
   const playCelebrationSound = useCallback(()=>{
     if(!soundRef.current) return;
     try{
@@ -373,7 +485,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       [523,659,783,1046].forEach((freq,i)=>{ const o=ctx.createOscillator(); const g2=ctx.createGain(); o.type='square'; o.frequency.value=freq; g2.gain.setValueAtTime(0,ctx.currentTime+i*0.15); g2.gain.linearRampToValueAtTime(0.8,ctx.currentTime+i*0.15+0.02); g2.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+i*0.15+0.6); o.connect(g2).connect(master); o.start(ctx.currentTime+i*0.15); o.stop(ctx.currentTime+i*0.15+0.7); });
     }catch{}
   },[]);
-
   useEffect(()=>{
     if(!celebrating) return;
     playCelebrationSound();
@@ -394,7 +505,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     raf=requestAnimationFrame(loop);
     return ()=>cancelAnimationFrame(raf);
   },[celebrating, playCelebrationSound]);
-
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
   const getInitialSpeed = useCallback(() => 2.8 + settings.ballSpeed * 0.48, [settings.ballSpeed]);
   const stateRef = useRef({
@@ -414,7 +524,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const dx = wx-world.w/2; const dy = wy-world.h/2;
     return { x: dx*cos - dy*sin + world.w/2, y: dx*sin + dy*cos + world.h/2 };
   }, [world, myAngle]);
-
   useEffect(() => {
     if (isOfflineMode) return;
     if (isHost) {
@@ -425,7 +534,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       socket.on('game-state', handleState); return () => { socket.off('game-state', handleState); };
     }
   }, [isHost, isOfflineMode]);
-
   useEffect(() => {
     const canvas = canvasRef.current; const arena = arenaRef.current; if (!canvas ||!arena) return; const context = canvas.getContext('2d'); if (!context) return; const state = stateRef.current;
     const launchBall = (fromPaddle = false) => {
@@ -449,7 +557,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2); state.last = now;
-      // لو فيه احتفال، نرسم فقط بدون تحديث
       if (celebratingRef.current) {
         draw(context, state, players, now, false, world, myAngle);
         frame = requestAnimationFrame(tick);
