@@ -822,14 +822,40 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           if (missed) { state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: missed.color, power: 0.9 }); playHit(0.9, state.ball.x); playGoalSound(); onGoalRef.current(playerForSide(missed.side)); resetBall(missed.side); }
           setRally(state.rally); socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
         } else {
+          // FIX: لاعب ثاني يضرب محليا حتى لو ليس هوست - لا شبح
           const lerp = 0.35 * delta;
           state.ball.x += (state.ballTarget.x - state.ball.x) * lerp;
           state.ball.y += (state.ballTarget.y - state.ball.y) * lerp;
+          // تنبؤ محلي لضربة اللاعب الثاني
+          if(active(mySide)){
+            const myPad = state.targetPaddles[mySide];
+            const dx = state.ball.x - myPad.x;
+            const dy = state.ball.y - myPad.y;
+            const dist = Math.sqrt(dx*dx+dy*dy);
+            if(dist <= HIT_DIST+10){
+              // ضربة محلية فورية للاعب الثاني
+              const cur = Math.hypot(state.ball.vx, state.ball.vy) || getInitialSpeed();
+              const newSpeed = cur*1.08 + BASE_BOOST + 2;
+              const nx = dx/(dist||1); const ny = dy/(dist||1);
+              state.ball.x = myPad.x + nx*(HIT_DIST+16);
+              state.ball.y = myPad.y + ny*(HIT_DIST+16);
+              if(mySide==='top' || mySide==='bottom'){
+                state.ball.vx = (dx/PADDLE_R)*7.5;
+                state.ball.vy = (mySide==='bottom'? -Math.abs(newSpeed) : Math.abs(newSpeed));
+              } else {
+                state.ball.vy = (dy/PADDLE_R)*7.5;
+                state.ball.vx = (mySide==='left'? Math.abs(newSpeed) : -Math.abs(newSpeed));
+              }
+              playHit(0.8, state.ball.x);
+              // اخبر الهوست بالضربة
+              socket.emit('paddle-input', { code: roomCode, side: mySide, x: myPad.x, y: myPad.y, hit: true });
+            }
+          }
         }
-        // ليرب المضارب للجميع - نفس السرعة لكل اللاعبين - لا شبح
+        // ليرب المضارب للجميع - نفس السرعة لكل اللاعبين - لا شبح - اسرع للاعب الثاني
         (['top','bottom','right','left'] as Player['side'][]).forEach(s => {
           if (!active(s)) return;
-          const f = 0.42 * delta; // نفس السرعة لكل اللاعبين
+          const f = (s===mySide?0.55:0.42) * delta; // لاعبك اسرع لتجنب الشبح
           state.paddles[s].x += (state.targetPaddles[s].x - state.paddles[s].x) * f;
           state.paddles[s].y += (state.targetPaddles[s].y - state.paddles[s].y) * f;
         });
