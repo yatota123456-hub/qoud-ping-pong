@@ -747,36 +747,71 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             if (servingRef.current.requested) { launchBall(true); servingRef.current.active = false; servingRef.current.requested = false; setIsServing(false); playHit(0.3, state.ball.x); }
             socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); draw(context, state, players, now, true, world, myAngle); frame = requestAnimationFrame(tick); return;
           }
+          // FIX: تصادم حقيقي لكل اللاعبين - لا شبح - نستخدم مسار الكرة كامل + targetPaddles
+          const prevBallX = state.ball.x;
+          const prevBallY = state.ball.y;
           state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
-          const r = 12; const PADDLE_R = 21; const HIT_DIST = PADDLE_R + r - 1;
+          const r = 14; const PADDLE_R = 26; const HIT_DIST = PADDLE_R + r + 12; // مسافة أكبر لكل اللاعبين
           const prevBottom = state.prevPaddles.bottom; const prevTop = state.prevPaddles.top; const prevLeft = state.prevPaddles.left; const prevRight = state.prevPaddles.right;
-          const velBottom: Vec2 = { x: state.paddles.bottom.x - prevBottom.x, y: state.paddles.bottom.y - prevBottom.y };
-          const velTop: Vec2 = { x: state.paddles.top.x - prevTop.x, y: state.paddles.top.y - prevTop.y };
-          const velLeft: Vec2 = { x: state.paddles.left.x - prevLeft.x, y: state.paddles.left.y - prevLeft.y };
-          const velRight: Vec2 = { x: state.paddles.right.x - prevRight.x, y: state.paddles.right.y - prevRight.y };
-          const THRUST = 6.0; const BASE_BOOST = 0.8; const PADDLE_POWER = 1.9;
+          const velBottom: Vec2 = { x: state.targetPaddles.bottom.x - prevBottom.x, y: state.targetPaddles.bottom.y - prevBottom.y };
+          const velTop: Vec2 = { x: state.targetPaddles.top.x - prevTop.x, y: state.targetPaddles.top.y - prevTop.y };
+          const velLeft: Vec2 = { x: state.targetPaddles.left.x - prevLeft.x, y: state.targetPaddles.left.y - prevLeft.y };
+          const velRight: Vec2 = { x: state.targetPaddles.right.x - prevRight.x, y: state.targetPaddles.right.y - prevRight.y };
+          const THRUST = 6.5; const BASE_BOOST = 1.0; const PADDLE_POWER = 2.2;
           if (!active('top') && state.ball.y - r < 22) { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy) * 1.1; playHit(0.15, state.ball.x); }
           if (!active('bottom') && state.ball.y + r > world.h - 22) { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy) * 1.1; playHit(0.15, state.ball.x); }
           if (!active('left') && state.ball.x - r < 22) { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx) * 1.1; playHit(0.15, state.ball.x); }
           if (!active('right') && state.ball.x + r > world.w - 22) { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx) * 1.1; playHit(0.15, state.ball.x); }
+          // helper: اقرب نقطة على قطعة مستقيمة
+          const closestPointOnSegment = (px:number,py:number, ax:number,ay:number, bx:number,by:number) => {
+            const abx = bx-ax; const aby = by-ay; const apx = px-ax; const apy = py-ay;
+            const ab2 = abx*abx+aby*aby; if(ab2===0) return {x:ax,y:ay,dist:Math.hypot(px-ax,py-ay)};
+            let t = (apx*abx+apy*aby)/ab2; t = Math.max(0,Math.min(1,t));
+            const cx = ax+t*abx; const cy = ay+t*aby;
+            return {x:cx,y:cy,dist:Math.hypot(px-cx,py-cy), t};
+          };
           const checkHit = (side: Player['side'], vel: Vec2)=>{
-            const dx = state.ball.x - state.paddles[side].x; const dy = state.ball.y - state.paddles[side].y; const dist = Math.sqrt(dx*dx+dy*dy);
-            if(dist <= HIT_DIST+14 && dist>=0.5){
-              const nx = dx/dist; const ny = dy/dist;
+            // نستخدم targetPaddles لأنه أسرع وأدق لكل اللاعبين
+            const pad = state.targetPaddles[side];
+            // فحص مسار الكرة من prev الى current ضد دائرة المضرب
+            const closest = closestPointOnSegment(pad.x, pad.y, prevBallX, prevBallY, state.ball.x, state.ball.y);
+            const dxDirect = state.ball.x - pad.x; const dyDirect = state.ball.y - pad.y; const distDirect = Math.sqrt(dxDirect*dxDirect+dyDirect*dyDirect);
+            const hitDist = closest.dist <= HIT_DIST || distDirect <= HIT_DIST;
+            if(hitDist){
+              const useDx = closest.dist <= HIT_DIST ? (closest.x - pad.x) : dxDirect;
+              const useDy = closest.dist <= HIT_DIST ? (closest.y - pad.y) : dyDirect;
+              let dist = Math.sqrt(useDx*useDx+useDy*useDy); if(dist<0.5) dist=0.5;
+              const nx = (distDirect <= HIT_DIST ? dxDirect/distDirect : (state.ball.x-pad.x)/Math.max(1,Math.hypot(state.ball.x-pad.x,state.ball.y-pad.y)));
+              const ny = (distDirect <= HIT_DIST ? dyDirect/distDirect : (state.ball.y-pad.y)/Math.max(1,Math.hypot(state.ball.x-pad.x,state.ball.y-pad.y)));
+              // اذا قريب من المسار، نستخدم نرمال المسار
+              const finalNx = closest.dist <= HIT_DIST ? (state.ball.x - pad.x)/Math.max(0.5, Math.hypot(state.ball.x-pad.x, state.ball.y-pad.y)) : nx;
+              const finalNy = closest.dist <= HIT_DIST ? (state.ball.y - pad.y)/Math.max(0.5, Math.hypot(state.ball.x-pad.x, state.ball.y-pad.y)) : ny;
               const cur = Math.hypot(state.ball.vx, state.ball.vy) || getInitialSpeed();
               let forward=0; if(side==='bottom') forward=-vel.y; if(side==='top') forward=vel.y; if(side==='left') forward=vel.x; if(side==='right') forward=-vel.x;
               const speed = Math.hypot(vel.x, vel.y);
-              const hitPower = Math.min(1, forward*0.12 + speed*0.08 + 0.15);
-              const powerMult = forward>0.5? 1+Math.min(forward*0.12,0.7) : 0.85;
-              const newSpeed = cur*1.05 + BASE_BOOST + Math.max(0,forward)*THRUST + settings.ballSpeed*0.15;
-              state.ball.x = state.paddles[side].x + nx*(HIT_DIST+10); state.ball.y = state.paddles[side].y + ny*(HIT_DIST+10);
-              state.speedMult = Math.min(2.8, (state.speedMult||1)*1.14); state.rally++;
-              if(side==='top' || side==='bottom'){ state.ball.vx = (dx/PADDLE_R)*6.2 + vel.x*PADDLE_POWER; state.ball.vy = (side==='bottom'? -Math.abs(newSpeed) : Math.abs(newSpeed))*powerMult; }
-              else { state.ball.vy = (dy/PADDLE_R)*6.2 + vel.y*PADDLE_POWER; state.ball.vx = (side==='left'? Math.abs(newSpeed) : -Math.abs(newSpeed))*powerMult; }
+              const hitPower = Math.min(1, forward*0.15 + speed*0.1 + 0.25);
+              const powerMult = forward>0.3? 1+Math.min(forward*0.15,0.8) : 0.9;
+              const newSpeed = cur*1.08 + BASE_BOOST + Math.max(0,forward)*THRUST + settings.ballSpeed*0.18;
+              // ابعد الكرة فورا خارج المضرب
+              state.ball.x = pad.x + finalNx*(HIT_DIST+14); state.ball.y = pad.y + finalNy*(HIT_DIST+14);
+              state.speedMult = Math.min(2.9, (state.speedMult||1)*1.16); state.rally++;
+              if(side==='top' || side==='bottom'){
+                const angleFactor = (state.ball.x - pad.x)/PADDLE_R;
+                state.ball.vx = angleFactor*7.5 + vel.x*PADDLE_POWER;
+                state.ball.vy = (side==='bottom'? -Math.abs(newSpeed) : Math.abs(newSpeed))*powerMult;
+              } else {
+                const angleFactor = (state.ball.y - pad.y)/PADDLE_R;
+                state.ball.vy = angleFactor*7.5 + vel.y*PADDLE_POWER;
+                state.ball.vx = (side==='left'? Math.abs(newSpeed) : -Math.abs(newSpeed))*powerMult;
+              }
               playHit(hitPower, state.ball.x); state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: COLORS[SIDES.indexOf(side)], power: hitPower });
             }
           };
-          if(active('top')) checkHit('top', velTop); if(active('bottom')) checkHit('bottom', velBottom); if(active('left')) checkHit('left', velLeft); if(active('right')) checkHit('right', velRight);
+          // نفس الطريقة لكل اللاعبين - لا فرق بين لاعب 1 و 2 و 3 و 4
+          if(active('top')) checkHit('top', velTop); 
+          if(active('bottom')) checkHit('bottom', velBottom); 
+          if(active('left')) checkHit('left', velLeft); 
+          if(active('right')) checkHit('right', velRight);
           const maxSpd = 7 + settings.ballSpeed * 0.85 + state.rally * 0.55; state.ball.vx = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vx)); state.ball.vy = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vy));
           state.prevPaddles = { top: { x: state.paddles.top.x, y: state.paddles.top.y }, bottom: { x: state.paddles.bottom.x, y: state.paddles.bottom.y }, left: { x: state.paddles.left.x, y: state.paddles.left.y }, right: { x: state.paddles.right.x, y: state.paddles.right.y }, };
           const GOAL_W = players.length === 2? 260 : 300; const GOAL_X1 = (world.w - GOAL_W) / 2; const GOAL_X2 = GOAL_X1 + GOAL_W; const GOAL_Y1 = (world.h - GOAL_W) / 2; const GOAL_Y2 = GOAL_Y1 + GOAL_W; const inGoalX = (x: number) => x >= GOAL_X1 && x <= GOAL_X2; const inGoalY = (y: number) => y >= GOAL_Y1 && y <= GOAL_Y2; let missed: Player | undefined;
@@ -791,10 +826,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           state.ball.x += (state.ballTarget.x - state.ball.x) * lerp;
           state.ball.y += (state.ballTarget.y - state.ball.y) * lerp;
         }
-        // ليرب المضارب للجميع - سلس بدون تقطيع
+        // ليرب المضارب للجميع - نفس السرعة لكل اللاعبين - لا شبح
         (['top','bottom','right','left'] as Player['side'][]).forEach(s => {
           if (!active(s)) return;
-          const f = (s===mySide?0.38:0.22) * delta;
+          const f = 0.42 * delta; // نفس السرعة لكل اللاعبين
           state.paddles[s].x += (state.targetPaddles[s].x - state.paddles[s].x) * f;
           state.paddles[s].y += (state.targetPaddles[s].y - state.paddles[s].y) * f;
         });
@@ -827,7 +862,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     if (paused || celebrating) return; if (isServing) { requestLaunch(); return; }
     (event.currentTarget as any).setPointerCapture?.(event.pointerId);
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    // FIX: تحريك من تحت وليس عليه بالضبط - ازاحة كبيرة وواضحة
+    // FIX: تحريك من تحت 110px + نفس التصادم لكل اللاعبين
     const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 110 : 50;
     let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
     hasDraggedRef.current=true; if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
@@ -837,7 +872,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (!drag.current.side) return;
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    // FIX: تحريك من تحت وليس عليه بالضبط
+    // FIX: تحريك من تحت 110px
     const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 110 : 50;
     let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
     drag.current.x = tx; drag.current.y = ty;

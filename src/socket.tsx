@@ -25,11 +25,11 @@ class ColyseusBridge {
     if (!this.room) return false;
     const now = Date.now();
     if (event === 'paddle-input') {
-      if (now - this.lastPaddleEmit < 16) return true; // 60fps
+      if (now - this.lastPaddleEmit < 16) return true; // 60fps - تحريك من تحت سلس
       this.lastPaddleEmit = now;
     }
     if (event === 'game-state') {
-      if (now - this.lastBallEmit < 16) return true; // لا ترسل اكثر من 60fps
+      if (now - this.lastBallEmit < 16) return true; // كرة سلسة بدون تقطيع
       this.lastBallEmit = now;
     }
     this.room.send(event, payload);
