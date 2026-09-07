@@ -191,7 +191,7 @@ const CAM_PRESETS_3D = {
 } as const;
 type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D;
 
-export function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, paused, onGoal, onTimeUp, onPause, onExit }: { roomCode: string; isHost: boolean; players: Player[]; settings: Settings; scores: Scores; lastGoal: string | null; paused: boolean; onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; }) {
+export function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, paused,celebrating, onGoal, onTimeUp, onPause, onExit }: { roomCode: string; isHost: boolean; players: Player[]; settings: Settings; scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null; onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; }) {
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
   const hintDotRef = useRef<HTMLDivElement>(null);
