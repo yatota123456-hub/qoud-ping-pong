@@ -161,7 +161,7 @@ function createArenaFrame(worldW: number, worldH: number) {
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
   goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2);
   group.add(goalBottom);
-  if (worldW >= 1100) {
+  if (worldW >= 900) {
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
     goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
     group.add(goalLeft);
@@ -181,28 +181,19 @@ function getArenaWorld(count: number, size: any = 'medium') {
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
 }
 
-// FIX V2: كل حجم له مسافة مضبوطة - نفس الزاوية، أبعد شوي كل ما كبر
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
   const isMobileNow = isMobile || (typeof window !== 'undefined' && window.innerWidth < 768);
-  
-  // مسافات مضبوطة لكل حجم - مجربة على الصور اللي أرسلتها
-  // S كان ممتاز، M معقول لكن نبيه أبعد شوي، L و XL كانوا قريبين زيادة
   const PRESET_BY_SIZE: any = {
-    small:  { distance: 1180, height: 820 },   // S: ممتاز - نفس الصورة الثانية
-    medium: { distance: 1380, height: 900 },   // M: أبعد شوي من قبل (كان 1050) - طلبك
-    large:  { distance: 1580, height: 980 },   // L: أبعد من قبل (كان 1050) عشان ما يقص
-    xlarge: { distance: 1780, height: 1060 },   // XL: أبعد أكثر
+    small:  { distance: 1180, height: 820 },
+    medium: { distance: 1380, height: 900 },
+    large:  { distance: 1580, height: 980 },
+    xlarge: { distance: 1780, height: 1060 },
   };
-  
   const base = PRESET_BY_SIZE[arenaSize] || PRESET_BY_SIZE.medium;
-  
-  // بوست الموبايل خفيف فقط
   const mobileBoost = isMobileNow ? 1.12 : 1.0;
   const heightBoost = isMobileNow ? 1.08 : 1.0;
-  
   const distance = base.distance * mobileBoost;
   const height = base.height * heightBoost;
-  
   const basePresets = {
     top: { angle: Math.PI, distance: 400, height: 1400, name: 'من الأعلى', nameEn: 'Top View' },
     bottom: { angle: 0, distance: distance, height: height, name: 'خلفك', nameEn: 'Behind You' },
@@ -211,7 +202,6 @@ function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string,
     sideLeft: { angle: -Math.PI / 2, distance: 800, height: 500, name: 'يسار', nameEn: 'Left' },
     sideRight: { angle: Math.PI / 2, distance: 800, height: 500, name: 'يمين', nameEn: 'Right' },
   };
-  
   const adapted: any = {};
   for (const k in basePresets) {
     const b: any = (basePresets as any)[k];
@@ -231,7 +221,7 @@ const CAM_PRESETS_3D_BASE = {
 type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D_BASE;
 const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
 
-export function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, paused,celebrating, onGoal, onTimeUp, onPause, onExit }: { roomCode: string; isHost: boolean; players: Player[]; settings: Settings; scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null; onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; }) {
+export function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating, onGoal, onTimeUp, onPause, onExit }: { roomCode: string; isHost: boolean; players: Player[]; settings: Settings; scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null; onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; }) {
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
   const hintDotRef = useRef<HTMLDivElement>(null);
@@ -249,10 +239,17 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
   const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
   const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
+
+  const getMySide = useCallback((): Player['side'] => {
+    return (players.find((p) => p.socketId === socket.id)?.side?? players[0]?.side?? 'bottom') as Player['side'];
+  }, [players]);
+
+  const mySideForCam = getMySide();
   const initialCam = useMemo(() => {
-    const preset = (adaptivePresets as any).bottom;
+    const sideKey = mySideForCam === 'top'? 'topPlayer' : mySideForCam === 'left'? 'sideLeft' : mySideForCam === 'right'? 'sideRight' : 'bottom';
+    const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
     return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: 1 };
-  }, [world, adaptivePresets]);
+  }, [world, adaptivePresets, mySideForCam]);
 
   const cam = useRef({...initialCam });
   const threeRef = useRef<any>(null);
@@ -261,6 +258,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   const shakeRef = useRef({ intensity: 0 });
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
+    ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
     paddles: {
       top: { x: world.w / 2, z: 52 },
       right: { x: world.w - 52, z: world.h / 2 },
@@ -297,10 +295,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
 
   const getInitialSpeed = useCallback(() => 6 + settings.ballSpeed * 0.5, [settings.ballSpeed]);
 
-  const getMySide = useCallback((): Player['side'] => {
-    return (players.find((p) => p.socketId === socket.id)?.side?? players[0]?.side?? 'bottom') as Player['side'];
-  }, [players]);
-
   const isOfflineMode =!socket.connected || players.length <= 1;
 
   const createHatPaddle = useCallback((color: string) => {
@@ -323,7 +317,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   }, []);
 
   const resetCamera = useCallback(() => {
-    const preset = (adaptivePresets as any).bottom;
+    const sideKey = getMySide() === 'top'? 'topPlayer' : getMySide() === 'left'? 'sideLeft' : getMySide() === 'right'? 'sideRight' : 'bottom';
+    const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
     cam.current = {
       angle: preset.angle,
       targetAngle: preset.angle,
@@ -336,8 +331,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       lookX: world.w / 2,
       lookZ: world.h / 2
     };
-    setCurrentPreset('bottom');
-  }, [world, adaptivePresets]);
+    setCurrentPreset(sideKey as any);
+  }, [world, adaptivePresets, getMySide]);
 
   const applyPreset = useCallback((key: Cam3DPresetKey) => {
     const p = (adaptivePresets as any)[key];
@@ -359,6 +354,10 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   }, []);
 
   useEffect(() => {
+    cam.current = {...initialCam};
+  }, [initialCam]);
+
+  useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
     const raycaster = new THREE.Raycaster();
@@ -371,8 +370,9 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       if(hintDotRef.current) hintDotRef.current.style.display='none';
       if(hintTextRef.current) hintTextRef.current.style.display='none';
       const mySide = getMySide();
+      // FIX: تحريك من تحت وليس عليه بالضبط - ازاحة كبيرة
       const isTouch = (e as any).pointerType === 'touch' || (e as any).pointerType === 'pen';
-      const OFFSET = isTouch? 75 : 40;
+      const OFFSET = isTouch? 110 : 55;
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -383,24 +383,24 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         let tz = target.z;
         if (mySide === 'top') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz + OFFSET, 45, world.h * 0.32);
+          const clampedZ = clamp(tz + OFFSET, 45, world.h * 0.38);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
         } else if (mySide === 'bottom') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, world.h * 0.68, world.h - 45);
+          const clampedZ = clamp(tz - OFFSET, world.h * 0.62, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
         } else if (mySide === 'left') {
-          const clampedX = clamp(tx + OFFSET, 45, world.w * 0.32);
+          const clampedX = clamp(tx + OFFSET, 45, world.w * 0.38);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode &&!isHost) socket.emit('paddle-input', { code: roomCode, side: mySide, x: clampedX, z: clampedZ });
         } else if (mySide === 'right') {
-          const clampedX = clamp(tx - OFFSET, world.w * 0.68, world.w - 45);
+          const clampedX = clamp(tx - OFFSET, world.w * 0.62, world.w - 45);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
@@ -424,15 +424,15 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         if (data.side === 'top' || data.side === 'bottom') {
           stateRef.current.targetPaddles[data.side].x = clamp(data.x, 45, world.w - 45);
           if (data.z!== undefined) {
-            const minZ = data.side === 'top'? 45 : world.h*0.68;
-            const maxZ = data.side === 'top'? world.h*0.32 : world.h-45;
+            const minZ = data.side === 'top'? 45 : world.h*0.62;
+            const maxZ = data.side === 'top'? world.h*0.38 : world.h-45;
             stateRef.current.targetPaddles[data.side].z = clamp(data.z, minZ, maxZ);
           }
         } else if (data.side === 'left' || data.side === 'right') {
           if (data.z!== undefined) stateRef.current.targetPaddles[data.side].z = clamp(data.z, 45, world.h - 45);
           if (data.x!== undefined) {
-            const minX = data.side === 'left'? 45 : world.w*0.68;
-            const maxX = data.side === 'left'? world.w*0.32 : world.w-45;
+            const minX = data.side === 'left'? 45 : world.w*0.62;
+            const maxX = data.side === 'left'? world.w*0.38 : world.w-45;
             stateRef.current.targetPaddles[data.side].x = clamp(data.x, minX, maxX);
           } else {
             stateRef.current.targetPaddles[data.side].z = clamp(data.x, 45, world.h - 45);
@@ -444,9 +444,11 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     }
     const handleState = (serverState: any) => {
       if (!serverState) return;
-      if (serverState.ball) stateRef.current.ball = serverState.ball;
+      if (serverState.ball) stateRef.current.ballTarget = {...serverState.ball};
       if (serverState.paddles) {
         Object.keys(serverState.paddles).forEach((k: any) => {
+          const myS = getMySide();
+          if(k===myS) return;
           const val = serverState.paddles[k];
           if (typeof val === 'number') {
             if (k === 'top' || k === 'bottom') stateRef.current.targetPaddles[k].x = Math.max(45, Math.min(world.w - 45, val));
@@ -461,7 +463,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     };
     socket.on('game-state', handleState);
     return () => { socket.off('game-state', handleState); };
-  }, [isHost, isOfflineMode, world.w, world.h]);
+  }, [isHost, isOfflineMode, world.w, world.h, getMySide]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -503,7 +505,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     const paddles: Record<string, THREE.Group> = {};
     const COLORS_FALLBACK = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
     const ensureCount = Math.max(2, players.length, settings.players || 2);
-    const sidesNeeded = ensureCount === 2? (['bottom','top'] as Player['side'][]) : ensureCount === 3? (['bottom','top','right'] as Player['side'][]) : (['bottom','top','right','left'] as Player['side'][]);
+    const sidesNeeded = ensureCount === 2? (['bottom','top'] as Player['side'][]) : (['bottom','top','right','left'] as Player['side'][]);
     sidesNeeded.forEach((side, idx) => {
       const existing = players.find(p => p.side === side);
       const color = existing?.color || COLORS_FALLBACK[idx] || '#ffcf5a';
@@ -538,7 +540,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   useEffect(() => {
     const state = stateRef.current;
     const needPlayers = Math.max(2, players.length, settings.players || 2);
-    const sidesForCount: Player['side'][] = needPlayers === 2? ['bottom','top'] : needPlayers === 3? ['bottom','top','right'] : ['bottom','top','right','left'];
+    const sidesForCount: Player['side'][] = needPlayers === 2? ['bottom','top'] : ['bottom','top','right','left'];
     const playerForSide = (side: Player['side']) => players.find(p => p.side === side);
     const activeSide = (side: Player['side']) => sidesForCount.includes(side);
     const runsPhysics = isHost || isOfflineMode;
@@ -548,6 +550,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       const ang = (Math.random() - 0.5) * 0.8;
       state.ball.vx = Math.sin(ang) * spd;
       state.ball.vy = Math.cos(ang) * spd * dirY;
+      state.ballTarget.vx = state.ball.vx;
+      state.ballTarget.vy = state.ball.vy;
       state.serving.active = false;
     };
     if (runsPhysics) {
@@ -673,30 +677,30 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               if (side === 'bottom') {
                 state.targetPaddles[side].x = clamp(predX, 55, world.w - 55);
                 if (state.ball.y > world.h * 0.5) {
-                  state.targetPaddles[side].z = clamp(predY, world.h * 0.68, world.h - 55);
+                  state.targetPaddles[side].z = clamp(predY, world.h * 0.62, world.h - 55);
                 } else {
-                  state.targetPaddles[side].z = clamp(world.h * 0.78, world.h * 0.68, world.h - 55);
+                  state.targetPaddles[side].z = clamp(world.h * 0.78, world.h * 0.62, world.h - 55);
                 }
               } else if (side === 'top') {
                 state.targetPaddles[side].x = clamp(predX, 55, world.w - 55);
                 if (state.ball.y < world.h * 0.5) {
-                  state.targetPaddles[side].z = clamp(predY, 55, world.h * 0.32);
+                  state.targetPaddles[side].z = clamp(predY, 55, world.h * 0.38);
                 } else {
-                  state.targetPaddles[side].z = clamp(world.h * 0.22, 55, world.h * 0.32);
+                  state.targetPaddles[side].z = clamp(world.h * 0.22, 55, world.h * 0.38);
                 }
               } else if (side === 'left') {
                 state.targetPaddles[side].z = clamp(predY, 55, world.h - 55);
                 if (state.ball.x < world.w * 0.5) {
-                  state.targetPaddles[side].x = clamp(predX, 55, world.w * 0.32);
+                  state.targetPaddles[side].x = clamp(predX, 55, world.w * 0.38);
                 } else {
-                  state.targetPaddles[side].x = clamp(world.w * 0.22, 55, world.w * 0.32);
+                  state.targetPaddles[side].x = clamp(world.w * 0.22, 55, world.w * 0.38);
                 }
               } else if (side === 'right') {
                 state.targetPaddles[side].z = clamp(predY, 55, world.h - 55);
                 if (state.ball.x > world.w * 0.5) {
-                  state.targetPaddles[side].x = clamp(predX, world.w * 0.68, world.w - 55);
+                  state.targetPaddles[side].x = clamp(predX, world.w * 0.62, world.w - 55);
                 } else {
-                  state.targetPaddles[side].x = clamp(world.w * 0.78, world.w * 0.68, world.w - 55);
+                  state.targetPaddles[side].x = clamp(world.w * 0.78, world.w * 0.62, world.w - 55);
                 }
               }
             }
@@ -798,7 +802,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           const maxBallSpeed = 34 + settings.ballSpeed * 1.6 + state.rally * 0.7;
           const curSpeed = Math.hypot(state.ball.vx, state.ball.vy);
           if (curSpeed > maxBallSpeed) { const scale = maxBallSpeed / curSpeed; state.ball.vx *= scale; state.ball.vy *= scale; }
-          const GOAL_W = world.w >= 1100? 300 : 260;
+          const GOAL_W = world.w >= 900? 300 : 260;
           const GX1 = (world.w - GOAL_W) / 2, GX2 = GX1 + GOAL_W;
           const GY1 = (world.h - GOAL_W) / 2, GY2 = GY1 + GOAL_W;
           const inGoalX = (x: number) => x >= GX1 && x <= GX2;
@@ -815,7 +819,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
             const opposite: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
             const scorerSide = opposite[missed.side] as Player['side'];
             const scorer = playerForSide(scorerSide);
-            state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
+            state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ballTarget.x = world.w/2; state.ballTarget.y = world.h/2; state.ball.vx = 0; state.ball.vy = 0;
             state.countdown = 3; state.countdownStart = now; state.countdownSide = scorer? scorer.side : scorerSide;
             setCountdown(3); state.rally = 0; setRally(0);
             hasDraggedRef.current = false;
@@ -825,6 +829,19 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           } else { setRally(state.rally); }
         }
         if (!isOfflineMode) { socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); }
+      }
+      if (!runsPhysics) {
+        const lerp = 0.35 * delta;
+        state.ball.x += (state.ballTarget.x - state.ball.x) * lerp;
+        state.ball.y += (state.ballTarget.y - state.ball.y) * lerp;
+        state.ball.vx = state.ballTarget.vx;
+        state.ball.vy = state.ballTarget.vy;
+        (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+          if (!activeSide(side)) return;
+          const f = 0.25 * delta;
+          state.paddles[side].x += (state.targetPaddles[side].x - state.paddles[side].x) * f;
+          state.paddles[side].z += (state.targetPaddles[side].z - state.paddles[side].z) * f;
+        });
       }
       if (threeRef.current) {
         const { ball, paddles, camera, renderer, hitGroup } = threeRef.current; const c = cam.current;
@@ -891,7 +908,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     };
     frameIdRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameIdRef.current);
-  }, [players, settings, onGoal, onTimeUp, world, getInitialSpeed, isHost, isOfflineMode, roomCode]);
+  }, [players, settings, onGoal, onTimeUp, world, getInitialSpeed, isHost, isOfflineMode, roomCode, getMySide]);
 
   function formatTime(s: number) { return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
 
@@ -911,7 +928,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       {!hideUI && (
         <>
           <header className="game-topbar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', alignItems: 'center', zIndex: 10, background: '#0a0a0a', borderBottom: '1px solid #1a1a1a' }}>
-            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • HD • STEREO</div>
+            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • {mySideForCam.toUpperCase()} • HD</div>
             <div className="match-meta" style={{ color: '#fff' }}><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | Rally: {rally}</div>
             <div className="game-actions" style={{ display: 'flex', gap: '6px' }}>
               <button className="game-icon" onClick={() => setShowCamMenu(v =>!v)} title={isAr? 'الكاميرا' : 'Camera'} style={{ background: showCamMenu? '#00e5ff' : '#111', color: showCamMenu? '#000' : '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>
@@ -927,15 +944,16 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
               const COLORS_FB = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
               const SIDES_FB: Player['side'][] = ['bottom','top','right','left'];
               const need = Math.max(2, players.length, settings.players || 2);
-              const sides = need === 2? SIDES_FB.slice(0,2) : need === 3? SIDES_FB.slice(0,3) : SIDES_FB.slice(0,4);
+              const sides = need === 2? SIDES_FB.slice(0,2) : SIDES_FB.slice(0,4);
               return sides.map((side, idx) => {
                 const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top'? 'سامي' : side === 'right'? 'ليان' : side === 'left'? 'كريم' : 'نورا', color: COLORS_FB[idx], side };
+                const isMe = side===mySideForCam;
                 return (
-                  <div key={p.id + side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', background: '#151515', border: `1px solid ${p.color}`, borderRadius: '14px', padding: '6px 16px', minWidth: '90px' }}>
+                  <div key={p.id + side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', background: isMe?'#1a2a3a':'#151515', border: `2px solid ${p.color}`, borderRadius: '14px', padding: '6px 16px', minWidth: '90px' }}>
                     <strong style={{ color: p.color, fontSize: '20px', lineHeight: '1', fontWeight: 900 }}>{scores[p.id]?? 0}</strong>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                       <span style={{ background: p.color, width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block' }} />
-                      <span style={{ color: '#fff', fontSize: '12px', fontWeight: 700 }}>{p.name}</span>
+                      <span style={{ color: '#fff', fontSize: '12px', fontWeight: 700 }}>{p.name}{isMe?' (انت)':''}</span>
                     </div>
                   </div>
                 );

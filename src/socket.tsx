@@ -8,8 +8,9 @@ class ColyseusBridge {
   room: any = null;
   private listeners = new Map<string, Set<SocketListener>>();
   private lastPaddleEmit = 0;
+  private lastBallEmit = 0;
   get connected() { return Boolean(this.room); }
-  get id() { return this.room?.sessionId ?? ''; }
+  get id() { return this.room?.sessionId?? ''; }
   on(event: string, listener: SocketListener) {
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
     this.listeners.get(event)!.add(listener);
@@ -22,11 +23,14 @@ class ColyseusBridge {
   }
   emit(event: string, payload?: any) {
     if (!this.room) return false;
-    // Throttle لـ paddle-input فقط
+    const now = Date.now();
     if (event === 'paddle-input') {
-      const now = Date.now();
-      if (now - this.lastPaddleEmit < 33) return true; // 30fps max
+      if (now - this.lastPaddleEmit < 16) return true; // 60fps
       this.lastPaddleEmit = now;
+    }
+    if (event === 'game-state') {
+      if (now - this.lastBallEmit < 16) return true; // لا ترسل اكثر من 60fps
+      this.lastBallEmit = now;
     }
     this.room.send(event, payload);
     return true;
@@ -42,14 +46,14 @@ class ColyseusBridge {
     if (room.state) this.dispatch('room-update', this.roomData(room.state));
   }
   async leave() { const room = this.room; this.room = null; if (room) await room.leave(true); }
-  private dispatch(event: string, ...args: any[]) { this.listeners.get(event)?.forEach((l) => l(...args)); }
+  private dispatch(event: string,...args: any[]) { this.listeners.get(event)?.forEach((l) => l(...args)); }
   private roomData(state: any): RoomData {
-    const players = state?.players ? Array.from(state.players.values()).map((player: any) => ({
+    const players = state?.players? Array.from(state.players.values()).map((player: any) => ({
       id: player.id, name: player.name, color: player.color, side: player.side, computer: Boolean(player.computer), socketId: player.id,
     })) : [];
     let settings: Record<string, unknown> | undefined;
-    try { settings = state?.settingsJson ? JSON.parse(state.settingsJson) : undefined; } catch {}
-    return { code: state?.code ?? '', status: state?.status ?? 'waiting', maxPlayers: Number(state?.maxPlayers ?? players.length), hostSocketId: state?.hostSessionId, hostName: players.find((p: Player) => p.id === state?.hostSessionId)?.name, players, settings };
+    try { settings = state?.settingsJson? JSON.parse(state.settingsJson) : undefined; } catch {}
+    return { code: state?.code?? '', status: state?.status?? 'waiting', maxPlayers: Number(state?.maxPlayers?? players.length), hostSocketId: state?.hostSessionId, hostName: players.find((p: Player) => p.id === state?.hostSessionId)?.name, players, settings };
   }
 }
 export const socket = new ColyseusBridge();
