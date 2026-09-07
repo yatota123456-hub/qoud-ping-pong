@@ -11,7 +11,7 @@ type MatchMode = 'time' | 'goals';
 type Difficulty = 'easy' | 'normal' | 'hard';
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
 type ArenaSize = 'small' | 'medium' | 'large' | 'xlarge';
-type Settings = { players: number; vsComputer: boolean; difficulty: Difficulty; start: StartMode; mode: MatchMode; duration: number; goal: number; speed: SpeedMode; ballSpeed: number; sound: boolean; graphics: '2d' | '3d'; arenaSize: ArenaSize; };
+type Settings = { players: number; vsComputer: boolean; difficulty: Difficulty; start: StartMode; mode: MatchMode; duration: number; goal: number; speed: SpeedMode; ballSpeed: number; sound: boolean; graphics: '2d' | '3d'; arenaSize: ArenaSize; seriesType: 'single' | 'series'; seriesRounds: number; };
 type Scores = Record<string | number, number>;
 type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: Partial<Settings> };
 type Vec2 = { x: number; y: number };
@@ -23,7 +23,7 @@ const RECTANGULAR_WORLD = { w: 700, h: 1050 };
 const SQUARE_WORLD = { w: 1000, h: 1000 };
 const ZONE = 100;
 const PADDLE_SIZE = 42;
-const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 10, sound: true, graphics: '2d', arenaSize: 'medium' } as Settings;
+const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 10, sound: true, graphics: '2d', arenaSize: 'medium', seriesType: 'single', seriesRounds: 3 } as Settings;
 
 function randomRoom(existing: string[] = []) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -88,6 +88,9 @@ function App() {
   const [isHost, setIsHost] = useState(true);
   const [roomsCount, setRoomsCount] = useState(0);
   const [celebrating, setCelebrating] = useState<Player | null>(null);
+  const [seriesWins, setSeriesWins] = useState<Record<string, number>>({});
+  const [currentRound, setCurrentRound] = useState(1);
+  const [roundWinner, setRoundWinner] = useState<Player | null>(null);
   const celebratingRef = useRef<Player | null>(null);
 
   const playersRef = useRef(players);
@@ -176,6 +179,62 @@ function App() {
 
   const finishMatch = useCallback((champion: Player) => {
     if (celebratingRef.current) return;
+    // جولات متتالية: نحسب فوز الجولة
+    if (settingsRef.current?.seriesType === 'series' || (settings as any).seriesType === 'series') {
+      const totalRounds = (settingsRef.current?.seriesRounds ?? settings.seriesRounds ?? 3);
+      setCelebrating(champion);
+      celebratingRef.current = champion;
+      setMatchPaused(true);
+      setRoundWinner(champion);
+      setSeriesWins((prev) => {
+        const upd = {...prev, [champion.id]: (prev[champion.id]??0)+1 };
+        // نحسب هل انتهت السلسلة؟
+        const nextRound = currentRoundRef.current;
+        if (nextRound >= totalRounds) {
+          // انتهت كل الجولات - نحدد الفائز الإجمالي
+          setTimeout(() => {
+            const sorted = Object.entries(upd).sort((a,b)=>b[1]-a[1]);
+            const maxWins = sorted[0]?.[1] ?? 0;
+            const topWinners = sorted.filter(([,v])=>v===maxWins);
+            if (topWinners.length > 1) {
+              // تعادل
+              setWinner(null);
+              setWins((cur) => cur); // لا نحسب فوز فردي في التعادل
+            } else {
+              const overallWinnerId = sorted[0]?.[0];
+              const overallWinner = playersRef.current.find(p=>String(p.id)===String(overallWinnerId)) ?? champion;
+              setWinner(overallWinner);
+              setWins((current) => {
+                const updated = {...current, [overallWinner.name]: (current[overallWinner.name]?? 0) + 1 };
+                localStorage.setItem('qoud-ping-pong-wins', JSON.stringify(updated));
+                return updated;
+              });
+            }
+            if (isHost) socket.emit('match-finished', { winnerId: champion.id, scores: scoresRef.current, seriesWins: upd, currentRound: totalRounds, isSeriesEnd: true });
+            setScreen('results');
+            setCelebrating(null);
+            celebratingRef.current = null;
+            setMatchPaused(false);
+          }, 4000);
+        } else {
+          // في جولات باقية - نبدأ الجولة التالية بعد احتفال قصير
+          setTimeout(() => {
+            setCurrentRound((r)=>r+1);
+            setCelebrating(null);
+            celebratingRef.current = null;
+            setMatchPaused(false);
+            setScores(Object.fromEntries(playersRef.current.map(p => [p.id, 0])));
+            setMatchKey((k)=>k+1);
+            setRoundWinner(null);
+            setLastGoal(null);
+            if (isHost) socket.emit('match-finished', { winnerId: champion.id, scores: scoresRef.current, seriesWins: upd, currentRound: nextRound, isSeriesEnd: false });
+          }, 4000);
+        }
+        return upd;
+      });
+      return;
+    }
+    // لعب حر - فوز مرة واحدة
     setCelebrating(champion);
     celebratingRef.current = champion;
     setMatchPaused(true);
@@ -200,7 +259,7 @@ function App() {
     const isOffline =!socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
     const currentPlayers = isOffline? makePlayers() : (playersRef.current.length > 0? playersRef.current : makePlayers());
     if (socket.connected &&!isOffline) socket.emit('start-game', { code: roomRef.current });
-    setPlayers(currentPlayers); setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0]))); setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); celebratingRef.current = null; setMatchKey((key) => key + 1); setScreen('game');
+    setPlayers(currentPlayers); setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0]))); setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); celebratingRef.current = null; setSeriesWins({}); setCurrentRound(1); setRoundWinner(null); setMatchKey((key) => key + 1); setScreen('game');
   }, [isHost, makePlayers, settings.players, settings.vsComputer]);
 
   const goalScored = useCallback((missed: Player) => {
@@ -227,12 +286,12 @@ function App() {
   }
   if (screen === 'game') {
     if (settings.graphics === '3d') {
-      return <GameScreen3D key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
+      return <GameScreen3D key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
     }
-    return <GameScreen key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
+    return <GameScreen key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} roundWinner={roundWinner} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
   }
   if (screen === 'results') {
-    return <ResultsScreen players={players} scores={scores} winner={winner} wins={wins} onAgain={startMatch} onHome={() => { void socket.leave(); setPlayers([]); setScreen('setup'); }} />;
+    return <ResultsScreen players={players} scores={scores} winner={winner} wins={wins} seriesWins={seriesWins} currentRound={currentRound} settings={settings} onAgain={startMatch} onHome={() => { void socket.leave(); setPlayers([]); setScreen('setup'); setSeriesWins({}); setCurrentRound(1); }} />;
   }
   return <SetupScreen settings={settings} names={names} roomsCount={roomsCount} joinCode={joinCode} joinName={joinName} setJoinName={setJoinName} computers={computers} error={error} onChangeName={(index: number, value: string) => setNames((current) => current.map((name, item) => item === index? value : name))} onChangeSettings={updateSettings} onToggleComputer={(idx: number) => { if (idx === 0) return; setComputers(prev => prev.map((c, i) => i === idx?!c : c)); }} onJoinCodeChange={setJoinCode} onJoin={joinByCode} onCreate={enterWaiting} />;
 }
@@ -297,25 +356,35 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           </div>
         </section>
 
-        {/* Players names like screenshot */}
-        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
-          <div className="flex items-center justify-between mb-3"><span className="bg-black text-white text-[10px] font-black px-2 py-1 rounded-full">PLAYERS {settings.players}</span><span className="font-black text-[12px]">من حول الطاولة؟</span></div>
-          <div className="flex flex-col gap-[8px]">
+        {/* Players names - FIXED OVERFLOW */}
+        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px] overflow-hidden w-full box-border">
+          <div className="flex items-center justify-between mb-3"><span className="bg-black text-white text-[10px] font-black px-2 py-1 rounded-full shrink-0">PLAYERS {settings.players}</span><span className="font-black text-[12px]">من حول الطاولة؟</span></div>
+          <div className="flex flex-col gap-[8px] w-full">
             {Array.from({ length: settings.players }, (_, i) => (
-              <div key={i} className="flex gap-[8px] items-center">
-                <div className="w-[32px] h-[20px] rounded-full border-[2px] border-black bg-white flex items-center justify-between px-1">
-                  <div className="w-3 h-3 rounded-full" style={{background: i===0? '#fff' : COLORS[i], border: '1.5px solid #000'}} />
-                  <div className="w-3 h-3 rounded-full bg-black" />
-                </div>
-                <input value={names[i]} onChange={(e) => onChangeName(i, e.target.value)} className="flex-1 h-[38px] rounded-full border-[2px] border-black bg-white px-3 font-bold text-[13px] outline-none" />
-                <div className="w-6 h-6 rounded-full border-[2px] border-black grid place-items-center" style={{background: COLORS[i]}}><span className="text-[10px]">●</span></div>
+              <div key={i} className="grid grid-cols-[38px_1fr_30px] gap-[8px] items-center w-full min-w-0">
+                <button type="button" onClick={() => onToggleComputer(i)} className="w-[38px] h-[22px] rounded-full border-[2px] border-black bg-white flex items-center justify-between px-[2px] shrink-0 overflow-hidden">
+                  <div className="w-[14px] h-[14px] rounded-full border-[1.5px] border-black transition-all" style={{background: computers[i]? '#ff6b8b' : '#fff', marginLeft: computers[i]? '16px':'0'}} />
+                </button>
+                <input value={names[i]} onChange={(e) => onChangeName(i, e.target.value)} className="min-w-0 w-full h-[38px] rounded-full border-[2px] border-black bg-white px-3 font-bold text-[13px] outline-none box-border truncate" maxLength={14} />
+                <div className="w-[28px] h-[28px] rounded-full border-[2px] border-black grid place-items-center shrink-0" style={{background: COLORS[i]}}><span className="text-[10px]">●</span></div>
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-[8px] mt-3">
-            <button onClick={() => onChangeSettings({ vsComputer: false })} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] ${!settings.vsComputer?'bg-black text-white':'bg-white'}`}>مع الأصدقاء</button>
-            <button onClick={() => onChangeSettings({ vsComputer: true })} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.vsComputer?'bg-black text-white':'bg-white'}`}>ضد الكمبيوتر</button>
+          <div className="grid grid-cols-2 gap-[8px] mt-3 w-full">
+            <button onClick={() => onChangeSettings({ vsComputer: false })} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] w-full ${!settings.vsComputer?'bg-black text-white':'bg-white'}`}>مع الأصدقاء</button>
+            <button onClick={() => onChangeSettings({ vsComputer: true })} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] w-full ${settings.vsComputer?'bg-black text-white':'bg-white'}`}>ضد الكمبيوتر</button>
           </div>
+        </section>
+
+        {/* JOIN ROOM - MOVED UP HERE, NOT AT END */}
+        <section className="bg-black border-[2.5px] border-black rounded-[20px] p-[14px] w-full box-border">
+          <div className="flex items-center justify-between mb-3"><span className="bg-[#ffcf5a] text-black text-[10px] font-black px-2 py-1 rounded-full">JOIN ROOM</span><span className="font-black text-[12px] text-[#f6f0d2]">انضم لغرفة موجودة؟</span></div>
+          <div className="grid grid-cols-[1fr_86px_46px] gap-[8px] w-full min-w-0">
+            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="min-w-0 w-full h-[42px] rounded-full border-[2px] border-white bg-[#1a1a1a] text-white px-3 font-bold text-[13px] box-border" />
+            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4))} placeholder="BZYF" className="w-[86px] h-[42px] rounded-full border-[2px] border-white bg-white text-black text-center font-black tracking-[0.2em] box-border" />
+            <button onClick={()=>onJoin(joinName)} className="w-[46px] h-[42px] rounded-full border-[2px] border-white bg-[#ff2d2d] grid place-items-center text-white shrink-0"><LogIn size={18} /></button>
+          </div>
+          <div className="mt-2 text-[10px] font-bold text-white/60 text-center">اكتب اسمك + كود الغرفة 4 حروف ثم انضم</div>
         </section>
 
         {/* Speed - 4 cards with icons EXACT like screenshot */}
@@ -355,6 +424,31 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           )}
         </section>
 
+        {/* Series - جولات متتالية / لعب حر */}
+        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2"><span className="bg-black text-white border-[2px] border-black rounded-full px-2 text-[10px] font-black">SERIES</span><span className="font-black text-[13px]">نظام الجولات</span></div>
+            <div className="w-5 h-5 rounded-full border-[2px] border-black bg-white grid place-items-center text-[10px] font-black">4</div>
+          </div>
+          <div className="grid grid-cols-2 gap-[8px] mb-3">
+            <button onClick={()=>onChangeSettings({seriesType:'single'})} className={`h-[42px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.seriesType==='single'?'bg-black text-white':'bg-white'}`}>🎮 لعب حر<br/><span className="text-[9px] opacity-70">فوز مرة واحدة</span></button>
+            <button onClick={()=>onChangeSettings({seriesType:'series'})} className={`h-[42px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.seriesType==='series'?'bg-black text-white':'bg-white'}`}>🏆 جولات متتالية<br/><span className="text-[9px] opacity-70">الأكثر فوزا</span></button>
+          </div>
+          {settings.seriesType==='series' && (
+            <div className="animate-[fadeIn_.2s] bg-white border-[2px] border-black rounded-[14px] p-[12px]">
+              <div className="flex justify-between mb-2"><span className="font-black text-[12px]">عدد الجولات</span><span className="font-black text-[11px] bg-black text-white px-2 rounded-full">{settings.seriesRounds} جولات</span></div>
+              <div className="flex items-center justify-between bg-[#fff9dc] border-[2px] border-black rounded-full h-[42px] px-2 mb-2">
+                <button onClick={()=>onChangeSettings({seriesRounds: Math.max(2, settings.seriesRounds-1)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Minus size={14} /></button>
+                <div className="flex items-center gap-1">{Array.from({length: settings.seriesRounds}, (_,i)=><div key={i} className="w-5 h-5 rounded-full border-[1.5px] border-black bg-[#ffcf5a] grid place-items-center text-[10px] font-black">{i+1}</div>)}</div>
+                <button onClick={()=>onChangeSettings({seriesRounds: Math.min(10, settings.seriesRounds+1)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Plus size={14} /></button>
+              </div>
+              <input type="range" min={2} max={10} step={1} value={settings.seriesRounds} onChange={e=>onChangeSettings({seriesRounds:Number(e.target.value)})} className="w-full" />
+              <div className="flex justify-between text-[10px] font-black opacity-60 mt-1"><span>2 جولات</span><span>10 جولات</span></div>
+              <div className="mt-2 text-[10px] font-bold bg-black text-white rounded-full px-2 py-1 text-center">الأكثر فوزا هو البطل • {settings.seriesRounds%2===0?'تعادل ممكن':'لا يوجد تعادل'}</div>
+            </div>
+          )}
+        </section>
+
         {/* Arena - S M L XL with icons */}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
           <div className="flex items-center justify-between mb-3"><span className="font-black text-[13px]">📐 حجم الساحة</span><div className="w-5 h-5 rounded-full border-[2px] border-black bg-white grid place-items-center text-[10px] font-black">2</div></div>
@@ -366,41 +460,44 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           </div>
         </section>
 
-        {/* Win - بدون كلمة بالوقت / بالأهداف */}
+        {/* Win - FIXED: وقت يظهر عداد الوقت بس، أهداف يظهر عداد الأهداف بس */}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
           <div className="flex items-center justify-between mb-3"><span className="font-black text-[13px]">طريقة الفوز</span><div className="w-5 h-5 rounded-full border-[2px] border-black bg-white grid place-items-center text-[10px] font-black">3</div></div>
-          <div className="flex items-center justify-between bg-white border-[2px] border-black rounded-full h-[42px] px-2 mb-2">
-            <button onClick={()=>onChangeSettings({duration: Math.max(30, settings.duration-30)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Minus size={14} /></button>
-            <div className="flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-black text-white grid place-items-center text-[12px]">⏱</span><span className="font-black text-[14px] bg-black text-white px-2 rounded-full">{Math.floor(settings.duration/60)} - 3</span></div>
-            <button onClick={()=>onChangeSettings({duration: Math.min(1800, settings.duration+30)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Plus size={14} /></button>
-          </div>
-          <div className="flex items-center justify-between bg-white border-[2px] border-black rounded-full h-[42px] px-2">
-            <button onClick={()=>onChangeSettings({goal: Math.max(2, settings.goal-1)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Minus size={14} /></button>
-            <div className="flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-[#ffcf5a] border-[2px] border-black grid place-items-center text-[12px]">🎯</span><span className="font-black text-[14px] bg-black text-white px-2 rounded-full">{settings.goal} - 7</span></div>
-            <button onClick={()=>onChangeSettings({goal: Math.min(100, settings.goal+1)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Plus size={14} /></button>
-          </div>
-          <div className="grid grid-cols-2 gap-[8px] mt-3">
+          <div className="grid grid-cols-2 gap-[8px] mb-3">
             <button onClick={()=>onChangeSettings({mode:'time'})} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.mode==='time'?'bg-black text-white':'bg-white'}`}>⏱ وقت</button>
             <button onClick={()=>onChangeSettings({mode:'goals'})} className={`h-[36px] rounded-full border-[2px] border-black font-black text-[12px] ${settings.mode==='goals'?'bg-black text-white':'bg-white'}`}>🎯 أهداف</button>
           </div>
+          {settings.mode==='time' ? (
+            <div className="animate-[fadeIn_.2s]">
+              <div className="flex items-center justify-between bg-white border-[2px] border-black rounded-full h-[42px] px-2">
+                <button onClick={()=>onChangeSettings({duration: Math.max(30, settings.duration-30)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Minus size={14} /></button>
+                <div className="flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-black text-white grid place-items-center text-[12px]">⏱</span><span className="font-black text-[13px] bg-black text-white px-3 py-1 rounded-full">{Math.floor(settings.duration/60)}:{String(settings.duration%60).padStart(2,'0')} / 30:00</span></div>
+                <button onClick={()=>onChangeSettings({duration: Math.min(1800, settings.duration+30)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Plus size={14} /></button>
+              </div>
+              <input type="range" min={30} max={1800} step={30} value={settings.duration} onChange={e=>onChangeSettings({duration:Number(e.target.value)})} className="w-full mt-2" />
+              <div className="flex justify-between text-[10px] font-black opacity-60"><span>30 ثانية</span><span>30 دقيقة</span></div>
+            </div>
+          ) : (
+            <div className="animate-[fadeIn_.2s]">
+              <div className="flex items-center justify-between bg-white border-[2px] border-black rounded-full h-[42px] px-2">
+                <button onClick={()=>onChangeSettings({goal: Math.max(2, settings.goal-1)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Minus size={14} /></button>
+                <div className="flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-[#ffcf5a] border-[2px] border-black grid place-items-center text-[12px]">🎯</span><span className="font-black text-[13px] bg-black text-white px-3 py-1 rounded-full">{settings.goal} / 100</span></div>
+                <button onClick={()=>onChangeSettings({goal: Math.min(100, settings.goal+1)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Plus size={14} /></button>
+              </div>
+              <input type="range" min={2} max={100} step={1} value={settings.goal} onChange={e=>onChangeSettings({goal:Number(e.target.value)})} className="w-full mt-2" />
+              <div className="flex justify-between text-[10px] font-black opacity-60"><span>2</span><span>100 هدف</span></div>
+            </div>
+          )}
         </section>
 
-        <button onClick={onCreate} className="h-[56px] rounded-[18px] border-[2.5px] border-black bg-black text-[#f6f0d2] font-black text-[15px] active:scale-[0.98] transition">أنشئ غرفة و سرعة {settings.ballSpeed} • 50</button>
+        <div className="grid grid-cols-3 gap-[8px] w-full box-border">
+          <div className="h-[38px] rounded-full border-[2px] border-black bg-white flex items-center justify-center gap-1 font-black text-[11px] box-border"><span className="w-2 h-2 bg-[#ff2d2d] rounded-full" /> كود الغرفة</div>
+          <div className="h-[38px] rounded-full border-[2px] border-black bg-white flex items-center justify-center font-black text-[11px] box-border">{settings.ballSpeed} / 20 سرعة</div>
+          <div className="h-[38px] rounded-full border-[2px] border-black bg-white flex items-center justify-center font-black text-[11px] box-border">LED طاولة خشب</div>
+        </div>
+
+        <button onClick={onCreate} className="h-[56px] rounded-[18px] border-[2.5px] border-black bg-black text-[#f6f0d2] font-black text-[15px] active:scale-[0.98] transition w-full box-border">أنشئ غرفة و سرعة {settings.ballSpeed} • 50</button>
         <div className="text-center text-[10px] font-black opacity-60">طاولة LED - تصميم البطولة</div>
-
-        <div className="grid grid-cols-3 gap-[8px]">
-          <div className="h-[38px] rounded-full border-[2px] border-black bg-white flex items-center justify-center gap-1 font-black text-[11px]"><span className="w-2 h-2 bg-[#ff2d2d] rounded-full" /> كود الغرفة</div>
-          <div className="h-[38px] rounded-full border-[2px] border-black bg-white flex items-center justify-center font-black text-[11px]">{settings.ballSpeed} / 20 سرعة</div>
-          <div className="h-[38px] rounded-full border-[2px] border-black bg-white flex items-center justify-center font-black text-[11px]">LED طاولة خشب</div>
-        </div>
-
-        <div className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-[14px]">
-          <div className="flex gap-[10px]">
-            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="flex-1 h-[42px] rounded-full border-[2px] border-black bg-white px-3 font-bold text-[13px]" />
-            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4))} placeholder="BZYF" className="w-[80px] h-[42px] rounded-full border-[2px] border-black bg-black text-white text-center font-black tracking-[0.2em]" />
-            <button onClick={()=>onJoin(joinName)} className="w-[42px] h-[42px] rounded-full border-[2px] border-black bg-[#ff2d2d] grid place-items-center text-white"><LogIn size={18} /></button>
-          </div>
-        </div>
         <div className="h-6" />
       </div>
     </main>
@@ -703,7 +800,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   return (
     <main className="game-shell" dir="ltr" style={{ touchAction: 'none' }} onContextMenu={e => e.preventDefault()}>
       <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
-      <header className="game-topbar"><Brand /><div className="match-meta"><span><i className="live-dot" /></span><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | {mySide}</div><div className="game-actions"><button className="game-icon" onClick={() => setSound((value) =>!value)}><Volume2 size={18} /></button><button className="game-icon" onClick={onPause}>{paused? <Play size={18} /> : <Pause size={18} />}</button><button className="game-icon" onClick={onExit}><X size={18} /></button></div></header>
+      <header className="game-topbar"><Brand /><div className="match-meta flex items-center gap-2"><span><i className="live-dot" /></span><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | {mySide}{settings.seriesType==='series' && <span className="bg-[#ffcf5a] text-black border-[1.5px] border-black rounded-full px-2 text-[11px] font-black">جولة {typeof currentRound!=='undefined'?currentRound:1}/{settings.seriesRounds}</span>}</div><div className="game-actions"><button className="game-icon" onClick={() => setSound((value) =>!value)}><Volume2 size={18} /></button><button className="game-icon" onClick={onPause}>{paused? <Play size={18} /> : <Pause size={18} />}</button><button className="game-icon" onClick={onExit}><X size={18} /></button></div></header>
       <div className="score-strip">{players.map((player) => <div className="score-chip" key={player.id} style={{border: player.side===mySide?`2px solid ${player.color}`:undefined}}><span className="score-color" style={{ background: player.color }} /><span>{player.name}{player.side===mySide?' (أنت)':''}</span><strong>{scores[player.id]?? 0}</strong></div>)}<div className="rally-meter"><span>Rally</span><b>{rally}</b></div></div>
       <section className="arena-stage" style={{ width: '100%', maxWidth: '100vw', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div className="arena-frame" ref={arenaRef} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} style={{ touchAction: 'none', position:'relative', width: `min(95vw, 760px, ${(88 * (world.w / world.h)).toFixed(2)}vh)`, aspectRatio: `${world.w} / ${world.h}`, margin: '0 auto', borderRadius: '32px', overflow: 'hidden', background: '#000', boxShadow: '0 0 0 2px #111, 0 0 40px rgba(0,229,255,0.25)', }}>
@@ -773,7 +870,7 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
 }
 function formatTime(seconds: number) { return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`; }
 
-function ResultsScreen({ players, scores, winner, wins, onAgain, onHome }: any) {
+function ResultsScreen({ players, scores, winner, wins, seriesWins, currentRound, settings, onAgain, onHome }: any) {
   const { t, i18n } = useTranslation();
   const isAr = i18n.language?.startsWith('ar')?? true;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -797,7 +894,22 @@ function ResultsScreen({ players, scores, winner, wins, onAgain, onHome }: any) 
       <header className="topbar"><Brand /></header>
       <section style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap:16, padding: 16, minHeight:'100%', position:'relative', zIndex:10 }}>
         <div style={{ background: '#111', padding: 24, borderRadius: 24, textAlign: 'center', border: '2px solid #ffcf5a', width: '100%', maxWidth: 460, boxShadow: showFire?'0 0 40px #ffcf5a':'' }}>
-          <h1 style={{ color: '#ffcf5a', fontSize: '2.2rem', marginBottom: 8 }}>🏆 {winner? `${winner.name} ${isAr? 'فاز!' : 'Wins!'}` : (isAr? 'انتهت' : 'Game Over')}</h1>
+          <h1 style={{ color: '#ffcf5a', fontSize: '2.2rem', marginBottom: 8 }}>
+            {settings?.seriesType==='series' ? (
+              winner ? `🏆 ${winner.name} بطل السلسلة!` : '🤝 تعادل السلسلة!'
+            ) : (
+              winner? `🏆 ${winner.name} ${isAr? 'فاز!' : 'Wins!'}` : (isAr? 'انتهت' : 'Game Over')
+            )}
+          </h1>
+          {settings?.seriesType==='series' && seriesWins && (
+            <div style={{background:'#000',border:'1.5px solid #ffcf5a',borderRadius:12,padding:10,marginBottom:12}}>
+              <div style={{color:'#ffcf5a',fontWeight:900,fontSize:12,marginBottom:6}}>نتيجة الجولات {Object.values(seriesWins as any).reduce((a:any,b:any)=>a+b,0)}/{settings.seriesRounds}</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'center'}}>
+                {players.map((p:any)=><div key={p.id} style={{background: p.id===winner?.id?'#2a2200':'#111',border:`1px solid ${p.color}`,borderRadius:8,padding:'6px 10px',display:'flex',alignItems:'center',gap:6}}><span style={{width:8,height:8,borderRadius:'50%',background:p.color}}/><span style={{color:'#fff',fontSize:12}}>{p.name}</span><b style={{color:p.color}}>{(seriesWins as any)[p.id]??0}</b></div>)}
+              </div>
+              {!winner && <div style={{marginTop:8,color:'#fff',fontSize:11,background:'#222',borderRadius:999,padding:'4px 10px',display:'inline-block'}}>تعادل {Object.values(seriesWins as any).join('-')} • أعد الجولات</div>}
+            </div>
+          )}
           <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:16}}>
             <b style={{color:'#fff'}}>{isAr?'ترتيب هذه المباراة':'This Match Ranking'}</b>
             {sortedCurrent.map((p:any, idx:number)=>(
