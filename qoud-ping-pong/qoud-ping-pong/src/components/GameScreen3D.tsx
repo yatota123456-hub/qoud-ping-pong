@@ -178,10 +178,36 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const SQUARE = { w: 1000, h: 1000 };
   const base = count >= 3? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
-  return { w: base.w * sc, h: base.h * sc };
+  const scaleFactor = sc / ARENA_SCALES['small'];
+  return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor };
 }
 
-const CAM_PRESETS_3D = {
+function getAdaptiveCameraPresets(world: {w:number,h:number,scaleFactor?:number}, arenaSize: string, isMobile: boolean) {
+  const ARENA_SCALES: any = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
+  const sc = ARENA_SCALES[arenaSize] || 1.0;
+  const scaleFactor = sc / ARENA_SCALES['small'];
+  const isMobileNow = isMobile || (typeof window !== 'undefined' && window.innerWidth < 768);
+  const mobileBoost = isMobileNow ? 1.45 : 1.0;
+  const baseDistanceMultiplier = scaleFactor * mobileBoost;
+  const baseHeightMultiplier = scaleFactor * (isMobileNow ? 1.3 : 1.0);
+  const adapt = (base: { distance: number; height: number }) => ({ distance: base.distance * baseDistanceMultiplier, height: base.height * baseHeightMultiplier });
+  const basePresets = {
+    top: { angle: Math.PI, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
+    bottom: { angle: 0, distance: 1550, height: 1150, name: 'خلفك', nameEn: 'Behind You' },
+    topPlayer: { angle: Math.PI, distance: 650, height: 750, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+    iso: { angle: 0.6, distance: 1250, height: 1050, name: 'مائل', nameEn: 'Isometric' },
+    sideLeft: { angle: -Math.PI / 2, distance: 1100, height: 600, name: 'يسار', nameEn: 'Left' },
+    sideRight: { angle: Math.PI / 2, distance: 1100, height: 600, name: 'يمين', nameEn: 'Right' },
+  };
+  const adapted: any = {};
+  for (const k in basePresets) {
+    const b: any = (basePresets as any)[k]; const a = adapt(b);
+    adapted[k] = { ...b, distance: a.distance, height: a.height, baseDistance: b.distance, baseHeight: b.height, scaleFactor, isMobile: isMobileNow };
+  }
+  return adapted;
+}
+
+const CAM_PRESETS_3D_BASE = {
   top: { angle: Math.PI, distance: 400, height: 1600, name: 'من الأعلى', nameEn: 'Top View' },
   bottom: { angle: 0, distance: 1550, height: 1150, name: 'خلفك', nameEn: 'Behind You' },
   topPlayer: { angle: Math.PI, distance: 650, height: 750, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
@@ -189,7 +215,8 @@ const CAM_PRESETS_3D = {
   sideLeft: { angle: -Math.PI / 2, distance: 1100, height: 600, name: 'يسار', nameEn: 'Left' },
   sideRight: { angle: Math.PI / 2, distance: 1100, height: 600, name: 'يمين', nameEn: 'Right' },
 } as const;
-type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D;
+type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D_BASE;
+const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
 
 export function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, paused,celebrating, onGoal, onTimeUp, onPause, onExit }: { roomCode: string; isHost: boolean; players: Player[]; settings: Settings; scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null; onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; }) {
   const { i18n } = useTranslation();
@@ -206,11 +233,13 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   const frameIdRef = useRef<number>(0);
   pausedRef.current = paused;
 
+  const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
   const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
+  const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
   const initialCam = useMemo(() => {
-    const preset = CAM_PRESETS_3D.bottom;
-    return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
-  }, [world]);
+    const preset = (adaptivePresets as any).bottom;
+    return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: (world as any).scaleFactor || 1 };
+  }, [world, adaptivePresets]);
 
   const cam = useRef({...initialCam });
   const threeRef = useRef<any>(null);
@@ -281,7 +310,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   }, []);
 
   const resetCamera = useCallback(() => {
-    const preset = CAM_PRESETS_3D.bottom;
+    const preset = (adaptivePresets as any).bottom;
     cam.current = {
       angle: preset.angle,
       targetAngle: preset.angle,
@@ -295,24 +324,24 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       lookZ: world.h / 2
     };
     setCurrentPreset('bottom');
-  }, [world]);
+  }, [world, adaptivePresets]);
 
   const applyPreset = useCallback((key: Cam3DPresetKey) => {
-    const p = CAM_PRESETS_3D[key];
+    const p = (adaptivePresets as any)[key];
     cam.current.targetAngle = p.angle;
     cam.current.targetDistance = p.distance;
     cam.current.targetHeight = p.height;
     setCurrentPreset(key);
-  }, []);
+  }, [adaptivePresets]);
 
   const zoomCam = useCallback((dir: number) => {
-    cam.current.targetDistance = Math.max(300, Math.min(2200, cam.current.targetDistance * (dir > 0? 0.85 : 1.18)));
+    cam.current.targetDistance = Math.max(300, Math.min(3200, cam.current.targetDistance * (dir > 0? 0.85 : 1.18)));
   }, []);
 
   const rotateCam = useCallback((dir: 'left' | 'right' | 'up' | 'down') => {
     if (dir === 'left') cam.current.targetAngle -= 0.4;
     if (dir === 'right') cam.current.targetAngle += 0.4;
-    if (dir === 'up') cam.current.targetHeight = Math.min(1800, cam.current.targetHeight + 120);
+    if (dir === 'up') cam.current.targetHeight = Math.min(2800, cam.current.targetHeight + 120);
     if (dir === 'down') cam.current.targetHeight = Math.max(250, cam.current.targetHeight - 120);
   }, []);
 
@@ -437,7 +466,9 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     const dir = new THREE.DirectionalLight(0xffffff, 0.9);
     dir.position.set(200, 900, 300);
     scene.add(dir);
-    const camera = new THREE.PerspectiveCamera(38, mount.clientWidth / mount.clientHeight, 10, 5000);
+    const isMobileFov = mount.clientWidth < 768;
+    const fov = isMobileFov ? 58 : 38;
+    const camera = new THREE.PerspectiveCamera(fov, mount.clientWidth / mount.clientHeight, 10, 5000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));

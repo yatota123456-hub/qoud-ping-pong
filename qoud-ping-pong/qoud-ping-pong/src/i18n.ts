@@ -83,6 +83,16 @@ const resources = {
       round_winner: "فائز الجولة",
       final_winner: "الفائز النهائي",
 
+      // === احتفال 8 ثواني كراش داخل نفس الساحة ===
+      celebration_badge: "🏆 CRASH CELEBRATION • 8 SEC",
+      celebration_win: "فاز!",
+      celebration_win_suffix: "فاز!",
+      celebration_audience: "🔊 جمهور + تصفير عالي",
+      celebration_stay: "الاحتفال داخل نفس الساحة",
+      celebration_round_crash: "جولة {{current}}/{{total}} • {{wins}} فوز - كراش",
+      celebration_colors: "ألوان سلسة 8 ثواني",
+      celebration_crowd_whistle: "صوت جمهور وتصفير عالي",
+
       start_round: "ابدأ الجولة",
       who_around: "من حول الطاولة؟",
       players_around: "من حول الطاولة؟",
@@ -226,6 +236,16 @@ const resources = {
       series_tie: "Series Tie!",
       round_winner: "Round Winner",
       final_winner: "Final Winner",
+
+      // === 8 sec crash celebration inside arena ===
+      celebration_badge: "🏆 CRASH CELEBRATION • 8 SEC",
+      celebration_win: "WINS!",
+      celebration_win_suffix: "WINS!",
+      celebration_audience: "🔊 Crowd + High Whistle",
+      celebration_stay: "Celebration inside same arena",
+      celebration_round_crash: "Round {{current}}/{{total}} • {{wins}} wins - CRASH",
+      celebration_colors: "Smooth colors 8 sec",
+      celebration_crowd_whistle: "Crowd roar + high whistle",
 
       start_round: "Start Round",
       who_around: "Who's around the table?",
