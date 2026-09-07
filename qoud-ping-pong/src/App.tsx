@@ -88,6 +88,7 @@ function App() {
   const [isHost, setIsHost] = useState(true);
   const [roomsCount, setRoomsCount] = useState(0);
   const [celebrating, setCelebrating] = useState<Player | null>(null);
+  const celebratingRef = useRef<Player | null>(null);
 
   const playersRef = useRef(players);
   const roomRef = useRef(room);
@@ -99,6 +100,7 @@ function App() {
   useEffect(() => { screenRef.current = screen; }, [screen]);
   useEffect(() => { isArRef.current = isAr; }, [isAr]);
   useEffect(() => { scoresRef.current = scores; }, [scores]);
+  useEffect(() => { celebratingRef.current = celebrating; }, [celebrating]);
   useEffect(() => { void fetch('/api/rooms').then(r => r.ok? r.json() : null).then((d: any) => { if (d?.count!== undefined) setRoomsCount(d.count); }).catch(() => {}); }, []);
 
   useEffect(() => {
@@ -110,7 +112,14 @@ function App() {
       if (roomData.status === 'playing' && screenRef.current === 'waiting') { setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); setMatchKey((k) => k + 1); setScreen('game'); }
     };
     const onGameStarted = () => { setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); setMatchKey((k) => k + 1); setScreen('game'); };
-    const onMatchFinished = ({ winnerId, scores: serverScores }: any) => { setScores(serverScores); setWinner(playersRef.current.find((p) => p.id === winnerId)?? null); setScreen('results'); };
+    const onMatchFinished = ({ winnerId, scores: serverScores }: any) => {
+      // اذا جت من السيرفر بعد الاحتفال، روح مباشرة للنتائج
+      if (celebratingRef.current) {
+        setScores(serverScores); setWinner(playersRef.current.find((p) => p.id === winnerId)?? celebratingRef.current); setScreen('results'); setCelebrating(null); setMatchPaused(false);
+      } else {
+        setScores(serverScores); setWinner(playersRef.current.find((p) => p.id === winnerId)?? null); setScreen('results');
+      }
+    };
     const onGoalScored = ({ scores: serverScores, missedSide }: any) => {
       const isOfflineLocal =!socket.connected || playersRef.current.length < 2;
       if (isOfflineLocal) return;
@@ -167,9 +176,12 @@ function App() {
   const leaveMatch = useCallback(() => { void socket.leave(); setPlayers([]); setScreen('setup'); setMatchPaused(false); setCelebrating(null); }, []);
 
   const finishMatch = useCallback((champion: Player) => {
-    if (celebrating) return;
+    if (celebratingRef.current) return;
+    console.log('FINISH MATCH - celebrating', champion.name);
     setCelebrating(champion);
+    celebratingRef.current = champion;
     setMatchPaused(true);
+    // احتفال 8 ثواني فوق الساحة
     setTimeout(() => {
       setWinner(champion);
       setWins((current) => {
@@ -180,9 +192,10 @@ function App() {
       if (isHost) socket.emit('match-finished', { winnerId: champion.id, scores: scoresRef.current });
       setScreen('results');
       setCelebrating(null);
+      celebratingRef.current = null;
       setMatchPaused(false);
     }, 8000);
-  }, [isHost, celebrating]);
+  }, [isHost]);
 
   const startMatch = useCallback(() => {
     const canStart = isHost || playersRef.current.length <= 1 ||!socket.connected;
@@ -190,7 +203,7 @@ function App() {
     const isOffline =!socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
     const currentPlayers = isOffline? makePlayers() : (playersRef.current.length > 0? playersRef.current : makePlayers());
     if (socket.connected &&!isOffline) socket.emit('start-game', { code: roomRef.current });
-    setPlayers(currentPlayers); setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0]))); setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); setMatchKey((key) => key + 1); setScreen('game');
+    setPlayers(currentPlayers); setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0]))); setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); celebratingRef.current = null; setMatchKey((key) => key + 1); setScreen('game');
   }, [isHost, makePlayers, settings.players, settings.vsComputer]);
 
   const goalScored = useCallback((missed: Player) => {
@@ -205,7 +218,10 @@ function App() {
       if (!scorer) return current;
       const updated = {...current }; updated[scorer.id] = (updated[scorer.id]?? 0) + 1;
       if (!isOffline && socket.connected) socket.emit('goal-scored', { missedSide: missed.side, scores: updated });
-      if (settings.mode === 'goals' && (updated[scorer.id]?? 0) >= settings.goal) setTimeout(() => finishMatch(scorer), 0);
+      if (settings.mode === 'goals' && (updated[scorer.id]?? 0) >= settings.goal) {
+        // مهم: نستدعي finishMatch بعد ما يتحدث الـ state
+        setTimeout(() => finishMatch(scorer), 100);
+      }
       return updated;
     });
   }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers, settings.players, settings.vsComputer]);
@@ -316,59 +332,68 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const onTimeUpRef = useRef(onTimeUp);
   const onGoalRef = useRef(onGoal);
   const pausedRef = useRef(paused);
+  const celebratingRef = useRef(celebrating);
   const gameEndedRef = useRef(false);
   const world = useMemo(() => getArenaWorld(players.length, settings.arenaSize), [players.length, settings.arenaSize]);
   const mySide = useMemo(() => (players.find((p:any)=>p.socketId===socket.id)?.side || 'bottom') as Player['side'], [players]);
   const angleMap: any = { bottom: 0, top: Math.PI, right: Math.PI/2, left: -Math.PI/2 };
   const myAngle = angleMap[mySide]?? 0;
   soundRef.current = sound; onTimeUpRef.current = onTimeUp; onGoalRef.current = onGoal; pausedRef.current = paused;
+  useEffect(()=>{ celebratingRef.current = celebrating; },[celebrating]);
   const audioCtxRef = useRef<AudioContext|null>(null);
+
   const playHit = useCallback((power:number, xPos:number = world.w/2)=>{
     if(!soundRef.current) return;
     try{
       if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
       const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
-      const pan = Math.max(-1,Math.min(1,(xPos/world.w)*2-1));
-      const panner = (ctx as any).createStereoPanner?.(); if(panner) panner.pan.value=pan;
-      const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(90+power*800,t); o.frequency.exponentialRampToValueAtTime(35,t+0.25); g.gain.setValueAtTime(0.15+power*0.85,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.45);
-      if(panner){ o.connect(g); g.connect(panner); panner.connect(ctx.destination);} else o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+0.45);
+      const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(90+power*800,t); o.frequency.exponentialRampToValueAtTime(35,t+0.25); g.gain.setValueAtTime(0.15+power*0.85,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.45); o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+0.45);
     }catch{}
   },[world.w]);
+
   const playGoalSound = useCallback(()=>{
     if(!soundRef.current) return;
     try{
       if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
       const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t = ctx.currentTime;
       const master = ctx.createGain(); master.gain.value = 1.3; master.connect(ctx.destination);
-      const notes = [261.63, 329.63, 392.00, 523.25, 659.25];
-      notes.forEach((freq,i)=>{
-        const o = ctx.createOscillator(); const g = ctx.createGain();
-        o.type = 'square'; o.frequency.setValueAtTime(freq, t+i*0.07);
-        g.gain.setValueAtTime(0, t+i*0.07); g.gain.linearRampToValueAtTime(0.9, t+i*0.07+0.01); g.gain.exponentialRampToValueAtTime(0.001, t+i*0.07+0.65);
-        o.connect(g).connect(master); o.start(t+i*0.07); o.stop(t+i*0.07+0.7);
-      });
+      [261,329,392,523,659].forEach((freq,i)=>{ const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='square'; o.frequency.setValueAtTime(freq,t+i*0.07); g.gain.setValueAtTime(0,t+i*0.07); g.gain.linearRampToValueAtTime(0.9,t+i*0.07+0.01); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.07+0.6); o.connect(g).connect(master); o.start(t+i*0.07); o.stop(t+i*0.07+0.7); });
+    }catch{}
+  },[]);
+
+  const playCelebrationSound = useCallback(()=>{
+    if(!soundRef.current) return;
+    try{
+      if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
+      const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume();
+      const master = ctx.createGain(); master.gain.value=1.2; master.connect(ctx.destination);
+      const bufferSize = ctx.sampleRate*3; const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0);
+      for(let i=0;i<bufferSize;i++) data[i]=(Math.random()*2-1)*0.5;
+      const crowd = ctx.createBufferSource(); crowd.buffer=buffer; const g=ctx.createGain(); g.gain.setValueAtTime(0.8,ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.25,ctx.currentTime+8); crowd.connect(g).connect(master); crowd.start();
+      [523,659,783,1046].forEach((freq,i)=>{ const o=ctx.createOscillator(); const g2=ctx.createGain(); o.type='square'; o.frequency.value=freq; g2.gain.setValueAtTime(0,ctx.currentTime+i*0.15); g2.gain.linearRampToValueAtTime(0.8,ctx.currentTime+i*0.15+0.02); g2.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+i*0.15+0.6); o.connect(g2).connect(master); o.start(ctx.currentTime+i*0.15); o.stop(ctx.currentTime+i*0.15+0.7); });
     }catch{}
   },[]);
 
   useEffect(()=>{
     if(!celebrating) return;
-    try{
-      const ctx = new (window.AudioContext||(window as any).webkitAudioContext)();
-      const master = ctx.createGain(); master.gain.value=1.2; master.connect(ctx.destination);
-      const bufferSize = ctx.sampleRate*2; const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0);
-      for(let i=0;i<bufferSize;i++) data[i]=(Math.random()*2-1)*0.6;
-      const crowd = ctx.createBufferSource(); crowd.buffer=buffer; const g=ctx.createGain(); g.gain.setValueAtTime(0.9,ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.3,ctx.currentTime+8); crowd.connect(g).connect(master); crowd.start();
-    }catch{}
+    playCelebrationSound();
     const canvas = celebrationCanvasRef.current; if(!canvas) return; const c=canvas.getContext('2d'); if(!c) return;
-    const rect = canvas.parentElement?.getBoundingClientRect();
-    canvas.width=(rect?.width||700)*2; canvas.height=(rect?.height||1000)*2;
-    const colors=['#ffcf5a','#ff6b8b','#61e7c2','#00e5ff','#fff'];
-    let parts:any[] = Array.from({length:180},()=>({x:Math.random()*canvas.width,y:Math.random()*-canvas.height,vx:(Math.random()-0.5)*8,vy:Math.random()*8+2,color:colors[Math.floor(Math.random()*colors.length)],size:Math.random()*5+2}));
+    const arena = arenaRef.current; if(!arena) return;
+    const rect = arena.getBoundingClientRect();
+    canvas.width = rect.width; canvas.height = rect.height;
+    canvas.style.width = rect.width+'px'; canvas.style.height = rect.height+'px';
+    const colors=['#ffcf5a','#ff6b8b','#61e7c2','#00e5ff','#fff','#ff4081'];
+    let parts:any[] = Array.from({length:200},()=>({x:Math.random()*canvas.width, y:Math.random()*-canvas.height*0.5, vx:(Math.random()-0.5)*7, vy:Math.random()*5+2, color:colors[Math.floor(Math.random()*colors.length)], size:Math.random()*5+3, rot:Math.random()*360, rotSpeed:(Math.random()-0.5)*10}));
     let raf=0;
-    const loop=()=>{ c.clearRect(0,0,canvas.width,canvas.height); parts.forEach((p:any)=>{p.x+=p.vx; p.y+=p.vy; p.vy+=0.15; c.fillStyle=p.color; c.beginPath(); c.arc(p.x,p.y,p.size,0,Math.PI*2); c.fill(); if(p.y>canvas.height){p.y=-20; p.x=Math.random()*canvas.width;}}); raf=requestAnimationFrame(loop); };
+    const loop=()=>{
+      if(!celebratingRef.current) { c.clearRect(0,0,canvas.width,canvas.height); return; }
+      c.clearRect(0,0,canvas.width,canvas.height);
+      parts.forEach((p:any)=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=0.12; p.rot+=p.rotSpeed; c.save(); c.translate(p.x,p.y); c.rotate(p.rot*Math.PI/180); c.fillStyle=p.color; c.fillRect(-p.size/2,-p.size/2,p.size,p.size*0.6); c.restore(); if(p.y>canvas.height+20){ p.y=-20; p.x=Math.random()*canvas.width; p.vy=Math.random()*5+2; } });
+      raf=requestAnimationFrame(loop);
+    };
     raf=requestAnimationFrame(loop);
     return ()=>cancelAnimationFrame(raf);
-  },[celebrating]);
+  },[celebrating, playCelebrationSound]);
 
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
   const getInitialSpeed = useCallback(() => 2.8 + settings.ballSpeed * 0.48, [settings.ballSpeed]);
@@ -424,10 +449,16 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2); state.last = now;
-      const myPlayer = players.find(p => p.socketId === socket.id) || players[0];
-      const mySideLocal = (myPlayer?.side || 'bottom') as Player['side'];
-      const isOffline =!socket.connected || players.length <= 1;
-      if (!pausedRef.current &&!gameEndedRef.current &&!celebrating) {
+      // لو فيه احتفال، نرسم فقط بدون تحديث
+      if (celebratingRef.current) {
+        draw(context, state, players, now, false, world, myAngle);
+        frame = requestAnimationFrame(tick);
+        return;
+      }
+      if (!pausedRef.current &&!gameEndedRef.current) {
+        const myPlayer = players.find(p => p.socketId === socket.id) || players[0];
+        const mySideLocal = (myPlayer?.side || 'bottom') as Player['side'];
+        const isOffline =!socket.connected || players.length <= 1;
         if (!isHost && drag.current.side === mySideLocal) socket.emit('paddle-input', { code: roomCode, side: mySideLocal, x: drag.current.x, y: drag.current.y });
         if (isHost) {
           state.elapsed += delta / 60;
@@ -522,7 +553,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       }
       if(!hasDraggedRef.current && arenaRef.current && hintDotRef.current && hintTextRef.current){
         const elapsed = now - noDragStartRef.current;
-        if(elapsed>3000 && state.countdown===0 &&!pausedRef.current &&!celebrating){
+        if(elapsed>3000 && state.countdown===0 &&!pausedRef.current &&!celebratingRef.current){
           const myP = state.paddles[mySide];
           const cos = Math.cos(myAngle); const sin = Math.sin(myAngle);
           const dx = myP.x-world.w/2; const dy = myP.y-world.h/2;
@@ -535,7 +566,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       }
       draw(context, state, players, now, false, world, myAngle); frame = requestAnimationFrame(tick);
     }; frame = requestAnimationFrame(tick); return () => { cancelAnimationFrame(frame); observer.disconnect(); };
-  }, [players, settings, getInitialSpeed, isHost, roomCode, mySide, myAngle, playHit, playGoalSound, celebrating]);
+  }, [players, settings, getInitialSpeed, isHost, roomCode, mySide, myAngle, playHit, playGoalSound]);
 
   useEffect(() => {
     const down = (event: KeyboardEvent) => { const key = event.key.toLowerCase(); if (key === ' ' || event.code === 'Space') { if (servingRef.current.active) { servingRef.current.requested = true; event.preventDefault(); } } if (event.key === 'ArrowLeft' || key === 'a') touchControls.current.left = true; if (event.key === 'ArrowRight' || key === 'd') touchControls.current.right = true; if (event.key === 'ArrowUp' || key === 'w') touchControls.current.up = true; if (event.key === 'ArrowDown' || key === 's') touchControls.current.down = true; if (key === 'j') touchControls.current.bottomLeft = true; if (key === 'l') touchControls.current.bottomRight = true; if (key === 'i') touchControls.current.leftUp = true; if (key === 'k') touchControls.current.leftDown = true; };
@@ -564,7 +595,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
 
   return (
     <main className="game-shell" dir="ltr" style={{ touchAction: 'none' }} onContextMenu={e => e.preventDefault()}>
-      <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}} @keyframes flashWin{0%{background:rgba(255,255,255,0)}10%{background:rgba(255,255,255,0.9)}20%{background:rgba(255,207,90,0.5)}30%{background:transparent}100%{background:transparent}}`}</style>
+      <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
       <header className="game-topbar"><Brand /><div className="match-meta"><span><i className="live-dot" /></span><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | {mySide}</div><div className="game-actions"><button className="game-icon" onClick={() => setSound((value) =>!value)}><Volume2 size={18} /></button><button className="game-icon" onClick={onPause}>{paused? <Play size={18} /> : <Pause size={18} />}</button><button className="game-icon" onClick={onExit}><X size={18} /></button></div></header>
       <div className="score-strip">{players.map((player) => <div className="score-chip" key={player.id} style={{border: player.side===mySide?`2px solid ${player.color}`:undefined}}><span className="score-color" style={{ background: player.color }} /><span>{player.name}{player.side===mySide?' (أنت)':''}</span><strong>{scores[player.id]?? 0}</strong></div>)}<div className="rally-meter"><span>Rally</span><b>{rally}</b></div></div>
       <section className="arena-stage" style={{ width: '100%', maxWidth: '100vw', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -573,12 +604,16 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
           <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
           {countdown>0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}><span style={{ fontSize: '110px', fontWeight: 900, color: '#ff2233' }}>{countdown}</span><span style={{ background: '#222', color: '#fff', padding: '8px 18px', borderRadius: 999, fontWeight: 800 }}>{countdownName} سجل!</span></div>}
-          {lastGoal && <div style={{ position: 'absolute', top: '48%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.92)', color: '#fff', padding: '12px 22px', borderRadius: 12, fontWeight: 900, zIndex: 11 }}>هدف! {lastGoal}</div>}
+          {lastGoal && !celebrating && <div style={{ position: 'absolute', top: '48%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.92)', color: '#fff', padding: '12px 22px', borderRadius: 12, fontWeight: 900, zIndex: 11 }}>هدف! {lastGoal}</div>}
           {celebrating && (
-            <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.82)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:30,animation:'flashWin 0.6s ease 3'}}>
-              <canvas ref={celebrationCanvasRef} style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'}}/>
-              <div style={{fontSize:18,color:'#fff',background:'#222',padding:'8px 18px',borderRadius:999,marginBottom:12,zIndex:31}}>🏆 انتهت المباراة</div>
-              <div style={{fontSize:54,fontWeight:900,color:celebrating.color,textShadow:`0 0 20px ${celebrating.color}`,textAlign:'center',zIndex:31,lineHeight:1.1}}>{celebrating.name}<br/>فاز!</div>
+            <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 50% 40%, rgba(255,207,90,0.25), rgba(0,0,0,0.88))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:50}}>
+              <canvas ref={celebrationCanvasRef} style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:1}}/>
+              <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+                <div style={{fontSize:16,color:'#fff',background:'#222',padding:'8px 18px',borderRadius:999,border:'1px solid #ffcf5a'}}>🏆 انتهت المباراة</div>
+                <div style={{fontSize:56,fontWeight:900,color:celebrating.color,textShadow:`0 0 25px ${celebrating.color}, 0 0 50px ${celebrating.color}`,textAlign:'center',lineHeight:1.1,animation:'celePulse 0.6s ease infinite alternate'}}>{celebrating.name}<br/>فاز!</div>
+                <div style={{marginTop:8, background:'rgba(255,255,255,0.1)',padding:'6px 14px',borderRadius:999,color:'#fff',fontSize:13}}>صوت الجمهور + كونفيتي 8 ثواني</div>
+              </div>
+              <style>{`@keyframes celePulse{0%{transform:scale(1)}100%{transform:scale(1.08)}}`}</style>
             </div>
           )}
         </div>
@@ -638,7 +673,6 @@ function ResultsScreen({ players, scores, winner, wins, onAgain, onHome }: any) 
   const [showFire, setShowFire] = useState(true);
   const sortedCurrent = [...players].sort((a:any,b:any)=>(scores[b.id]??0)-(scores[a.id]??0));
   const sortedAllTime = Object.entries(wins as Record<string,number>).sort((a:any,b:any)=>b[1]-a[1]).slice(0,20);
-
   useEffect(()=>{
     const canvas = canvasRef.current; if(!canvas) return; const c = canvas.getContext('2d'); if(!c) return;
     canvas.width = window.innerWidth; canvas.height = window.innerHeight;
@@ -649,7 +683,6 @@ function ResultsScreen({ players, scores, winner, wins, onAgain, onHome }: any) 
     raf=requestAnimationFrame(loop);
     return ()=>cancelAnimationFrame(raf);
   },[]);
-
   return (
     <main className="app-shell results-shell" dir={isAr? 'rtl' : 'ltr'} style={{position:'relative',overflow:'hidden'}}>
       <style>{`@keyframes flash {0%{background:rgba(255,255,255,0)}10%{background:rgba(255,255,255,0.9)}20%{background:rgba(255,207,90,0.6)}30%{background:transparent}100%{background:transparent}}`}</style>
