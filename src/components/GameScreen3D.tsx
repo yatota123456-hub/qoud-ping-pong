@@ -178,46 +178,53 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const SQUARE = { w: 1000, h: 1000 };
   const base = count >= 3? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
-  // FIX: لا نرجع scaleFactor - الكاميرا ثابتة على S
-  const scaleFactor = 1; // ثابت لكل الأحجام
-  return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor };
+  return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
 }
 
-function getAdaptiveCameraPresets(world: {w:number,h:number,scaleFactor?:number}, arenaSize: string, isMobile: boolean) {
-  // FIX: الكاميرا ثابتة مثل S لكل الأحجام - نفس الصورة الثانية
+// FIX V2: كل حجم له مسافة مضبوطة - نفس الزاوية، أبعد شوي كل ما كبر
+function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
   const isMobileNow = isMobile || (typeof window !== 'undefined' && window.innerWidth < 768);
-  const mobileBoost = isMobileNow ? 1.15 : 1.0; // قللنا البوست من 1.45 لـ 1.15 عشان ما تبعد كثير
-  // FIX: شلنا scaleFactor من الحساب
-  const baseDistanceMultiplier = mobileBoost; // كان: scaleFactor * mobileBoost
-  const baseHeightMultiplier = isMobileNow ? 1.1 : 1.0; // كان: scaleFactor * (isMobile?1.3:1.0)
   
-  const adapt = (base: { distance: number; height: number }) => ({ 
-    distance: base.distance * baseDistanceMultiplier, 
-    height: base.height * baseHeightMultiplier 
-  });
+  // مسافات مضبوطة لكل حجم - مجربة على الصور اللي أرسلتها
+  // S كان ممتاز، M معقول لكن نبيه أبعد شوي، L و XL كانوا قريبين زيادة
+  const PRESET_BY_SIZE: any = {
+    small:  { distance: 1180, height: 820 },   // S: ممتاز - نفس الصورة الثانية
+    medium: { distance: 1380, height: 900 },   // M: أبعد شوي من قبل (كان 1050) - طلبك
+    large:  { distance: 1580, height: 980 },   // L: أبعد من قبل (كان 1050) عشان ما يقص
+    xlarge: { distance: 1780, height: 1060 },   // XL: أبعد أكثر
+  };
   
-  // هذه المسافات هي نفسها اللي تعطي وضعية S الممتازة في الصورة الثانية
+  const base = PRESET_BY_SIZE[arenaSize] || PRESET_BY_SIZE.medium;
+  
+  // بوست الموبايل خفيف فقط
+  const mobileBoost = isMobileNow ? 1.12 : 1.0;
+  const heightBoost = isMobileNow ? 1.08 : 1.0;
+  
+  const distance = base.distance * mobileBoost;
+  const height = base.height * heightBoost;
+  
   const basePresets = {
     top: { angle: Math.PI, distance: 400, height: 1400, name: 'من الأعلى', nameEn: 'Top View' },
-    bottom: { angle: 0, distance: 1050, height: 780, name: 'خلفك', nameEn: 'Behind You' }, // FIX: قللنا المسافة من 1550 لـ 1050 عشان تقرب مثل S
+    bottom: { angle: 0, distance: distance, height: height, name: 'خلفك', nameEn: 'Behind You' },
     topPlayer: { angle: Math.PI, distance: 650, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
-    iso: { angle: 0.6, distance: 850, height: 750, name: 'مائل', nameEn: 'Isometric' }, // FIX: قربنا أكثر
+    iso: { angle: 0.6, distance: distance * 0.72, height: height * 0.88, name: 'مائل', nameEn: 'Isometric' },
     sideLeft: { angle: -Math.PI / 2, distance: 800, height: 500, name: 'يسار', nameEn: 'Left' },
     sideRight: { angle: Math.PI / 2, distance: 800, height: 500, name: 'يمين', nameEn: 'Right' },
   };
+  
   const adapted: any = {};
   for (const k in basePresets) {
-    const b: any = (basePresets as any)[k]; const a = adapt(b);
-    adapted[k] = { ...b, distance: a.distance, height: a.height, baseDistance: b.distance, baseHeight: b.height, scaleFactor: 1, isMobile: isMobileNow };
+    const b: any = (basePresets as any)[k];
+    adapted[k] = { ...b, baseDistance: b.distance, baseHeight: b.height, scaleFactor: 1, isMobile: isMobileNow };
   }
   return adapted;
 }
 
 const CAM_PRESETS_3D_BASE = {
   top: { angle: Math.PI, distance: 400, height: 1400, name: 'من الأعلى', nameEn: 'Top View' },
-  bottom: { angle: 0, distance: 1050, height: 780, name: 'خلفك', nameEn: 'Behind You' },
+  bottom: { angle: 0, distance: 1380, height: 900, name: 'خلفك', nameEn: 'Behind You' },
   topPlayer: { angle: Math.PI, distance: 650, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
-  iso: { angle: 0.6, distance: 850, height: 750, name: 'مائل', nameEn: 'Isometric' },
+  iso: { angle: 0.6, distance: 950, height: 800, name: 'مائل', nameEn: 'Isometric' },
   sideLeft: { angle: -Math.PI / 2, distance: 800, height: 500, name: 'يسار', nameEn: 'Left' },
   sideRight: { angle: Math.PI / 2, distance: 800, height: 500, name: 'يمين', nameEn: 'Right' },
 } as const;
@@ -473,7 +480,6 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
     dir.position.set(200, 900, 300);
     scene.add(dir);
     const isMobileFov = mount.clientWidth < 768;
-    // FIX: FOV ثابت 50 لكل الأحجام عشان نفس القرب مثل S
     const fov = isMobileFov ? 52 : 48;
     const camera = new THREE.PerspectiveCamera(fov, mount.clientWidth / mount.clientHeight, 10, 5000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
