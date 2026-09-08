@@ -66,8 +66,18 @@ class ColyseusBridge {
   }
 }
 export const socket = new ColyseusBridge();
-// يدعم VITE_SERVER_URL و VITE_COLYSEUS_URL
+function getServerUrl() {
+  // في بيئة الإنتاج (Render) استخدم النطاق الحالي
+  if (import.meta.env.PROD) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}`;
+  }
+  // في التطوير المحلي استخدم localhost:5000
+  return 'ws://localhost:5000';
+}
+
 const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string) || 
                    (import.meta.env.VITE_COLYSEUS_URL as string) || 
-                   (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host;
+                   getServerUrl();
+
 export const colyseus = new Client(SERVER_URL);
