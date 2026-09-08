@@ -1,5 +1,5 @@
 import { schema, t } from "@colyseus/schema";
-
+export type PlayerSide = 'top' | 'right' | 'bottom' | 'left';
 // بدون decorators - يعمل مع TS5 و Node 24 بدون experimentalDecorators
 export const Paddle = schema({
   x: t.number(),
@@ -36,6 +36,9 @@ export const QoudState = schema({
   countdown: t.number(),
   scorerSide: t.string(),
   countdownSide: t.string(),
+  worldW: t.number(),
+worldH: t.number(),
+maxPlayers: t.number(),
 });
 
 // Aliases للتوافق مع QoudRoom.ts القديم
