@@ -22,7 +22,7 @@ const SIDES: Player['side'][] = ['bottom', 'top', 'right', 'left'];
 const RECTANGULAR_WORLD = { w: 700, h: 1050 };
 const SQUARE_WORLD = { w: 1000, h: 1000 };
 const ZONE = 100;
-const PADDLE_MOVE_ZONE = 220; // FIX: كان 100 فقط - سبب عدم تقدم المضرب
+const PADDLE_MOVE_ZONE = 220;
 const PADDLE_SIZE = 42;
 const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 10, sound: true, graphics: '2d', arenaSize: 'medium', seriesType: 'single', seriesRounds: 3 } as Settings;
 
@@ -581,45 +581,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       [523,659,783,1046,1318].forEach((freq,i)=>{ const o=ctx.createOscillator(); const g2=ctx.createGain(); o.type='square'; o.frequency.value=freq; g2.gain.setValueAtTime(0,t+i*0.12); g2.gain.linearRampToValueAtTime(0.75,t+i*0.12+0.02); g2.gain.exponentialRampToValueAtTime(0.001,t+i*0.12+0.8); o.connect(g2).connect(master); o.start(t+i*0.12); o.stop(t+i*0.12+0.9); });
     }catch{}
   },[]);
-  useEffect(()=>{
-    if(!celebrating) return;
-    playCelebrationSound();
-    const canvas = celebrationCanvasRef.current; if(!canvas) return; const c=canvas.getContext('2d'); if(!c) return;
-    const arena = arenaRef.current; if(!arena) return;
-    const rect = arena.getBoundingClientRect();
-    canvas.width = rect.width*2; canvas.height = rect.height*2;
-    (canvas as any).style.width = rect.width+'px'; (canvas as any).style.height = rect.height+'px';
-    c.scale(2,2);
-    const colorsHue = [45, 350, 165, 195];
-    let parts:any[] = Array.from({length:320},()=>({
-      x:Math.random()*rect.width, y:Math.random()*-rect.height*0.4,
-      vx:(Math.random()-0.5)*7, vy:Math.random()*3+1.2,
-      size:Math.random()*6+2.5, rot:Math.random()*360, rotSpeed:(Math.random()-0.5)*9,
-      hue: colorsHue[Math.floor(Math.random()*colorsHue.length)] + (Math.random()*25-12),
-      alpha:1, shape: Math.floor(Math.random()*3)
-    }));
-    let start = performance.now(); let raf=0;
-    const loop=(now:number)=>{
-      const elapsed = now-start;
-      if(!celebratingRef.current || elapsed>8000){ c.clearRect(0,0,rect.width,rect.height); return; }
-      c.clearRect(0,0,rect.width,rect.height);
-      parts.forEach((p:any)=>{
-        p.hue = (p.hue + 0.32) % 360;
-        p.x+=p.vx; p.y+=p.vy; p.vy+=0.13; p.vx*=0.998; p.rot+=p.rotSpeed;
-        p.alpha = elapsed>6200? Math.max(0,1-((elapsed-6200)/1800)) : 1;
-        c.save(); c.translate(p.x,p.y); c.rotate(p.rot*Math.PI/180); c.globalAlpha=p.alpha;
-        c.fillStyle=`hsl(${p.hue},100%,62%)`; c.shadowColor=`hsl(${p.hue},100%,62%)`; c.shadowBlur=10;
-        if(p.shape===0) c.fillRect(-p.size/2,-p.size/2,p.size,p.size*0.65);
-        else if(p.shape===1){ c.beginPath(); c.arc(0,0,p.size/2,0,Math.PI*2); c.fill(); }
-        else { c.beginPath(); c.moveTo(0,-p.size/2); c.lineTo(p.size/2,p.size/2); c.lineTo(-p.size/2,p.size/2); c.closePath(); c.fill(); }
-        c.restore();
-        if(p.y>rect.height+40){ p.y=-30; p.x=Math.random()*rect.width; p.vy=Math.random()*3+1.2; }
-      });
-      raf=requestAnimationFrame(loop);
-    };
-    raf=requestAnimationFrame(loop);
-    return ()=>cancelAnimationFrame(raf);
-  },[celebrating, playCelebrationSound]);
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
   const getInitialSpeed = useCallback(() => 2.8 + settings.ballSpeed * 0.48, [settings.ballSpeed]);
   const stateRef = useRef({
@@ -640,30 +601,45 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const dx = wx-world.w/2; const dy = wy-world.h/2;
     return { x: dx*cos - dy*sin + world.w/2, y: dx*sin + dy*cos + world.h/2 };
   }, [world, myAngle]);
+
+  // ===== إضافة مستمع game-state للجميع =====
   useEffect(() => {
-    if (isOfflineMode) return;
-    if (isHost) {
-      const handleInput = (data: { side: Player['side']; x: number; y: number }) => { if (stateRef.current.targetPaddles[data.side]) { stateRef.current.targetPaddles[data.side].x = data.x; stateRef.current.targetPaddles[data.side].y = data.y; } };
-      socket.on('paddle-input', handleInput); return () => { socket.off('paddle-input', handleInput); };
-    } else {
-      const handleState = (serverState: any) => {
-        if(!serverState?.ball) return;
-        stateRef.current.ballTarget = {...serverState.ball};
-        Object.keys(serverState.paddles || {}).forEach((k: any) => {
-          if(k!== mySide) stateRef.current.targetPaddles[k] = serverState.paddles[k];
+    const handleGameState = (data: any) => {
+      if (!data) return;
+      if (data.ball) {
+        stateRef.current.ballTarget.x = data.ball.x;
+        stateRef.current.ballTarget.y = data.ball.y;
+        stateRef.current.ballTarget.vx = data.ball.vx;
+        stateRef.current.ballTarget.vy = data.ball.vy;
+      }
+      if (data.paddles) {
+        Object.keys(data.paddles).forEach((side) => {
+          const p = data.paddles[side];
+          if (stateRef.current.targetPaddles[side as Player['side']]) {
+            stateRef.current.targetPaddles[side as Player['side']].x = p.x;
+            stateRef.current.targetPaddles[side as Player['side']].y = p.y;
+          }
         });
-        if (serverState.countdown!== undefined) { stateRef.current.countdown = serverState.countdown; if(serverState.countdown>0) setCountdown(serverState.countdown); }
-      };
-      socket.on('game-state', handleState); return () => { socket.off('game-state', handleState); };
-    }
-  }, [isHost, isOfflineMode, mySide]);
+      }
+      if (data.countdown !== undefined) {
+        stateRef.current.countdown = data.countdown;
+        setCountdown(data.countdown);
+      }
+      if (data.rally !== undefined) {
+        setRally(data.rally);
+      }
+    };
+    socket.on('game-state', handleGameState);
+    return () => { socket.off('game-state', handleGameState); };
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current; const arena = arenaRef.current; if (!canvas ||!arena) return; const context = canvas.getContext('2d'); if (!context) return; const state = stateRef.current;
     const launchBall = (fromPaddle = false) => {
       const spd = getInitialSpeed() * (state.speedMult || 1); const ang = fromPaddle? (Math.random() - 0.5) * Math.PI * 0.6 : Math.random() * Math.PI * 2;
       if (fromPaddle) { const side = servingRef.current.side; if (side === 'bottom') { state.ball.vx = Math.sin(ang) * spd; state.ball.vy = -Math.abs(Math.cos(ang) * spd) - 1; } else if (side === 'top') { state.ball.vx = Math.sin(ang) * spd; state.ball.vy = Math.abs(Math.cos(ang) * spd) + 1; } else if (side === 'left') { state.ball.vx = Math.abs(Math.cos(ang) * spd) + 1; state.ball.vy = Math.sin(ang) * spd; } else { state.ball.vx = -Math.abs(Math.cos(ang) * spd) - 1; state.ball.vy = Math.sin(ang) * spd; } } else { state.ball.vx = Math.cos(ang) * spd; state.ball.vy = Math.sin(ang) * spd; if (Math.abs(state.ball.vx) < 2) state.ball.vx = state.ball.vx < 0? -2.5 : 2.5; if (Math.abs(state.ball.vy) < 2) state.ball.vy = state.ball.vy < 0? -2.5 : 2.5; }
     };
-    if (isHost) { if (settings.start!== 'paddle') { launchBall(false); servingRef.current.active = false; } else { state.ball.x = state.targetPaddles.bottom.x; state.ball.y = state.targetPaddles.bottom.y - 24; servingRef.current.active = true; servingRef.current.side = 'bottom'; servingRef.current.startTime = performance.now(); servingRef.current.requested = false; } }
+    // لا نقوم بفيزياء محلية، فقط نعرض الحالة من الخادم
     let frame = 0;
     const resize = () => { const ratio = Math.min(window.devicePixelRatio || 1, 2); const rect = arena.getBoundingClientRect(); canvas.width = rect.width * ratio; canvas.height = rect.height * ratio; context.setTransform(canvas.width / world.w, 0, 0, canvas.height / world.h, 0, 0); }; resize(); const observer = new ResizeObserver(resize); observer.observe(arena);
     const needCount = Math.max(2, players.length);
@@ -690,7 +666,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         return;
       }
       if (!pausedRef.current &&!gameEndedRef.current) {
-        // FIX: تحديث مضربي محليا فورا حتى لو لست هوست
+        // تحديث مضرب اللاعب محلياً وإرساله للخادم
         if (drag.current.side === mySide) {
           state.targetPaddles[mySide].x = clamp(drag.current.x, 50, world.w - 50);
           if(mySide==='bottom' || mySide==='top'){
@@ -703,170 +679,37 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             const maxX = mySide==='left'? 40 + PADDLE_MOVE_ZONE : world.w - 40;
             state.targetPaddles[mySide].x = clamp(drag.current.x, minX, maxX);
           }
-          if(!isHost &&!isOfflineMode) socket.emit('paddle-input', { code: roomCode, side: mySide, x: state.targetPaddles[mySide].x, y: state.targetPaddles[mySide].y });
+          // إرسال الموقع إلى الخادم عبر sendPaddleTarget
+          socket.sendPaddleTarget(state.targetPaddles[mySide].x, state.targetPaddles[mySide].y);
         }
 
-        if (isHost) {
-          state.elapsed += delta / 60;
-          if (settings.mode === 'time' && state.elapsed > 1) { state.elapsed = 0; setTimeLeft((time) => { if (time <= 1) { gameEndedRef.current = true; onTimeUpRef.current(); return 0; } return time - 1; }); }
-          if (state.countdown > 0) {
-            const elapsed = (now - state.countdownStart) / 1000;
-            if (elapsed >= 3) {
-              state.countdown = 0; setCountdown(0); const side = state.countdownSide;
-              if (settings.start === 'paddle' && side) {
-                servingRef.current.active = true; servingRef.current.side = side; servingRef.current.startTime = now; servingRef.current.requested = false;
-                if (side === 'bottom') { state.ball.x = state.targetPaddles.bottom.x; state.ball.y = state.targetPaddles.bottom.y - 24; }
-                else if (side === 'top') { state.ball.x = state.targetPaddles.top.x; state.ball.y = state.targetPaddles.top.y + 24; }
-                else if (side === 'left') { state.ball.x = state.targetPaddles.left.x - 24; state.ball.y = state.targetPaddles.left.y; }
-                else { state.ball.x = state.targetPaddles.right.x + 24; state.ball.y = state.targetPaddles.right.y; }
-                state.ball.vx = 0; state.ball.vy = 0; setIsServing(true);
-              } else { launchBall(false); setIsServing(false); servingRef.current.active = false; }
-            } else { setCountdown(Math.ceil(3-elapsed)); socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); draw(context, state, players, now, true, world, myAngle); frame = requestAnimationFrame(tick); return; }
+        // ===== لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles =====
+        const lerpFactor = 0.15;
+        // تحديث الكرة
+        state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
+        state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
+        state.ball.vx = state.ballTarget.vx;
+        state.ball.vy = state.ballTarget.vy;
+
+        // تحديث المضارب (باستثناء مضرب اللاعب نفسه الذي تم تحديثه يدوياً)
+        (['top','bottom','right','left'] as const).forEach(side => {
+          if (!active(side)) return;
+          if (side === mySide) {
+            // تم تحديثه بالفعل من drag
+            return;
           }
-          const touch = touchControls.current;
-          if (touch.left) controls.current.x = -1; else if (touch.right) controls.current.x = 1; else controls.current.x = 0;
-          if (touch.up) controls.current.y = -1; else if (touch.down) controls.current.y = 1; else controls.current.y = 0;
-          const bottomInput = touch.bottomLeft? -1 : touch.bottomRight? 1 : 0;
-          const predX = state.ball.x + state.ball.vx * 12; const predY = state.ball.y + state.ball.vy * 12;
-          if (isOfflineMode) {
-            state.targetPaddles.bottom.x = clamp(state.targetPaddles.bottom.x + (controls.current.x + bottomInput) * 9 * delta, 50, world.w - 50);
-            state.targetPaddles.bottom.y = clamp(state.targetPaddles.bottom.y + controls.current.y * 7 * delta, world.h - PADDLE_MOVE_ZONE - 60, world.h - 40);
-            state.targetPaddles.top.x = clamp(predX, 50, world.w - 50);
-            state.targetPaddles.right.y = clamp(predY, 50, world.h - 50);
-            state.targetPaddles.left.y = clamp(predY, 50, world.h - 50);
-          } else {
-            const pTop = players.find(p => p.side === 'top'); const pRight = players.find(p => p.side === 'right'); const pLeft = players.find(p => p.side === 'left');
-            if (pTop?.computer) state.targetPaddles.top.x = clamp(state.targetPaddles.top.x + ai(predX, state.targetPaddles.top.x, settings.difficulty) * 6 * delta, 50, world.w - 50);
-            if (pRight?.computer) state.targetPaddles.right.y = clamp(state.targetPaddles.right.y + ai(predY, state.targetPaddles.right.y, settings.difficulty) * 7 * delta, 50, world.h - 50);
-            if (pLeft?.computer) state.targetPaddles.left.y = clamp(state.targetPaddles.left.y + ai(predY, state.targetPaddles.left.y, settings.difficulty) * 6 * delta, 50, world.h - 50);
-          }
-          if (servingRef.current.active) {
-            const side = servingRef.current.side;
-            if (side === 'bottom') { state.ball.x = state.paddles.bottom.x; state.ball.y = state.paddles.bottom.y - 24; } else if (side === 'top') { state.ball.x = state.paddles.top.x; state.ball.y = state.paddles.top.y + 24; } else if (side === 'left') { state.ball.x = state.paddles.left.x - 24; state.ball.y = state.paddles.left.y; } else { state.ball.x = state.paddles.right.x + 24; state.ball.y = state.paddles.right.y; }
-            const player = playerForSide(side); if (player?.computer && now - servingRef.current.startTime > 900) servingRef.current.requested = true;
-            if (servingRef.current.requested) { launchBall(true); servingRef.current.active = false; servingRef.current.requested = false; setIsServing(false); playHit(0.3, state.ball.x); }
-            socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); draw(context, state, players, now, true, world, myAngle); frame = requestAnimationFrame(tick); return;
-          }
-          // FIX: تصادم قوي مثل اللاعب الأول - ارتداد حقيقي بدون تفادي
-          const prevBallX = state.ball.x;
-          const prevBallY = state.ball.y;
-          state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
-          const r = 18; const PADDLE_R = 32; const HIT_DIST = PADDLE_R + r + 18; // 68px - كبير جدا
-          const prevBottom = state.prevPaddles.bottom; const prevTop = state.prevPaddles.top; const prevLeft = state.prevPaddles.left; const prevRight = state.prevPaddles.right;
-          const velBottom: Vec2 = { x: state.targetPaddles.bottom.x - prevBottom.x, y: state.targetPaddles.bottom.y - prevBottom.y };
-          const velTop: Vec2 = { x: state.targetPaddles.top.x - prevTop.x, y: state.targetPaddles.top.y - prevTop.y };
-          const velLeft: Vec2 = { x: state.targetPaddles.left.x - prevLeft.x, y: state.targetPaddles.left.y - prevLeft.y };
-          const velRight: Vec2 = { x: state.targetPaddles.right.x - prevRight.x, y: state.targetPaddles.right.y - prevRight.y };
-          if (!active('top') && state.ball.y - r < 22) { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy) * 1.1; playHit(0.15, state.ball.x); }
-          if (!active('bottom') && state.ball.y + r > world.h - 22) { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy) * 1.1; playHit(0.15, state.ball.x); }
-          if (!active('left') && state.ball.x - r < 22) { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx) * 1.1; playHit(0.15, state.ball.x); }
-          if (!active('right') && state.ball.x + r > world.w - 22) { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx) * 1.1; playHit(0.15, state.ball.x); }
-          const checkHit = (side: Player['side'], vel: Vec2)=>{
-            const pad = state.targetPaddles[side];
-            const dx = state.ball.x - pad.x; const dy = state.ball.y - pad.y;
-            const dist = Math.sqrt(dx*dx+dy*dy);
-            if(dist <= HIT_DIST){
-              const nx = dist>0.5? dx/dist : 0;
-              const ny = dist>0.5? dy/dist : (side==='bottom'? -1 : side==='top'? 1 : 0);
-              // ابعد الكرة بقوة
-              state.ball.x = pad.x + nx*(HIT_DIST+24);
-              state.ball.y = pad.y + ny*(HIT_DIST+24);
-              const baseSpeed = 8 + settings.ballSpeed*0.7 + state.rally*0.5;
-              if(side==='bottom'){
-                state.ball.vy = -Math.abs(baseSpeed) - Math.max(0,-vel.y)*0.9;
-                state.ball.vx = nx*8 + vel.x*1.3;
-              } else if(side==='top'){
-                state.ball.vy = Math.abs(baseSpeed) + Math.max(0,vel.y)*0.9;
-                state.ball.vx = nx*8 + vel.x*1.3;
-              } else if(side==='left'){
-                state.ball.vx = Math.abs(baseSpeed) + Math.max(0,vel.x)*0.9;
-                state.ball.vy = ny*8 + vel.y*1.3;
-              } else if(side==='right'){
-                state.ball.vx = -Math.abs(baseSpeed) - Math.max(0,-vel.x)*0.9;
-                state.ball.vy = ny*8 + vel.y*1.3;
-              }
-              state.speedMult = Math.min(2.9, (state.speedMult||1)*1.16); state.rally++;
-              playHit(0.9, state.ball.x); state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: COLORS[SIDES.indexOf(side)], power: 0.9 });
-            }
-          };
-          // نفس الارتداد القوي لكل اللاعبين
-          if(active('top')) checkHit('top', velTop); 
-          if(active('bottom')) checkHit('bottom', velBottom); 
-          if(active('left')) checkHit('left', velLeft); 
-          if(active('right')) checkHit('right', velRight);
-          const maxSpd = 7 + settings.ballSpeed * 0.85 + state.rally * 0.55; state.ball.vx = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vx)); state.ball.vy = Math.max(-maxSpd, Math.min(maxSpd, state.ball.vy));
-          state.prevPaddles = { top: { x: state.paddles.top.x, y: state.paddles.top.y }, bottom: { x: state.paddles.bottom.x, y: state.paddles.bottom.y }, left: { x: state.paddles.left.x, y: state.paddles.left.y }, right: { x: state.paddles.right.x, y: state.paddles.right.y }, };
-          const GOAL_W = players.length === 2? 260 : 300; const GOAL_X1 = (world.w - GOAL_W) / 2; const GOAL_X2 = GOAL_X1 + GOAL_W; const GOAL_Y1 = (world.h - GOAL_W) / 2; const GOAL_Y2 = GOAL_Y1 + GOAL_W; const inGoalX = (x: number) => x >= GOAL_X1 && x <= GOAL_X2; const inGoalY = (y: number) => y >= GOAL_Y1 && y <= GOAL_Y2; let missed: Player | undefined;
-          if (state.ball.y - r < 22) { if (active('top')) { if (inGoalX(state.ball.x)) missed = playerForSide('top'); else { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy); playHit(0.15, state.ball.x); } } else { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy); } }
-          if (!missed && state.ball.y + r > world.h - 22) { if (active('bottom')) { if (inGoalX(state.ball.x)) missed = playerForSide('bottom'); else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); playHit(0.15, state.ball.x); } } else { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy); } }
-          if (!missed && state.ball.x - r < 22) { if (active('left')) { if (inGoalY(state.ball.y)) missed = playerForSide('left'); else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); playHit(0.15, state.ball.x); } } else { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx); } }
-          if (!missed && state.ball.x + r > world.w - 22) { if (active('right')) { if (inGoalY(state.ball.y)) missed = playerForSide('right'); else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); playHit(0.15, state.ball.x); } } else { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx); } }
-          if (missed) { state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: missed.color, power: 0.9 }); playHit(0.9, state.ball.x); playGoalSound(); onGoalRef.current(playerForSide(missed.side)); resetBall(missed.side); }
-          setRally(state.rally); socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
-        } else {
-          // FIX: لاعب ثاني يضرب محليا حتى لو ليس هوست - ارتداد قوي
-          const lerp = 0.35 * delta;
-          state.ball.x += (state.ballTarget.x - state.ball.x) * lerp;
-          state.ball.y += (state.ballTarget.y - state.ball.y) * lerp;
-          // تنبؤ محلي لضربة اللاعب الثاني - ارتداد قوي مثل الأول
-          if(active(mySide)){
-            const myPad = state.targetPaddles[mySide];
-            const dx = state.ball.x - myPad.x;
-            const dy = state.ball.y - myPad.y;
-            const dist = Math.sqrt(dx*dx+dy*dy);
-            if(dist <= HIT_DIST+12){
-              // ضربة محلية قوية فورية
-              const baseSpeed = 8 + settings.ballSpeed*0.7 + state.rally*0.5;
-              const nx = dx/(dist||1); const ny = dy/(dist||1);
-              state.ball.x = myPad.x + nx*(HIT_DIST+26);
-              state.ball.y = myPad.y + ny*(HIT_DIST+26);
-              // ارتداد قوي - نفس منطق الهوست
-              if(mySide==='bottom'){
-                state.ball.vy = -Math.abs(baseSpeed);
-                state.ball.vx = nx*8;
-              } else if(mySide==='top'){
-                state.ball.vy = Math.abs(baseSpeed);
-                state.ball.vx = nx*8;
-              } else if(mySide==='left'){
-                state.ball.vx = Math.abs(baseSpeed);
-                state.ball.vy = ny*8;
-              } else if(mySide==='right'){
-                state.ball.vx = -Math.abs(baseSpeed);
-                state.ball.vy = ny*8;
-              }
-              // حدث ballTarget ايضا حتى لا يسحبه السيرفر
-              state.ballTarget.x = state.ball.x;
-              state.ballTarget.y = state.ball.y;
-              state.ballTarget.vx = state.ball.vx;
-              state.ballTarget.vy = state.ball.vy;
-              playHit(0.9, state.ball.x);
-              socket.emit('paddle-input', { code: roomCode, side: mySide, x: myPad.x, y: myPad.y, vx: state.ball.vx, vy: state.ball.vy, hit: true, strong: true });
-            }
-          }
-        }
-        // ليرب المضارب للجميع - نفس السرعة لكل اللاعبين - لا شبح - اسرع للاعب الثاني
-        (['top','bottom','right','left'] as Player['side'][]).forEach(s => {
-          if (!active(s)) return;
-          const f = (s===mySide?0.55:0.42) * delta; // لاعبك اسرع لتجنب الشبح
-          state.paddles[s].x += (state.targetPaddles[s].x - state.paddles[s].x) * f;
-          state.paddles[s].y += (state.targetPaddles[s].y - state.paddles[s].y) * f;
+          const target = state.targetPaddles[side];
+          const current = state.paddles[side];
+          current.x += (target.x - current.x) * lerpFactor;
+          current.y += (target.y - current.y) * lerpFactor;
         });
       }
-      if(!hasDraggedRef.current && arenaRef.current && hintDotRef.current && hintTextRef.current){
-        const elapsed = now - noDragStartRef.current;
-        if(elapsed>3000 && state.countdown===0 &&!pausedRef.current &&!celebratingRef.current){
-          const myP = state.paddles[mySide];
-          const cos = Math.cos(myAngle); const sin = Math.sin(myAngle);
-          const dx = myP.x-world.w/2; const dy = myP.y-world.h/2;
-          const rx = dx*cos - dy*sin + world.w/2; const ry = dx*sin + dy*cos + world.h/2;
-          const rect = arenaRef.current.getBoundingClientRect();
-          const sx = (rx/world.w)*rect.width; const sy = (ry/world.h)*rect.height;
-          hintDotRef.current.style.left=`${sx}px`; hintDotRef.current.style.top=`${sy+40}px`; hintDotRef.current.style.display='block';
-          hintTextRef.current.style.left=`${sx+18}px`; hintTextRef.current.style.top=`${sy+28}px`; hintTextRef.current.style.display='block';
-        }
-      }
-      draw(context, state, players, now, false, world, myAngle); frame = requestAnimationFrame(tick);
-    }; frame = requestAnimationFrame(tick); return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+      // رسم
+      draw(context, state, players, now, false, world, myAngle);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [players, settings, getInitialSpeed, isHost, roomCode, mySide, myAngle, playHit, playGoalSound]);
 
   useEffect(() => {
@@ -880,21 +723,21 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     if (paused || celebrating) return; if (isServing) { requestLaunch(); return; }
     (event.currentTarget as any).setPointerCapture?.(event.pointerId);
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    // FIX: تحريك من تحت 110px + نفس التصادم لكل اللاعبين
     const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 110 : 50;
     let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
     hasDraggedRef.current=true; if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     drag.current = { side: mySide, x: tx, y: ty };
     stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
+    socket.sendPaddleTarget(tx, ty);
   };
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (!drag.current.side) return;
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    // FIX: تحريك من تحت 110px
     const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 110 : 50;
     let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
     drag.current.x = tx; drag.current.y = ty;
     stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
+    socket.sendPaddleTarget(tx, ty);
   };
   const endDrag = (event: PointerEvent<HTMLDivElement>) => { if ((event.currentTarget as any).hasPointerCapture?.(event.pointerId)) (event.currentTarget as any).releasePointerCapture(event.pointerId); drag.current.side = null; };
 
