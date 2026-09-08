@@ -221,7 +221,37 @@ const CAM_PRESETS_3D_BASE = {
 type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D_BASE;
 const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
 
-export function GameScreen3D({ roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating, onGoal, onTimeUp, onPause, onExit }: { roomCode: string; isHost: boolean; players: Player[]; settings: Settings; scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null; onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; }) {
+export function GameScreen3D({ 
+  roomCode, 
+  isHost, 
+  players, 
+  settings, 
+  scores, 
+  lastGoal, 
+  paused, 
+  celebrating, 
+  seriesWins = {},        // <-- ADDED: افتراضي فارغ
+  currentRound = 1,       // <-- ADDED: افتراضي 1
+  onGoal, 
+  onTimeUp, 
+  onPause, 
+  onExit 
+}: { 
+  roomCode: string; 
+  isHost: boolean; 
+  players: Player[]; 
+  settings: Settings; 
+  scores: Scores; 
+  lastGoal: string | null; 
+  paused: boolean; 
+  celebrating: Player | null; 
+  seriesWins?: Record<string, number>;   // <-- ADDED
+  currentRound?: number;                 // <-- ADDED
+  onGoal: (p: Player) => void; 
+  onTimeUp: () => void; 
+  onPause: () => void; 
+  onExit: () => void; 
+}) {
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
   const hintDotRef = useRef<HTMLDivElement>(null);
@@ -252,6 +282,34 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
   }, [world, adaptivePresets, mySideForCam]);
 
   const cam = useRef({...initialCam });
+  useEffect(() => {
+    const saved = localStorage.getItem('qoud_camera_settings');
+    if (saved) {
+      try {
+        const settings = JSON.parse(saved);
+        cam.current = { ...cam.current, ...settings };
+      } catch {}
+    }
+  }, []);
+
+  // --- ADDED: حفظ إعدادات الكاميرا ---
+  const saveCameraSettings = useCallback(() => {
+    const settings = {
+      angle: cam.current.angle,
+      distance: cam.current.distance,
+      height: cam.current.height,
+      targetAngle: cam.current.targetAngle,
+      targetDistance: cam.current.targetDistance,
+      targetHeight: cam.current.targetHeight,
+    };
+    localStorage.setItem('qoud_camera_settings', JSON.stringify(settings));
+  }, []);
+
+  // --- ADDED: إعادة تعيين الكاميرا إلى الوضع الافتراضي ---
+  const resetCameraToDefault = useCallback(() => {
+    cam.current = { ...initialCam };
+    localStorage.removeItem('qoud_camera_settings');
+  }, [initialCam]);
   const threeRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext|null>(null);
   const hitEffectsRef = useRef<any[]>([]);
@@ -724,7 +782,23 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         <>
           <header className="game-topbar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', alignItems: 'center', zIndex: 10, background: '#0a0a0a', borderBottom: '1px solid #1a1a1a' }}>
             <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • {mySideForCam.toUpperCase()} • HD</div>
-            <div className="match-meta" style={{ color: '#fff' }}><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | Rally: {rally}</div>
+            <div className="match-meta" style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b>
+              <span>| Rally: {rally}</span>
+              {/* --- ADDED: عرض معلومات الجولة والانتصارات --- */}
+              {settings.seriesType === 'series' && (
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: '#1a1a1a', padding: '4px 12px', borderRadius: '20px' }}>
+                  <span style={{ fontWeight: 'bold', color: '#ffcf5a' }}>جولة {currentRound}/{settings.seriesRounds}</span>
+                  {players.map(p => (
+                    <span key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.color }} />
+                      <span>{p.name}</span>
+                      <strong style={{ color: p.color }}>{(seriesWins[p.id] ?? 0)}</strong>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="game-actions" style={{ display: 'flex', gap: '6px' }}>
               <button className="game-icon" onClick={() => setShowCamMenu(v =>!v)} title={isAr? 'الكاميرا' : 'Camera'} style={{ background: showCamMenu? '#00e5ff' : '#111', color: showCamMenu? '#000' : '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>
                 <Camera size={18} />
@@ -763,7 +837,68 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
         {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px' }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1 }}>{countdown}</span><span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>{getNameForSide(stateRef.current.countdownSide)} {isAr? 'سجل!' : 'Scored!'}</span></div>}
         {lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
-        {showCamMenu &&!hideUI && (<div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b><button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (<button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k? '#111' : '#0a0a0a', color: currentPreset === k? '#00e5ff' : '#aaa', cursor: 'pointer' }}>{isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}</button>))}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}><div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div /><button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button><button onClick={resetCamera} style={{...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button><button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button><div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div /></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle }}><ZoomIn size={18} /> {isAr? 'قرب' : 'In'}</button><button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle }}><ZoomOut size={18} /> {isAr? 'بعد' : 'Out'}</button></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle }}><RotateCcw size={16} /> {isAr? 'يسار' : 'Left'}</button><button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle }}><RotateCw size={16} /> {isAr? 'يمين' : 'Right'}</button></div><button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}><EyeOff size={16} /> {isAr? 'اخفاء كل الازرار' : 'Hide All UI'}</button></div>)}
+        {/* --- ADDED: احتفال الفوز بالجولة مع رقم الجولة --- */}
+        {celebrating && (
+  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>
+    <div style={{ fontSize: '48px', fontWeight: 900, color: '#ffcf5a', textShadow: '0 0 20px #ffcf5a' }}>
+      {celebrating.name} {isAr? 'فاز بالجولة' : 'wins the round'}!
+    </div>
+    <div style={{ fontSize: '24px', color: '#fff', background: '#222', padding: '8px 24px', borderRadius: '999px' }}>
+      {isAr? 'الجولة' : 'Round'} {currentRound} / {settings.seriesRounds}
+    </div>
+    <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
+      {players.map(p => (
+        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#111', padding: '6px 12px', borderRadius: '999px' }}>
+          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.color }} />
+          <span style={{ color: '#fff' }}>{p.name}</span>
+          <strong style={{ color: '#ffcf5a' }}>{(seriesWins[p.id] ?? 0)}</strong>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+        {showCamMenu &&!hideUI && (
+          <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b>
+              <button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (
+                <button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k? '#111' : '#0a0a0a', color: currentPreset === k? '#00e5ff' : '#aaa', cursor: 'pointer' }}>
+                  {isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}>
+              <div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div />
+              <button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button>
+              <button onClick={resetCamera} style={{...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button>
+              <button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button>
+              <div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle }}><ZoomIn size={18} /> {isAr? 'قرب' : 'In'}</button>
+              <button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle }}><ZoomOut size={18} /> {isAr? 'بعد' : 'Out'}</button>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle }}><RotateCcw size={16} /> {isAr? 'يسار' : 'Left'}</button>
+              <button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle }}><RotateCw size={16} /> {isAr? 'يمين' : 'Right'}</button>
+            </div>
+            {/* --- ADDED: أزرار حفظ وإعادة تعيين الكاميرا --- */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={saveCameraSettings} style={{ flex: 1, ...btnStyle, background: '#00e5ff', color: '#000' }}>
+                <Save size={16} /> {isAr? 'حفظ' : 'Save'}
+              </button>
+              <button onClick={resetCameraToDefault} style={{ flex: 1, ...btnStyle, background: '#ff6b8b', color: '#fff' }}>
+                <ResetIcon size={16} /> {isAr? 'إعادة تعيين' : 'Reset'}
+              </button>
+            </div>
+            <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}>
+              <EyeOff size={16} /> {isAr? 'اخفاء كل الازرار' : 'Hide All UI'}
+            </button>
+          </div>
+        )}
       </div>
     </main>
   );

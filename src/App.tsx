@@ -749,7 +749,20 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         @keyframes celePulse{0%{transform:scale(1)}100%{transform:scale(1.08)}}
         @keyframes crashFlash{0%{background:rgba(255,207,90,0)}10%{background:rgba(255,207,90,0.9)}20%{background:rgba(255,255,255,0.8)}30%{background:rgba(255,207,90,0.2)}100%{background:transparent}}
       `}</style>
-      <header className="game-topbar"><Brand /><div className="match-meta flex items-center gap-2"><span><i className="live-dot" /></span><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | {mySide}{settings.seriesType==='series' && <span className="bg-[#ffcf5a] text-black border-[1.5px] border-black rounded-full px-2 text-[11px] font-black">جولة {typeof currentRound!=='undefined'?currentRound:1}/{settings.seriesRounds}</span>}</div><div className="game-actions"><button className="game-icon" onClick={() => setSound((value) =>!value)}><Volume2 size={18} /></button><button className="game-icon" onClick={onPause}>{paused? <Play size={18} /> : <Pause size={18} />}</button><button className="game-icon" onClick={onExit}><X size={18} /></button></div></header>
+      <header className="game-topbar"><Brand /><div className="match-meta flex items-center gap-2"><span><i className="live-dot" /></span><b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b> | {mySide}
+      {settings.seriesType === 'series' && (
+  <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: '#1a1a1a', padding: '4px 12px', borderRadius: '20px', color: '#fff' }}>
+    <span style={{ fontWeight: 'bold', color: '#ffcf5a' }}>جولة {currentRound}/{settings.seriesRounds}</span>
+    {players.map(p => (
+      <span key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.color }} />
+        <span>{p.name}</span>
+        <strong style={{ color: p.color }}>{(seriesWins[p.id] ?? 0)}</strong>
+      </span>
+    ))}
+  </div>
+)}
+      {settings.seriesType==='series' && <span className="bg-[#ffcf5a] text-black border-[1.5px] border-black rounded-full px-2 text-[11px] font-black">جولة {typeof currentRound!=='undefined'?currentRound:1}/{settings.seriesRounds}</span>}</div><div className="game-actions"><button className="game-icon" onClick={() => setSound((value) =>!value)}><Volume2 size={18} /></button><button className="game-icon" onClick={onPause}>{paused? <Play size={18} /> : <Pause size={18} />}</button><button className="game-icon" onClick={onExit}><X size={18} /></button></div></header>
       <div className="score-strip">{players.map((player) => <div className="score-chip" key={player.id} style={{border: player.side===mySide?`2px solid ${player.color}`:undefined}}><span className="score-color" style={{ background: player.color }} /><span>{player.name}{player.side===mySide?' (انت)':''}</span><strong>{scores[player.id]?? 0}</strong></div>)}<div className="rally-meter"><span>Rally</span><b>{rally}</b></div></div>
       <section className="arena-stage" style={{ width: '100%', maxWidth: '100vw', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div className="arena-frame" ref={arenaRef} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} style={{ touchAction: 'none', position:'relative', width: `min(95vw, 760px, ${(88 * (world.w / world.h)).toFixed(2)}vh)`, aspectRatio: `${world.w} / ${world.h}`, margin: '0 auto', borderRadius: '32px', overflow: 'hidden', background: '#000', boxShadow: '0 0 0 2px #111, 0 0 40px rgba(0,229,255,0.25)', }}>
@@ -759,15 +772,24 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           {countdown>0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}><span style={{ fontSize: '110px', fontWeight: 900, color: '#ff2233' }}>{countdown}</span><span style={{ background: '#222', color: '#fff', padding: '8px 18px', borderRadius: 999, fontWeight: 800 }}>{countdownName} سيل!</span></div>}
           {lastGoal &&!celebrating && <div style={{ position: 'absolute', top: '48%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.92)', color: '#fff', padding: '12px 22px', borderRadius: 12, fontWeight: 900, zIndex: 11 }}>هدف! {lastGoal}</div>}
           {celebrating && (
-            <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 50% 38%, rgba(255,207,90,0.22), rgba(0,0,0,0.88))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:50, animation:'crashShake 0.14s infinite'}}>
-              <div style={{position:'absolute',inset:0,animation:'crashFlash 0.5s ease 3',pointerEvents:'none',zIndex:0}}/>
-              <canvas ref={celebrationCanvasRef} style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:1}}/>
-              <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
-                <div style={{fontSize:64,fontWeight:900,color:celebrating.color,textShadow:`0 0 28px ${celebrating.color}, 0 0 60px ${celebrating.color}, 0 3px 0 #000`,textAlign:'center',lineHeight:1.05,animation:'celePulse 0.5s ease infinite alternate'}}>{celebrating.name}<br/><span style={{fontSize:48}}>فاز!</span></div>
-                <div style={{marginTop:8,display:'flex',gap:5}}>{Array.from({length:8},(_,i)=><div key={i} style={{width:26,height:7,borderRadius:999,background:celebrating.color,opacity:0.95-(i*0.09),boxShadow:`0 0 10px ${celebrating.color}`,animation:`celePulse ${0.3+i*0.05}s infinite alternate`}}/>)}</div>
-              </div>
-            </div>
-          )}
+  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>
+    <div style={{ fontSize: '48px', fontWeight: 900, color: '#ffcf5a', textShadow: '0 0 20px #ffcf5a' }}>
+      {celebrating.name} {isAr? 'فاز بالجولة' : 'wins the round'}!
+    </div>
+    <div style={{ fontSize: '24px', color: '#fff', background: '#222', padding: '8px 24px', borderRadius: '999px' }}>
+      {isAr? 'الجولة' : 'Round'} {currentRound} / {settings.seriesRounds}
+    </div>
+    <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
+      {players.map(p => (
+        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#111', padding: '6px 12px', borderRadius: '999px' }}>
+          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.color }} />
+          <span style={{ color: '#fff' }}>{p.name}</span>
+          <strong style={{ color: '#ffcf5a' }}>{(seriesWins[p.id] ?? 0)}</strong>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
         </div>
       </section>
       <div className="touch-controls"><button {...bindTouch('bottomRight')}><ChevronRight size={24} /></button><button {...bindTouch('bottomLeft')}><ChevronLeft size={24} /></button></div>
