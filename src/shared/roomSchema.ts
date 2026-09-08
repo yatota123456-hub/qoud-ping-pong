@@ -27,9 +27,9 @@ export const QoudState = schema({
   status: t.string(),
   hostSessionId: t.string(),
   settingsJson: t.string(),
-  players: t.map(PlayerState),
-  paddles: t.map(Paddle),
-  scores: t.map(t.number()),
+  scores: t.map("number"),               // ✅ صحيح: اسم النوع كنص
+  players: t.map("PlayerState"),         // ✅ صحيح: اسم الكلاس كنص
+  paddles: t.map("Paddle"),       
   ball: Ball,
   timeLeft: t.number(),
   rally: t.number(),
