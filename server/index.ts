@@ -270,10 +270,10 @@ class QoudRoom extends Room<QoudRoomState> {
         } else {
           this.launchBall(false);
         }
+        // بعد انتهاء العد التنازلي، نواصل البث
       } else {
         this.state.countdown = Math.max(1, Math.ceil(3 - elapsed));
-        // لا نزال نبث الحالة حتى أثناء العد التنازلي
-        this.broadcastGameState();
+        this.broadcastGameState(); // بث أثناء العد التنازلي
         return;
       }
     }
@@ -305,7 +305,10 @@ class QoudRoom extends Room<QoudRoomState> {
       if (this.elapsedAccum >= 1) {
         this.elapsedAccum = 0;
         this.state.timeLeft = Math.max(0, this.state.timeLeft - 1);
-        if (this.state.timeLeft === 0) { this.finishMatch(); return; }
+        if (this.state.timeLeft === 0) {
+          this.finishMatch();
+          return;
+        }
       }
     }
   
