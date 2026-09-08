@@ -255,7 +255,7 @@ class QoudRoom extends Room<QoudRoomState> {
   private tick(deltaMs: number) {
     if (this.state.status !== 'playing') return;
     const delta = Math.min(deltaMs / 16.67, 2);
-
+  
     // العد التنازلي بعد كل هدف
     if (this.state.countdown > 0) {
       const elapsed = (Date.now() - this.countdownStartedAt) / 1000;
@@ -272,10 +272,12 @@ class QoudRoom extends Room<QoudRoomState> {
         }
       } else {
         this.state.countdown = Math.max(1, Math.ceil(3 - elapsed));
+        // لا نزال نبث الحالة حتى أثناء العد التنازلي
+        this.broadcastGameState();
         return;
       }
     }
-
+  
     // وضع "ابدأ من المضرب": الكرة ملتصقة بالمضرب لحين الطلب
     if (this.servingActive) {
       const paddle = this.state.paddles.get(this.servingSide);
@@ -293,11 +295,10 @@ class QoudRoom extends Room<QoudRoomState> {
         this.servingActive = false;
         this.servingRequested = false;
       }
-      // بث الحالة حتى في وضع الخدمة
       this.broadcastGameState();
       return;
     }
-
+  
     // الوقت
     if (this.settings.mode === 'time') {
       this.elapsedAccum += deltaMs / 1000;
@@ -307,14 +308,15 @@ class QoudRoom extends Room<QoudRoomState> {
         if (this.state.timeLeft === 0) { this.finishMatch(); return; }
       }
     }
-
+  
     this.moveComputerPaddles(delta);
     this.stepBall(delta);
-
-    // بث الحالة بعد كل تحديث
+  
+    // بث الحالة بعد كل التحديثات
     this.broadcastGameState();
   }
-
+  
+  // دالة مساعدة لبث game-state
   private broadcastGameState() {
     this.broadcast('game-state', {
       ball: {
