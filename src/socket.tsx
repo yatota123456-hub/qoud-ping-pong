@@ -1,7 +1,7 @@
 import { Client } from '@colyseus/sdk';
 
 export type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string; };
-export type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; hostName?: string; hostSocketId?: string; settings?: Record<string, unknown>; };
+export type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: Record<string, unknown>; };
 type SocketListener = (...args: any[]) => void;
 
 class ColyseusBridge {
@@ -11,7 +11,7 @@ class ColyseusBridge {
 
   get connected() { return Boolean(this.room); }
   get id() { return this.room?.sessionId ?? ''; }
-  get state() { return this.room?.state; } // ← الآن تقرأ مباشرة من room.state (ball, paddles, scores, etc)
+  get state() { return this.room?.state; }
 
   on(event: string, listener: SocketListener) {
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
@@ -30,19 +30,23 @@ class ColyseusBridge {
     return true;
   }
 
-  // ← الطريقة الجديدة: أرسل موضع المضرب فقط بمعدل منخفض (30Hz)
+  // SERVER-AUTH: throttled 30Hz
   sendPaddleTarget(x: number, y: number) {
     if (!this.room) return;
     const now = Date.now();
-    if (now - this.lastPaddleEmit < 33) return; // ~30Hz
+    if (now - this.lastPaddleEmit < 33) return;
     this.lastPaddleEmit = now;
-    this.room.send('paddle-target', { x, y });
+    this.room.send('paddle-target', { x, y, z: y });
+  }
+
+  requestServe() { 
+    if (!this.room) return;
+    this.room.send('request-serve'); 
   }
 
   attach(room: any) {
     this.room = room;
-    // تسمع على الأحداث فقط (مو على game-state بعد - لأنها Schema الآن)
-    for (const messageType of ['room-update', 'game-started', 'goal-scored', 'match-finished', 'host-left', 'hit-effect']) {
+    for (const messageType of ['room-update', 'game-started', 'goal-scored', 'match-finished', 'host-left', 'hit-effect', 'countdown']) {
       room.onMessage(messageType, (payload: unknown) => this.dispatch(messageType, payload));
     }
     room.onStateChange((state: any) => this.dispatch('room-update', this.roomData(state)));
@@ -50,12 +54,11 @@ class ColyseusBridge {
     room.onLeave?.((code: number) => { if (this.room === room) this.dispatch('connection-lost', code); });
     if (room.state) this.dispatch('room-update', this.roomData(room.state));
   }
-
   async leave() { const room = this.room; this.room = null; if (room) await room.leave(true); }
   private dispatch(event: string, ...args: any[]) { this.listeners.get(event)?.forEach((l) => l(...args)); }
   private roomData(state: any): RoomData {
-    const players = state?.players ? Array.from(state.players.values()).map((p: any) => ({
-      id: p.id, name: p.name, color: p.color, side: p.side, computer: Boolean(p.computer), socketId: p.id,
+    const players = state?.players ? Array.from(state.players.values()).map((player: any) => ({
+      id: player.id, name: player.name, color: player.color, side: player.side, computer: Boolean(player.computer), socketId: player.id,
     })) : [];
     let settings: Record<string, unknown> | undefined;
     try { settings = state?.settingsJson ? JSON.parse(state.settingsJson) : undefined; } catch {}
@@ -63,5 +66,6 @@ class ColyseusBridge {
   }
 }
 export const socket = new ColyseusBridge();
-const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string) || window.location.origin;
+// يدعم VITE_SERVER_URL و VITE_COLYSEUS_URL
+const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string) || (import.meta.env.VITE_COLYSEUS_URL as string) || 'ws://localhost:2567';
 export const colyseus = new Client(SERVER_URL);
