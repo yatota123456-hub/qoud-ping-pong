@@ -37,6 +37,7 @@ class QoudRoom extends Room<QoudRoomState> {
   private servingActive = false;
   private servingSide: PlayerSide = 'bottom';
   private servingStartedAt = 0;
+  private servingRequested = false;
 
   onCreate(options: CreateOptions) {
     const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
@@ -59,7 +60,6 @@ class QoudRoom extends Room<QoudRoomState> {
     this.initWorldAndPaddles();
     this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
 
-    // الفيزياء تعمل هنا فقط — لا يوجد "هوست" في المحاكاة إطلاقًا
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 60);
   }
 
@@ -86,6 +86,7 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.ball.y = world.h / 2;
     this.state.ball.vx = 0;
     this.state.ball.vy = 0;
+    this.state.ball.visible = false;
     this.state.timeLeft = this.settings.mode === 'time' ? Number(this.settings.duration || 180) : 0;
   }
 
@@ -159,7 +160,6 @@ class QoudRoom extends Room<QoudRoomState> {
       return;
     }
 
-    // --- الرسالة الجديدة: العميل يرسل الموضع الذي يريده لمضربه فقط ---
     if (type === 'paddle-target') {
       if (this.state.status !== 'playing') return;
       const player = this.state.players.get(client.sessionId);
@@ -173,7 +173,6 @@ class QoudRoom extends Room<QoudRoomState> {
       const clamped = this.clampPaddle(side, x, y);
       paddle.x = clamped.x;
       paddle.y = clamped.y;
-      // في وضع "من المضرب": طلب الإطلاق عند أول حركة من صاحب الدور
       if (this.servingActive && this.servingSide === side) this.servingRequested = true;
       return;
     }
@@ -185,8 +184,6 @@ class QoudRoom extends Room<QoudRoomState> {
       return;
     }
   }
-
-  private servingRequested = false;
 
   private clampPaddle(side: PlayerSide, x: number, y: number) {
     const w = this.state.worldW, h = this.state.worldH;
@@ -296,6 +293,8 @@ class QoudRoom extends Room<QoudRoomState> {
         this.servingActive = false;
         this.servingRequested = false;
       }
+      // بث الحالة حتى في وضع الخدمة
+      this.broadcastGameState();
       return;
     }
 
@@ -311,6 +310,31 @@ class QoudRoom extends Room<QoudRoomState> {
 
     this.moveComputerPaddles(delta);
     this.stepBall(delta);
+
+    // بث الحالة بعد كل تحديث
+    this.broadcastGameState();
+  }
+
+  private broadcastGameState() {
+    this.broadcast('game-state', {
+      ball: {
+        x: this.state.ball.x,
+        y: this.state.ball.y,
+        vx: this.state.ball.vx,
+        vy: this.state.ball.vy,
+        visible: this.state.ball.visible,
+      },
+      paddles: Object.fromEntries(
+        Array.from(this.state.paddles.entries()).map(([side, paddle]) => [
+          side,
+          { x: paddle.x, y: paddle.y }
+        ])
+      ),
+      countdown: this.state.countdown,
+      rally: this.state.rally,
+      scores: Object.fromEntries(this.state.scores.entries()),
+      timeLeft: this.state.timeLeft,
+    });
   }
 
   private moveComputerPaddles(delta: number) {
@@ -405,7 +429,6 @@ class QoudRoom extends Room<QoudRoomState> {
 
   private onGoal(missedSide: PlayerSide) {
     const scorerSide = OPPOSITE[missedSide];
-    const missedPlayer = [...this.state.players.values()].find((p) => p.side === missedSide);
     const scorer = [...this.state.players.values()].find((p) => p.side === scorerSide);
     if (scorer) {
       const newScore = (this.state.scores.get(scorer.id) ?? 0) + 1;
