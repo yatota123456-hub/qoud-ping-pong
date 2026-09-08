@@ -707,98 +707,68 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           });
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
-            const p = playerForSide(side);
-            const isHuman =!isComputerSide(side, p);
-            const factor = isHuman? 0.38 : 0.18;
-            state.paddles[side].x += (state.targetPaddles[side].x - state.paddles[side].x) * factor * delta;
-            state.paddles[side].z += (state.targetPaddles[side].z - state.paddles[side].z) * factor * delta;
+            const f = 0.42 * delta; // نفس السرعة لكل اللاعبين - لا شبح
+            state.paddles[side].x += (state.targetPaddles[side].x - state.paddles[side].x) * f;
+            state.paddles[side].z += (state.targetPaddles[side].z - state.paddles[side].z) * f;
           });
 
-          state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
-          const r = 12; const paddleRadius = 24;
+          // FIX نهائي: ارتداد قوي مثل اللاعب الأول - بدون شروط معقدة
+          const prevBX = state.ball.x;
+          const prevBY = state.ball.y;
+          state.ball.x += state.ball.vx * delta; 
+          state.ball.y += state.ball.vy * delta;
+          const r = 18; const paddleRadius = 34; const HIT_DIST = r + paddleRadius + 16; // 68px - كبير جدا
 
-          const getForwardBoost = (side: Player['side']) => {
-            const cur = state.paddles[side];
+          const getBoost = (side: Player['side']) => {
+            const cur = state.targetPaddles[side];
             const last = state.lastPaddles[side];
-            const vx = cur.x - last.x;
-            const vz = cur.z - last.z;
-            let forward = 0;
-            if (side === 'bottom') forward = -vz;
-            if (side === 'top') forward = vz;
-            if (side === 'left') forward = vx;
-            if (side === 'right') forward = -vx;
-            const speed = Math.hypot(vx, vz);
-            return { vx, vz, forward, speed };
+            const vx = cur.x - last.x; const vz = cur.z - last.z;
+            let fwd = 0;
+            if (side === 'bottom') fwd = -vz;
+            if (side === 'top') fwd = vz;
+            if (side === 'left') fwd = vx;
+            if (side === 'right') fwd = -vx;
+            return { vx, vz, forward: fwd, speed: Math.hypot(vx,vz) };
           };
 
-          if (activeSide('bottom')) {
-            const bp = state.paddles.bottom;
-            const distBot = Math.hypot(state.ball.x - bp.x, state.ball.y - bp.z);
-            if (distBot < r + paddleRadius && state.ball.vy > 0 && state.ball.y > bp.z - 20) {
-              const nx = (state.ball.x - bp.x) / distBot; const ny = (state.ball.y - bp.z) / distBot;
-              state.ball.x = bp.x + nx * (r + paddleRadius + 1); state.ball.y = bp.z + ny * (r + paddleRadius + 1);
-              const { vx, vz, forward, speed } = getForwardBoost('bottom');
-              let power = 1;
-              if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
-              state.ball.vy = -Math.abs(state.ball.vy) * power + vz * 0.9;
-              state.ball.vx = state.ball.vx * power + vx * 0.9 + nx * 3.5;
-              const hitPower = Math.min(1, (forward * 0.12 + speed * 0.08 + 0.15));
-              const col = playerForSide('bottom')?.color || '#ffcf5a';
-              triggerHitEffect(state.ball.x, state.ball.y, hitPower, col);
+          const doHit = (side: Player['side']) => {
+            const pad = state.targetPaddles[side];
+            const distNow = Math.hypot(state.ball.x - pad.x, state.ball.y - pad.z);
+            // بدون شرط اتجاه - اي كرة قريبة ترتد مثل اللاعب الأول
+            if (distNow <= HIT_DIST) {
+              const { vx, vz, forward } = getBoost(side);
+              const nx = distNow>0.5? (state.ball.x - pad.x)/distNow : 0;
+              const nz = distNow>0.5? (state.ball.y - pad.z)/distNow : (side==='bottom'? -1 : side==='top'? 1 : 0);
+              // ابعد الكرة بقوة خارج المضرب
+              state.ball.x = pad.x + nx*(HIT_DIST+22);
+              state.ball.y = pad.z + nz*(HIT_DIST+22);
+              const baseSpeed = 8 + settings.ballSpeed*0.6 + state.rally*0.4;
+              const col = playerForSide(side)?.color || '#ffcf5a';
+              if(side==='bottom'){
+                state.ball.vy = -Math.abs(baseSpeed) - Math.max(0, -vz)*0.8;
+                state.ball.vx = nx*8 + vx*1.2;
+              } else if(side==='top'){
+                state.ball.vy = Math.abs(baseSpeed) + Math.max(0, vz)*0.8;
+                state.ball.vx = nx*8 + vx*1.2;
+              } else if(side==='left'){
+                state.ball.vx = Math.abs(baseSpeed) + Math.max(0, vx)*0.8;
+                state.ball.vy = nz*8 + vz*1.2;
+              } else if(side==='right'){
+                state.ball.vx = -Math.abs(baseSpeed) - Math.max(0, -vx)*0.8;
+                state.ball.vy = nz*8 + vz*1.2;
+              }
+              triggerHitEffect(state.ball.x, state.ball.y, 0.9, col);
               state.rally++;
+              return true;
             }
-          }
-          if (activeSide('top')) {
-            const tp = state.paddles.top;
-            const distTop = Math.hypot(state.ball.x - tp.x, state.ball.y - tp.z);
-            if (distTop < r + paddleRadius && state.ball.vy < 0 && state.ball.y < tp.z + 20) {
-              const nx = (state.ball.x - tp.x) / distTop; const ny = (state.ball.y - tp.z) / distTop;
-              state.ball.x = tp.x + nx * (r + paddleRadius + 1); state.ball.y = tp.z + ny * (r + paddleRadius + 1);
-              const { vx, vz, forward, speed } = getForwardBoost('top');
-              let power = 1;
-              if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
-              state.ball.vy = Math.abs(state.ball.vy) * power + vz * 0.9;
-              state.ball.vx = state.ball.vx * power + vx * 0.9 + nx * 3.5;
-              const hitPower = Math.min(1, (forward * 0.12 + speed * 0.08 + 0.15));
-              const col = playerForSide('top')?.color || '#ff6b8b';
-              triggerHitEffect(state.ball.x, state.ball.y, hitPower, col);
-              state.rally++;
-            }
-          }
-          if (activeSide('left')) {
-            const lp = state.paddles.left;
-            const distLeft = Math.hypot(state.ball.x - lp.x, state.ball.y - lp.z);
-            if (distLeft < r + paddleRadius && state.ball.vx < 0 && state.ball.x > lp.x - 20) {
-              const nx = (state.ball.x - lp.x) / distLeft; const ny = (state.ball.y - lp.z) / distLeft;
-              state.ball.x = lp.x + nx * (r + paddleRadius + 1); state.ball.y = lp.z + ny * (r + paddleRadius + 1);
-              const { vx, vz, forward, speed } = getForwardBoost('left');
-              let power = 1;
-              if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
-              state.ball.vx = Math.abs(state.ball.vx) * power + vx * 0.9;
-              state.ball.vy = state.ball.vy * power + vz * 0.9 + ny * 3.5;
-              const hitPower = Math.min(1, (forward * 0.12 + speed * 0.08 + 0.15));
-              const col = playerForSide('left')?.color || '#9b8cff';
-              triggerHitEffect(state.ball.x, state.ball.y, hitPower, col);
-              state.rally++;
-            }
-          }
-          if (activeSide('right')) {
-            const rp = state.paddles.right;
-            const distRight = Math.hypot(state.ball.x - rp.x, state.ball.y - rp.z);
-            if (distRight < r + paddleRadius && state.ball.vx > 0 && state.ball.x < rp.x + 20) {
-              const nx = (state.ball.x - rp.x) / distRight; const ny = (state.ball.y - rp.z) / distRight;
-              state.ball.x = rp.x + nx * (r + paddleRadius + 1); state.ball.y = rp.z + ny * (r + paddleRadius + 1);
-              const { vx, vz, forward, speed } = getForwardBoost('right');
-              let power = 1;
-              if (forward > 0.5) power = 1 + Math.min(forward * 0.12, 0.7);
-              state.ball.vx = -Math.abs(state.ball.vx) * power + vx * 0.9;
-              state.ball.vy = state.ball.vy * power + vz * 0.9 + ny * 3.5;
-              const hitPower = Math.min(1, (forward * 0.12 + speed * 0.08 + 0.15));
-              const col = playerForSide('right')?.color || '#61e7c2';
-              triggerHitEffect(state.ball.x, state.ball.y, hitPower, col);
-              state.rally++;
-            }
-          }
+            return false;
+          };
+
+          // نفس المنطق القوي لكل اللاعبين
+          if (activeSide('bottom')) doHit('bottom');
+          if (activeSide('top')) doHit('top');
+          if (activeSide('left')) doHit('left');
+          if (activeSide('right')) doHit('right');
           const maxBallSpeed = 34 + settings.ballSpeed * 1.6 + state.rally * 0.7;
           const curSpeed = Math.hypot(state.ball.vx, state.ball.vy);
           if (curSpeed > maxBallSpeed) { const scale = maxBallSpeed / curSpeed; state.ball.vx *= scale; state.ball.vy *= scale; }
@@ -837,33 +807,42 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         state.ball.y += (state.ballTarget.y - state.ball.y) * lerp;
         state.ball.vx = state.ballTarget.vx;
         state.ball.vy = state.ballTarget.vy;
-        // FIX: تنبؤ محلي للاعب الثاني في 3D - يضرب مثل الأول
+        // FIX: تنبؤ محلي قوي للاعب الثاني في 3D - ارتداد حقيقي
         if(activeSide(mySideLocal as any)){
           const myPad = state.targetPaddles[mySideLocal as any];
           const dx = state.ball.x - myPad.x;
           const dy = state.ball.y - myPad.z;
           const dist = Math.hypot(dx,dy);
-          const HIT = 58;
+          const HIT = 68; // كبير جدا
           if(dist <= HIT){
-            const cur = Math.hypot(state.ball.vx, state.ball.vy) || 5;
-            const newSpd = cur*1.08 + 2;
+            const baseSpeed = 8 + settings.ballSpeed*0.6 + state.rally*0.4;
             const nx = dx/(dist||1); const nz = dy/(dist||1);
-            state.ball.x = myPad.x + nx*(HIT+16);
-            state.ball.y = myPad.z + nz*(HIT+16);
-            if(mySideLocal==='bottom' || mySideLocal==='top'){
-              state.ball.vy = (mySideLocal==='bottom'? -Math.abs(newSpd) : Math.abs(newSpd));
-              state.ball.vx = dx*0.15;
-            } else {
-              state.ball.vx = (mySideLocal==='left'? Math.abs(newSpd) : -Math.abs(newSpd));
-              state.ball.vy = dy*0.15;
+            state.ball.x = myPad.x + nx*(HIT+26);
+            state.ball.y = myPad.z + nz*(HIT+26);
+            if(mySideLocal==='bottom'){
+              state.ball.vy = -Math.abs(baseSpeed);
+              state.ball.vx = nx*8;
+            } else if(mySideLocal==='top'){
+              state.ball.vy = Math.abs(baseSpeed);
+              state.ball.vx = nx*8;
+            } else if(mySideLocal==='left'){
+              state.ball.vx = Math.abs(baseSpeed);
+              state.ball.vy = nz*8;
+            } else if(mySideLocal==='right'){
+              state.ball.vx = -Math.abs(baseSpeed);
+              state.ball.vy = nz*8;
             }
-            triggerHitEffect(state.ball.x, state.ball.y, 0.8, '#fff');
-            socket.emit('paddle-input', { code: roomCode, side: mySideLocal, x: myPad.x, z: myPad.z, hit:true });
+            state.ballTarget.x = state.ball.x;
+            state.ballTarget.y = state.ball.y;
+            state.ballTarget.vx = state.ball.vx;
+            state.ballTarget.vy = state.ball.vy;
+            triggerHitEffect(state.ball.x, state.ball.y, 0.9, '#fff');
+            socket.emit('paddle-input', { code: roomCode, side: mySideLocal, x: myPad.x, z: myPad.z, vx: state.ball.vx, vy: state.ball.vy, hit:true, strong:true });
           }
         }
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
-          const f = (side===mySideLocal?0.55:0.35) * delta; // لاعبك اسرع
+          const f = (side===mySideLocal?0.55:0.42) * delta;
           state.paddles[side].x += (state.targetPaddles[side].x - state.paddles[side].x) * f;
           state.paddles[side].z += (state.targetPaddles[side].z - state.paddles[side].z) * f;
         });

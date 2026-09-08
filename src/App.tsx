@@ -747,67 +747,49 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             if (servingRef.current.requested) { launchBall(true); servingRef.current.active = false; servingRef.current.requested = false; setIsServing(false); playHit(0.3, state.ball.x); }
             socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } }); draw(context, state, players, now, true, world, myAngle); frame = requestAnimationFrame(tick); return;
           }
-          // FIX: تصادم حقيقي لكل اللاعبين - لا شبح - نستخدم مسار الكرة كامل + targetPaddles
+          // FIX: تصادم قوي مثل اللاعب الأول - ارتداد حقيقي بدون تفادي
           const prevBallX = state.ball.x;
           const prevBallY = state.ball.y;
           state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
-          const r = 14; const PADDLE_R = 26; const HIT_DIST = PADDLE_R + r + 12; // مسافة أكبر لكل اللاعبين
+          const r = 18; const PADDLE_R = 32; const HIT_DIST = PADDLE_R + r + 18; // 68px - كبير جدا
           const prevBottom = state.prevPaddles.bottom; const prevTop = state.prevPaddles.top; const prevLeft = state.prevPaddles.left; const prevRight = state.prevPaddles.right;
           const velBottom: Vec2 = { x: state.targetPaddles.bottom.x - prevBottom.x, y: state.targetPaddles.bottom.y - prevBottom.y };
           const velTop: Vec2 = { x: state.targetPaddles.top.x - prevTop.x, y: state.targetPaddles.top.y - prevTop.y };
           const velLeft: Vec2 = { x: state.targetPaddles.left.x - prevLeft.x, y: state.targetPaddles.left.y - prevLeft.y };
           const velRight: Vec2 = { x: state.targetPaddles.right.x - prevRight.x, y: state.targetPaddles.right.y - prevRight.y };
-          const THRUST = 6.5; const BASE_BOOST = 1.0; const PADDLE_POWER = 2.2;
           if (!active('top') && state.ball.y - r < 22) { state.ball.y = 22 + r; state.ball.vy = Math.abs(state.ball.vy) * 1.1; playHit(0.15, state.ball.x); }
           if (!active('bottom') && state.ball.y + r > world.h - 22) { state.ball.y = world.h - 22 - r; state.ball.vy = -Math.abs(state.ball.vy) * 1.1; playHit(0.15, state.ball.x); }
           if (!active('left') && state.ball.x - r < 22) { state.ball.x = 22 + r; state.ball.vx = Math.abs(state.ball.vx) * 1.1; playHit(0.15, state.ball.x); }
           if (!active('right') && state.ball.x + r > world.w - 22) { state.ball.x = world.w - 22 - r; state.ball.vx = -Math.abs(state.ball.vx) * 1.1; playHit(0.15, state.ball.x); }
-          // helper: اقرب نقطة على قطعة مستقيمة
-          const closestPointOnSegment = (px:number,py:number, ax:number,ay:number, bx:number,by:number) => {
-            const abx = bx-ax; const aby = by-ay; const apx = px-ax; const apy = py-ay;
-            const ab2 = abx*abx+aby*aby; if(ab2===0) return {x:ax,y:ay,dist:Math.hypot(px-ax,py-ay)};
-            let t = (apx*abx+apy*aby)/ab2; t = Math.max(0,Math.min(1,t));
-            const cx = ax+t*abx; const cy = ay+t*aby;
-            return {x:cx,y:cy,dist:Math.hypot(px-cx,py-cy), t};
-          };
           const checkHit = (side: Player['side'], vel: Vec2)=>{
-            // نستخدم targetPaddles لأنه أسرع وأدق لكل اللاعبين
             const pad = state.targetPaddles[side];
-            // فحص مسار الكرة من prev الى current ضد دائرة المضرب
-            const closest = closestPointOnSegment(pad.x, pad.y, prevBallX, prevBallY, state.ball.x, state.ball.y);
-            const dxDirect = state.ball.x - pad.x; const dyDirect = state.ball.y - pad.y; const distDirect = Math.sqrt(dxDirect*dxDirect+dyDirect*dyDirect);
-            const hitDist = closest.dist <= HIT_DIST || distDirect <= HIT_DIST;
-            if(hitDist){
-              const useDx = closest.dist <= HIT_DIST ? (closest.x - pad.x) : dxDirect;
-              const useDy = closest.dist <= HIT_DIST ? (closest.y - pad.y) : dyDirect;
-              let dist = Math.sqrt(useDx*useDx+useDy*useDy); if(dist<0.5) dist=0.5;
-              const nx = (distDirect <= HIT_DIST ? dxDirect/distDirect : (state.ball.x-pad.x)/Math.max(1,Math.hypot(state.ball.x-pad.x,state.ball.y-pad.y)));
-              const ny = (distDirect <= HIT_DIST ? dyDirect/distDirect : (state.ball.y-pad.y)/Math.max(1,Math.hypot(state.ball.x-pad.x,state.ball.y-pad.y)));
-              // اذا قريب من المسار، نستخدم نرمال المسار
-              const finalNx = closest.dist <= HIT_DIST ? (state.ball.x - pad.x)/Math.max(0.5, Math.hypot(state.ball.x-pad.x, state.ball.y-pad.y)) : nx;
-              const finalNy = closest.dist <= HIT_DIST ? (state.ball.y - pad.y)/Math.max(0.5, Math.hypot(state.ball.x-pad.x, state.ball.y-pad.y)) : ny;
-              const cur = Math.hypot(state.ball.vx, state.ball.vy) || getInitialSpeed();
-              let forward=0; if(side==='bottom') forward=-vel.y; if(side==='top') forward=vel.y; if(side==='left') forward=vel.x; if(side==='right') forward=-vel.x;
-              const speed = Math.hypot(vel.x, vel.y);
-              const hitPower = Math.min(1, forward*0.15 + speed*0.1 + 0.25);
-              const powerMult = forward>0.3? 1+Math.min(forward*0.15,0.8) : 0.9;
-              const newSpeed = cur*1.08 + BASE_BOOST + Math.max(0,forward)*THRUST + settings.ballSpeed*0.18;
-              // ابعد الكرة فورا خارج المضرب
-              state.ball.x = pad.x + finalNx*(HIT_DIST+14); state.ball.y = pad.y + finalNy*(HIT_DIST+14);
-              state.speedMult = Math.min(2.9, (state.speedMult||1)*1.16); state.rally++;
-              if(side==='top' || side==='bottom'){
-                const angleFactor = (state.ball.x - pad.x)/PADDLE_R;
-                state.ball.vx = angleFactor*7.5 + vel.x*PADDLE_POWER;
-                state.ball.vy = (side==='bottom'? -Math.abs(newSpeed) : Math.abs(newSpeed))*powerMult;
-              } else {
-                const angleFactor = (state.ball.y - pad.y)/PADDLE_R;
-                state.ball.vy = angleFactor*7.5 + vel.y*PADDLE_POWER;
-                state.ball.vx = (side==='left'? Math.abs(newSpeed) : -Math.abs(newSpeed))*powerMult;
+            const dx = state.ball.x - pad.x; const dy = state.ball.y - pad.y;
+            const dist = Math.sqrt(dx*dx+dy*dy);
+            if(dist <= HIT_DIST){
+              const nx = dist>0.5? dx/dist : 0;
+              const ny = dist>0.5? dy/dist : (side==='bottom'? -1 : side==='top'? 1 : 0);
+              // ابعد الكرة بقوة
+              state.ball.x = pad.x + nx*(HIT_DIST+24);
+              state.ball.y = pad.y + ny*(HIT_DIST+24);
+              const baseSpeed = 8 + settings.ballSpeed*0.7 + state.rally*0.5;
+              if(side==='bottom'){
+                state.ball.vy = -Math.abs(baseSpeed) - Math.max(0,-vel.y)*0.9;
+                state.ball.vx = nx*8 + vel.x*1.3;
+              } else if(side==='top'){
+                state.ball.vy = Math.abs(baseSpeed) + Math.max(0,vel.y)*0.9;
+                state.ball.vx = nx*8 + vel.x*1.3;
+              } else if(side==='left'){
+                state.ball.vx = Math.abs(baseSpeed) + Math.max(0,vel.x)*0.9;
+                state.ball.vy = ny*8 + vel.y*1.3;
+              } else if(side==='right'){
+                state.ball.vx = -Math.abs(baseSpeed) - Math.max(0,-vel.x)*0.9;
+                state.ball.vy = ny*8 + vel.y*1.3;
               }
-              playHit(hitPower, state.ball.x); state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: COLORS[SIDES.indexOf(side)], power: hitPower });
+              state.speedMult = Math.min(2.9, (state.speedMult||1)*1.16); state.rally++;
+              playHit(0.9, state.ball.x); state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: COLORS[SIDES.indexOf(side)], power: 0.9 });
             }
           };
-          // نفس الطريقة لكل اللاعبين - لا فرق بين لاعب 1 و 2 و 3 و 4
+          // نفس الارتداد القوي لكل اللاعبين
           if(active('top')) checkHit('top', velTop); 
           if(active('bottom')) checkHit('bottom', velBottom); 
           if(active('left')) checkHit('left', velLeft); 
@@ -822,33 +804,43 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           if (missed) { state.effects.push({ x: state.ball.x, y: state.ball.y, born: now, color: missed.color, power: 0.9 }); playHit(0.9, state.ball.x); playGoalSound(); onGoalRef.current(playerForSide(missed.side)); resetBall(missed.side); }
           setRally(state.rally); socket.emit('game-state', { code: roomCode, state: { ball: state.ball, paddles: state.paddles, countdown: state.countdown } });
         } else {
-          // FIX: لاعب ثاني يضرب محليا حتى لو ليس هوست - لا شبح
+          // FIX: لاعب ثاني يضرب محليا حتى لو ليس هوست - ارتداد قوي
           const lerp = 0.35 * delta;
           state.ball.x += (state.ballTarget.x - state.ball.x) * lerp;
           state.ball.y += (state.ballTarget.y - state.ball.y) * lerp;
-          // تنبؤ محلي لضربة اللاعب الثاني
+          // تنبؤ محلي لضربة اللاعب الثاني - ارتداد قوي مثل الأول
           if(active(mySide)){
             const myPad = state.targetPaddles[mySide];
             const dx = state.ball.x - myPad.x;
             const dy = state.ball.y - myPad.y;
             const dist = Math.sqrt(dx*dx+dy*dy);
-            if(dist <= HIT_DIST+10){
-              // ضربة محلية فورية للاعب الثاني
-              const cur = Math.hypot(state.ball.vx, state.ball.vy) || getInitialSpeed();
-              const newSpeed = cur*1.08 + BASE_BOOST + 2;
+            if(dist <= HIT_DIST+12){
+              // ضربة محلية قوية فورية
+              const baseSpeed = 8 + settings.ballSpeed*0.7 + state.rally*0.5;
               const nx = dx/(dist||1); const ny = dy/(dist||1);
-              state.ball.x = myPad.x + nx*(HIT_DIST+16);
-              state.ball.y = myPad.y + ny*(HIT_DIST+16);
-              if(mySide==='top' || mySide==='bottom'){
-                state.ball.vx = (dx/PADDLE_R)*7.5;
-                state.ball.vy = (mySide==='bottom'? -Math.abs(newSpeed) : Math.abs(newSpeed));
-              } else {
-                state.ball.vy = (dy/PADDLE_R)*7.5;
-                state.ball.vx = (mySide==='left'? Math.abs(newSpeed) : -Math.abs(newSpeed));
+              state.ball.x = myPad.x + nx*(HIT_DIST+26);
+              state.ball.y = myPad.y + ny*(HIT_DIST+26);
+              // ارتداد قوي - نفس منطق الهوست
+              if(mySide==='bottom'){
+                state.ball.vy = -Math.abs(baseSpeed);
+                state.ball.vx = nx*8;
+              } else if(mySide==='top'){
+                state.ball.vy = Math.abs(baseSpeed);
+                state.ball.vx = nx*8;
+              } else if(mySide==='left'){
+                state.ball.vx = Math.abs(baseSpeed);
+                state.ball.vy = ny*8;
+              } else if(mySide==='right'){
+                state.ball.vx = -Math.abs(baseSpeed);
+                state.ball.vy = ny*8;
               }
-              playHit(0.8, state.ball.x);
-              // اخبر الهوست بالضربة
-              socket.emit('paddle-input', { code: roomCode, side: mySide, x: myPad.x, y: myPad.y, hit: true });
+              // حدث ballTarget ايضا حتى لا يسحبه السيرفر
+              state.ballTarget.x = state.ball.x;
+              state.ballTarget.y = state.ball.y;
+              state.ballTarget.vx = state.ball.vx;
+              state.ballTarget.vy = state.ball.vy;
+              playHit(0.9, state.ball.x);
+              socket.emit('paddle-input', { code: roomCode, side: mySide, x: myPad.x, y: myPad.y, vx: state.ball.vx, vy: state.ball.vy, hit: true, strong: true });
             }
           }
         }
