@@ -30,9 +30,9 @@ export const QoudState = schema({
   status: t.string(),
   hostSessionId: t.string(),
   settingsJson: t.string(),
-  scores: t.map("number"),
-  players: t.map("PlayerState"),
-  paddles: t.map("Paddle"),
+  scores: t.map("number"),               // يبقى كما هو
+  players: t.map(PlayerState),           // <-- استخدم الفئة مباشرة
+  paddles: t.map(Paddle),                // <-- استخدم الفئة مباشرة
   ball: Ball,
   timeLeft: t.number(),
   rally: t.number(),
