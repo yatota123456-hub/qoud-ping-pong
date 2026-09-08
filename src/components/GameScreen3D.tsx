@@ -550,8 +550,8 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
       const ang = (Math.random() - 0.5) * 0.8;
       state.ball.vx = Math.sin(ang) * spd;
       state.ball.vy = Math.cos(ang) * spd * dirY;
-      state.ballTarget.vx = state.ball.vx;
-      state.ballTarget.vy = state.ball.vy;
+      state.ball.x = state.ballTarget.x;
+      state.ball.y = state.ballTarget.y;
       state.serving.active = false;
     };
     if (runsPhysics) {
@@ -707,7 +707,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
           });
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
-            const f = 0.42 * delta; // نفس السرعة لكل اللاعبين - لا شبح
+            const f = 0.68 * delta; // ✅ FIX: تغيير من 0.42 إلى 0.68 - حركة سلسة لجميع المضارب
             state.paddles[side].x += (state.targetPaddles[side].x - state.paddles[side].x) * f;
             state.paddles[side].z += (state.targetPaddles[side].z - state.paddles[side].z) * f;
           });
@@ -842,7 +842,7 @@ export function GameScreen3D({ roomCode, isHost, players, settings, scores, last
         }
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
-          const f = (side===mySideLocal?0.55:0.42) * delta;
+          const f = 0.68 * delta; // ✅ FIX: تغيير من 0.42 إلى 0.68 - حركة سلسة لجميع المضارب
           state.paddles[side].x += (state.targetPaddles[side].x - state.paddles[side].x) * f;
           state.paddles[side].z += (state.targetPaddles[side].z - state.paddles[side].z) * f;
         });
