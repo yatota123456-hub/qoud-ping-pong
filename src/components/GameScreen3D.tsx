@@ -889,7 +889,7 @@ useEffect(() => {
                 <Save size={16} /> {isAr? 'حفظ' : 'Save'}
               </button>
               <button onClick={resetCameraToDefault} style={{ flex: 1, ...btnStyle, background: '#ff6b8b', color: '#fff' }}>
-                <ResetIcon size={16} /> {isAr? 'إعادة تعيين' : 'Reset'}
+                <RotateCcw size={16} /> {isAr? 'إعادة تعيين' : 'Reset'}
               </button>
             </div>
             <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}>
