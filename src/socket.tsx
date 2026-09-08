@@ -67,5 +67,7 @@ class ColyseusBridge {
 }
 export const socket = new ColyseusBridge();
 // يدعم VITE_SERVER_URL و VITE_COLYSEUS_URL
-const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string) || (import.meta.env.VITE_COLYSEUS_URL as string) || 'ws://localhost:2567';
+const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string) || 
+                   (import.meta.env.VITE_COLYSEUS_URL as string) || 
+                   (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host;
 export const colyseus = new Client(SERVER_URL);
