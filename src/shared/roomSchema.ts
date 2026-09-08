@@ -1,5 +1,7 @@
 import { schema, t } from "@colyseus/schema";
+
 export type PlayerSide = 'top' | 'right' | 'bottom' | 'left';
+
 // بدون decorators - يعمل مع TS5 و Node 24 بدون experimentalDecorators
 export const Paddle = schema({
   x: t.number(),
@@ -12,6 +14,7 @@ export const Ball = schema({
   y: t.number(),
   vx: t.number(),
   vy: t.number(),
+  visible: t.boolean(),   // <-- تمت الإضافة
 });
 
 export const PlayerState = schema({
@@ -27,9 +30,9 @@ export const QoudState = schema({
   status: t.string(),
   hostSessionId: t.string(),
   settingsJson: t.string(),
-  scores: t.map("number"),               // ✅ صحيح: اسم النوع كنص
-  players: t.map("PlayerState"),         // ✅ صحيح: اسم الكلاس كنص
-  paddles: t.map("Paddle"),       
+  scores: t.map("number"),
+  players: t.map("PlayerState"),
+  paddles: t.map("Paddle"),
   ball: Ball,
   timeLeft: t.number(),
   rally: t.number(),
@@ -37,8 +40,8 @@ export const QoudState = schema({
   scorerSide: t.string(),
   countdownSide: t.string(),
   worldW: t.number(),
-worldH: t.number(),
-maxPlayers: t.number(),
+  worldH: t.number(),
+  maxPlayers: t.number(),
 });
 
 // Aliases للتوافق مع QoudRoom.ts القديم
