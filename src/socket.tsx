@@ -8,8 +8,11 @@ class ColyseusBridge {
   room: any = null;
   private listeners = new Map<string, Set<SocketListener>>();
   private lastPaddleEmit = 0;
+
   get connected() { return Boolean(this.room); }
   get id() { return this.room?.sessionId ?? ''; }
+  get state() { return this.room?.state; }
+
   on(event: string, listener: SocketListener) {
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
     this.listeners.get(event)!.add(listener);
@@ -20,20 +23,30 @@ class ColyseusBridge {
     else this.listeners.get(event)?.delete(listener);
     return this;
   }
+
   emit(event: string, payload?: any) {
     if (!this.room) return false;
-    // Throttle لـ paddle-input فقط
-    if (event === 'paddle-input') {
-      const now = Date.now();
-      if (now - this.lastPaddleEmit < 33) return true; // 30fps max
-      this.lastPaddleEmit = now;
-    }
     this.room.send(event, payload);
     return true;
   }
+
+  // SERVER-AUTH: throttled 30Hz for paddle-target
+  sendPaddleTarget(x: number, y: number) {
+    if (!this.room) return;
+    const now = Date.now();
+    if (now - this.lastPaddleEmit < 33) return;
+    this.lastPaddleEmit = now;
+    this.room.send('paddle-target', { x, y, z: y });
+  }
+
+  requestServe() { 
+    if (!this.room) return;
+    this.room.send('request-serve'); 
+  }
+
   attach(room: any) {
     this.room = room;
-    for (const messageType of ['room-update', 'game-started', 'goal-scored', 'match-finished', 'host-left', 'game-state', 'paddle-input']) {
+    for (const messageType of ['room-update', 'game-started', 'goal-scored', 'match-finished', 'host-left', 'hit-effect', 'countdown', 'game-state', 'paddle-input']) {
       room.onMessage(messageType, (payload: unknown) => this.dispatch(messageType, payload));
     }
     room.onStateChange((state: any) => this.dispatch('room-update', this.roomData(state)));
@@ -53,5 +66,5 @@ class ColyseusBridge {
   }
 }
 export const socket = new ColyseusBridge();
-const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string) || window.location.origin;
+const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string) || (import.meta.env.VITE_COLYSEUS_URL as string) || window.location.origin;
 export const colyseus = new Client(SERVER_URL);

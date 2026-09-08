@@ -1,5 +1,5 @@
-import { Room, Client } from "@colyseus/core";
-import { QoudState, PlayerState, Paddle, Ball } from "./roomSchema";
+import { Room } from "@colyseus/core";
+import { QoudState, PlayerState, Paddle } from "./roomSchema";
 
 export class QoudRoom extends Room<QoudState> {
   maxClients = 4;
@@ -11,14 +11,20 @@ export class QoudRoom extends Room<QoudState> {
     this.setState(new QoudState());
     this.state.code = options.code;
     this.state.settingsJson = JSON.stringify(options.settings || {});
+    this.state.worldW = 700;
+    this.state.worldH = 1050;
+    this.state.maxPlayers = options.maxPlayers || 2;
     const s = options.settings || {};
     this.ballSpeed = s.ballSpeed ?? 10;
     const scale: any = { small: 0.8, medium: 1, large: 1.25, xlarge: 1.5 }[s.arenaSize] || 1;
     const base = (s.players || options.maxPlayers || 2) >= 3 ? { w: 1000, h: 1000 } : { w: 700, h: 1050 };
     this.worldW = base.w * scale;
     this.worldH = base.h * scale;
+    this.state.worldW = this.worldW;
+    this.state.worldH = this.worldH;
     this.state.ball.x = this.worldW / 2;
     this.state.ball.y = this.worldH / 2;
+    this.state.ball.visible = true;
 
     ["bottom", "top", "left", "right"].forEach(side => {
       const p = new Paddle();
@@ -49,8 +55,21 @@ export class QoudRoom extends Room<QoudState> {
       if (!pad) return;
       pad.x = Math.max(45, Math.min(this.worldW - 45, data.x));
       const z = data.z ?? data.y;
-      pad.y = z;
-      pad.z = z;
+      pad.y = Math.max(45, Math.min(this.worldH - 45, z));
+      pad.z = pad.y;
+    });
+
+    // توافق مع كود قديم يستخدم paddle-input
+    this.onMessage("paddle-input", (client, data) => {
+      const pl = this.state.players.get(client.sessionId);
+      if (!pl) return;
+      const pad = this.state.paddles.get(pl.side);
+      if (!pad) return;
+      const x = data.x ?? pad.x;
+      const y = data.y ?? pad.y;
+      pad.x = Math.max(45, Math.min(this.worldW - 45, x));
+      pad.y = Math.max(45, Math.min(this.worldH - 45, y));
+      pad.z = pad.y;
     });
 
     this.onMessage("request-serve", () => {
@@ -96,24 +115,7 @@ export class QoudRoom extends Room<QoudState> {
   simulate(dt: number) {
     if (this.state.status !== "playing" || this.state.countdown > 0) return;
     const b = this.state.ball;
-    this.broadcast("game-state", {
-        ball: {
-          x: this.state.ball.x,
-          y: this.state.ball.y,
-          vx: this.state.ball.vx,
-          vy: this.state.ball.vy,
-        },
-        paddles: Object.fromEntries(
-          Array.from(this.state.paddles.entries()).map(([side, pad]) => [
-            side,
-            { x: pad.x, y: pad.y, z: pad.z }
-          ])
-        ),
-        countdown: this.state.countdown,
-        rally: this.state.rally,
-        scores: Object.fromEntries(this.state.scores.entries()),
-      });
-    }
+
     // بوتات
     this.state.players.forEach(pl => {
       if (!pl.computer) return;
@@ -153,6 +155,15 @@ export class QoudRoom extends Room<QoudState> {
     if (b.y > this.worldH - 22) { if (b.x >= GX1 && b.x <= GX2) this.handleGoal("bottom"); else { b.y = this.worldH - 22; b.vy = -Math.abs(b.vy); } }
     if (b.x < 22) { b.x = 22; b.vx = Math.abs(b.vx); }
     if (b.x > this.worldW - 22) { b.x = this.worldW - 22; b.vx = -Math.abs(b.vx); }
+
+    // مهم: إرسال حالة اللعبة للـ client كل فريم لحل مشكلة التعليق
+    this.broadcast("game-state", {
+      ball: { x: b.x, y: b.y, vx: b.vx, vy: b.vy },
+      paddles: Object.fromEntries(Array.from(this.state.paddles.entries()).map(([side, pad]: any) => [side, { x: pad.x, y: pad.y, z: pad.z }])),
+      countdown: this.state.countdown,
+      rally: this.state.rally,
+      scores: Object.fromEntries(this.state.scores.entries()),
+    });
   }
 
   handleGoal(missedSide: string) {
@@ -195,6 +206,7 @@ export class QoudRoom extends Room<QoudState> {
 
   onLeave(client: any) {
     this.state.players.delete(client.sessionId);
+    this.state.scores.delete(client.sessionId);
     if (client.sessionId === this.state.hostSessionId) {
       const next = this.state.players.values().next().value as PlayerState;
       if (next) this.state.hostSessionId = next.id;
