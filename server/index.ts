@@ -41,14 +41,14 @@ class QoudRoom extends Room<QoudRoomState> {
   private servingRequested = false;
   private broadcastAccum = 0;
 
-  // === Physics fix ===
+  // Physics
   private paddleTargets = new Map<PlayerSide, { x: number; y: number }>();
   private paddlePrev = new Map<PlayerSide, { x: number; y: number }>();
   private paddleVel = new Map<PlayerSide, { vx: number; vy: number }>();
   private lastHitSide: PlayerSide | null = null;
   private lastHitTime = 0;
 
-  // === Series fix ===
+  // Series
   private currentRound = 1;
   private totalRounds = 3;
   private seriesType: 'single' | 'series' = 'single';
@@ -59,7 +59,11 @@ class QoudRoom extends Room<QoudRoomState> {
     const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     if (code.length !== 4) throw new Error('Invalid room code');
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
-    this.settings = { mode: 'time', duration: 180, goal: 7, ballSpeed: 10, difficulty: 'normal', arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3, ...options.settings };
+    this.settings = { 
+      mode: 'time', duration: 180, goal: 7, ballSpeed: 10, difficulty: 'normal', 
+      arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3, 
+      ...options.settings 
+    };
     this.maxClients = maxPlayers;
     this.seriesType = this.settings.seriesType === 'series' ? 'series' : 'single';
     this.totalRounds = Math.max(2, Math.min(10, Number(this.settings.seriesRounds) || 3));
@@ -74,17 +78,19 @@ class QoudRoom extends Room<QoudRoomState> {
     state.hostSessionId = '';
     state.settingsJson = JSON.stringify(this.settings);
     state.ball = new BallState();
-    // init new fields if exist in schema
+    
     try {
       (state as any).currentRound = 1;
       (state as any).totalRounds = this.totalRounds;
       (state as any).seriesType = this.seriesType;
     } catch {}
+    
     this.setState(state);
     this.setMetadata({ code });
     roomsByCode.set(code, this);
 
     this.initWorldAndPaddles();
+    
     if (options.computerPlayers?.length) {
       options.computerPlayers.forEach((bot, i) => {
         const ps = new PlayerState();
@@ -97,11 +103,12 @@ class QoudRoom extends Room<QoudRoomState> {
         this.state.scores.set(ps.id, 0);
       });
     }
+
     this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
 
-    // 120Hz simulation for precision
-    this.setPatchRate(1000 / 30);
-    this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 60);
+    // ✅ Fly.io Optimized: 60Hz broadcast, 120Hz simulation
+    this.setPatchRate(1000 / 60);
+    this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 120);
   }
 
   private initWorldAndPaddles() {
@@ -161,7 +168,6 @@ class QoudRoom extends Room<QoudRoomState> {
     player.computer = false;
     this.state.players.set(client.sessionId, player);
     this.state.scores.set(client.sessionId, 0);
-    // init series wins for new player
     if (!this.seriesWinsMap.has(client.sessionId)) {
       try { (this.state as any).seriesWins?.set(client.sessionId, 0); } catch {}
     }
@@ -208,7 +214,6 @@ class QoudRoom extends Room<QoudRoomState> {
 
     if (type === 'start-game') {
       this.assertHost(client);
-      // reset full series
       this.currentRound = 1;
       this.seriesWinsMap.clear();
       this.roundHistory = [];
@@ -384,30 +389,29 @@ class QoudRoom extends Room<QoudRoomState> {
       }
     }
 
-    // FIX: lerp للمضارب البشرية نحو target + حساب السرعة
     const dtSec = Math.min(deltaMs, 50) / 1000;
     for (const side of this.activeSides) {
       const paddle = this.state.paddles.get(side)!;
       const target = this.paddleTargets.get(side);
       if (!target) continue;
-      const player = [...this.state.players.values()].find(p=>p.side===side);
+      const player = [...this.state.players.values()].find(p => p.side === side);
       if (player?.computer) continue;
       const prev = this.paddlePrev.get(side) || { x: paddle.x, y: paddle.y };
       paddle.x += (target.x - paddle.x) * Math.min(1, dtSec * 14);
       paddle.y += (target.y - paddle.y) * Math.min(1, dtSec * 14);
       const vx = (paddle.x - prev.x) / dtSec;
       const vy = (paddle.y - prev.y) / dtSec;
-      this.paddleVel.set(side, { vx: vx*0.5, vy: vy*0.5 });
+      this.paddleVel.set(side, { vx: vx * 0.5, vy: vy * 0.5 });
       this.paddlePrev.set(side, { x: paddle.x, y: paddle.y });
     }
     for (const side of this.activeSides) {
       const paddle = this.state.paddles.get(side);
       if (!paddle) continue;
-      const player = [...this.state.players.values()].find(p=>p.side===side);
+      const player = [...this.state.players.values()].find(p => p.side === side);
       if (!player?.computer) continue;
       const prev = this.paddlePrev.get(side);
       if (prev) {
-        this.paddleVel.set(side, { vx: (paddle.x - prev.x)/dtSec*0.5, vy: (paddle.y - prev.y)/dtSec*0.5 });
+        this.paddleVel.set(side, { vx: (paddle.x - prev.x) / dtSec * 0.5, vy: (paddle.y - prev.y) / dtSec * 0.5 });
       }
       this.paddlePrev.set(side, { x: paddle.x, y: paddle.y });
     }
@@ -455,7 +459,6 @@ class QoudRoom extends Room<QoudRoomState> {
   private moveComputerPaddles(delta: number) {
     const w = this.state.worldW;
     const h = this.state.worldH;
-    // predict where ball will be
     const predX = this.state.ball.x + this.state.ball.vx * 14;
     const predY = this.state.ball.y + this.state.ball.vy * 14;
     const diffMax = this.settings.difficulty === 'easy' ? 0.85 : this.settings.difficulty === 'hard' ? 2.4 : 1.6;
@@ -480,46 +483,42 @@ class QoudRoom extends Room<QoudRoomState> {
     }
   }
 
-  // ===== NEW IMPROVED PHYSICS - NO PENETRATION + PADDLE SPEED INFLUENCE =====
   private stepBallImproved(delta: number) {
     const ball = this.state.ball;
     const w = this.state.worldW, h = this.state.worldH;
     const BALL_R = 14;
     const PADDLE_R = 26;
-    const HIT_DIST = BALL_R + PADDLE_R; // 40
- 
+    const HIT_DIST = BALL_R + PADDLE_R;
+
     const totalVx = ball.vx * delta;
     const totalVy = ball.vy * delta;
     const dist = Math.hypot(totalVx, totalVy);
-    const maxStep = 8; // smaller = more accurate
+    const maxStep = 8;
     const steps = Math.max(1, Math.ceil(dist / maxStep));
     const stepVx = totalVx / steps;
     const stepVy = totalVy / steps;
- 
+
     let missedSide: PlayerSide | null = null;
- 
+
     for (let i = 0; i < steps && !missedSide; i++) {
       const prevX = ball.x;
       const prevY = ball.y;
       ball.x += stepVx;
       ball.y += stepVy;
- 
-      // --- swept circle vs circle for each paddle ---
+
       let bestHit: { side: PlayerSide; t: number; nx: number; ny: number; dist: number } | null = null;
- 
+
       for (const side of this.activeSides) {
-        // cooldown to prevent double hit same paddle in 80ms
         if (this.lastHitSide === side && Date.now() - this.lastHitTime < 80) continue;
- 
+
         const paddle = this.state.paddles.get(side)!;
         const px = paddle.x;
         const py = paddle.y;
- 
-        // segment ball prev -> curr
+
         const segX = ball.x - prevX;
         const segY = ball.y - prevY;
         const segLenSq = segX * segX + segY * segY;
- 
+
         let t = 0;
         let closestX = prevX;
         let closestY = prevY;
@@ -529,11 +528,11 @@ class QoudRoom extends Room<QoudRoomState> {
           closestX = prevX + segX * t;
           closestY = prevY + segY * t;
         }
- 
+
         const dx = closestX - px;
         const dy = closestY - py;
         const d = Math.hypot(dx, dy);
- 
+
         if (d < HIT_DIST) {
           if (!bestHit || t < bestHit.t) {
             bestHit = {
@@ -545,22 +544,19 @@ class QoudRoom extends Room<QoudRoomState> {
             };
           }
         }
-      } // === end for-side loop ===
- 
+      }
+
       if (bestHit) {
         const side = bestHit.side;
         const paddle = this.state.paddles.get(side)!;
         const pVel = this.paddleVel.get(side) || { vx: 0, vy: 0 };
- 
-        // push ball out of paddle
+
         ball.x = paddle.x + bestHit.nx * (HIT_DIST + 1.5);
         ball.y = paddle.y + bestHit.ny * (HIT_DIST + 1.5);
- 
-        // --- PHYSICS WITH PADDLE VELOCITY ---
+
         const baseSpeed = 7 + Number(this.settings.ballSpeed || 10) * 0.6 + this.state.rally * 0.4;
         const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
- 
-        // انعكاس بسيط حول الخط العمودي على المضرب
+
         let relVx = ball.vx - pVel.vx;
         let relVy = ball.vy - pVel.vy;
         const dot = relVx * bestHit.nx + relVy * bestHit.ny;
@@ -568,8 +564,7 @@ class QoudRoom extends Room<QoudRoomState> {
           relVx -= 2 * dot * bestHit.nx;
           relVy -= 2 * dot * bestHit.ny;
         }
- 
-        // إعادة تركيب السرعة: أساسية باتجاه اللعب + تأثير حقيقي لسرعة المضرب
+
         const paddleKick = Math.min(paddleSpeed, 22) * 1.4;
         let newVx: number, newVy: number;
         if (side === 'bottom') {
@@ -585,7 +580,7 @@ class QoudRoom extends Room<QoudRoomState> {
           newVx = -(baseSpeed + paddleKick * 0.5);
           newVy = relVy * 0.6 + pVel.vy * 1.1;
         }
- 
+
         const maxSpeed = 28 + Number(this.settings.ballSpeed || 10) * 1.2 + this.state.rally * 0.5;
         const curSp = Math.hypot(newVx, newVy);
         if (curSp > maxSpeed) {
@@ -593,22 +588,21 @@ class QoudRoom extends Room<QoudRoomState> {
           newVx *= s;
           newVy *= s;
         }
- 
+
         ball.vx = newVx;
         ball.vy = newVy;
         this.state.rally += 1;
         this.lastHitSide = side;
         this.lastHitTime = Date.now();
         this.broadcast('hit-effect', { x: ball.x, y: ball.y, side, power: Math.min(1, this.state.rally / 12), paddleVx: pVel.vx, paddleVy: pVel.vy });
-      } // === end if (bestHit) ===
- 
-      // --- wall / goal check ---
+      }
+
       const goalW = w >= 900 ? 300 : 260;
       const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
       const gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
       const inGX = (x: number) => x >= gx1 && x <= gx2;
       const inGY = (y: number) => y >= gy1 && y <= gy2;
- 
+
       if (ball.y - BALL_R <= 0) {
         if (this.activeSides.includes('top')) {
           if (inGX(ball.x)) missedSide = 'top';
@@ -633,7 +627,7 @@ class QoudRoom extends Room<QoudRoomState> {
           else { ball.x = w - BALL_R - 1; ball.vx = -Math.abs(ball.vx); }
         } else { ball.x = w - BALL_R - 1; ball.vx = -Math.abs(ball.vx); }
       }
- 
+
       if (missedSide) {
         this.onGoal(missedSide);
         break;
@@ -659,38 +653,29 @@ class QoudRoom extends Room<QoudRoomState> {
         }
       });
 
-      // goal mode: check if round ends
       if (this.settings.mode === 'goals' && newScore >= Number(this.settings.goal || 7)) {
         this.finishRound(scorer.id, false);
         return;
       }
     }
-    // time mode continues, goal mode continues if not finished
     this.startCountdown(scorerSide);
     this.broadcastGameState();
   }
 
   private onTimeUpRound() {
-    // time finished for this round
     const sorted = [...this.state.scores.entries()].sort((a, b) => b[1] - a[1]);
     const maxScore = sorted[0]?.[1] ?? 0;
     const topPlayers = sorted.filter(([_, s]) => s === maxScore);
     if (topPlayers.length === 1) {
       this.finishRound(topPlayers[0][0], false);
     } else {
-      // draw round
       this.finishRound(null, true);
     }
   }
 
   private finishRound(winnerId: string | null, isDraw: boolean) {
     const roundScores = Object.fromEntries(this.state.scores.entries());
-    const record = {
-      round: this.currentRound,
-      scores: roundScores,
-      winnerId: winnerId,
-      isDraw,
-    };
+    const record = { round: this.currentRound, scores: roundScores, winnerId: winnerId, isDraw };
     this.roundHistory.push(record);
 
     if (!isDraw && winnerId) {
@@ -714,10 +699,8 @@ class QoudRoom extends Room<QoudRoomState> {
       if (this.currentRound >= this.totalRounds) {
         this.finishMatchSeries();
       } else {
-        // next round
         this.currentRound++;
         try { (this.state as any).currentRound = this.currentRound; } catch {}
-        // reset scores for next round
         for (const id of this.state.players.keys()) {
           this.state.scores.set(id, 0);
         }
@@ -731,13 +714,11 @@ class QoudRoom extends Room<QoudRoomState> {
         });
       }
     } else {
-      // single mode
       this.finishMatch(winnerId || undefined);
     }
   }
 
   private finishMatchSeries() {
-    // overall winner = most rounds won
     const entries = [...this.seriesWinsMap.entries()].sort((a, b) => b[1] - a[1]);
     const maxWins = entries[0]?.[1] ?? 0;
     const top = entries.filter(([_, w]) => w === maxWins);
@@ -756,7 +737,6 @@ class QoudRoom extends Room<QoudRoomState> {
       seriesType: 'series',
     });
     this.state.status = 'waiting';
-    // reset for lobby display but keep history until next start-game
   }
 
   private finishMatch(winnerId?: string) {
@@ -776,7 +756,7 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 }
 
-const port = Number(process.env.PORT ?? 5000);
+const port = Number(process.env.PORT ?? 2567);
 const isProduction = process.env.NODE_ENV === 'production';
 const httpServer = createServer();
 const gameServer = new Server({
