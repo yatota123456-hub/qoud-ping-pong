@@ -686,7 +686,7 @@ useEffect(() => {
           current.x += (target.x - current.x) * lerpFactor;
           current.z += (target.z - current.z) * lerpFactor;
         });
-
+      }
       // رسم المشهد الثلاثي الأبعاد (بدون تغيير)
       if (threeRef.current) {
         const { ball, paddles, camera, renderer, hitGroup } = threeRef.current; const c = cam.current;
