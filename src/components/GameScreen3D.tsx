@@ -197,10 +197,10 @@ function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string,
   const basePresets = {
     top: { angle: Math.PI, distance: 400, height: 1400, name: 'من الأعلى', nameEn: 'Top View' },
     bottom: { angle: 0, distance: distance, height: height, name: 'خلفك', nameEn: 'Behind You' },
-    topPlayer: { angle: Math.PI, distance: 650, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+    topPlayer: { angle: Math.PI, distance: distance, height: height, name: 'خلفك', nameEn: 'Behind You' },
     iso: { angle: 0.6, distance: distance * 0.72, height: height * 0.88, name: 'مائل', nameEn: 'Isometric' },
-    sideLeft: { angle: -Math.PI / 2, distance: 800, height: 500, name: 'يسار', nameEn: 'Left' },
-    sideRight: { angle: Math.PI / 2, distance: 800, height: 500, name: 'يمين', nameEn: 'Right' },
+    sideLeft: { angle: -Math.PI / 2, distance: distance, height: height, name: 'خلفك', nameEn: 'Behind You' },
+   sideRight: { angle: Math.PI / 2, distance: distance, height: height, name: 'خلفك', nameEn: 'Behind You' },
   };
   const adapted: any = {};
   for (const k in basePresets) {

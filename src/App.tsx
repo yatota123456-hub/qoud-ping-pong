@@ -789,6 +789,31 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           current.x += (target.x - current.x) * lf;
           current.y += (target.y - current.y) * lf;
         });
+        if (!hasDraggedRef.current && hintDotRef.current && hintTextRef.current && arenaRef.current) {
+          const elapsed = now - noDragStartRef.current;
+          if (elapsed > 3000 && state.countdown === 0) {
+            const p = state.paddles[mySide];
+            const GRAB_OFFSET = 130;
+            let hx = p.x, hy = p.y;
+            if (mySide === 'bottom') hy = p.y + GRAB_OFFSET;
+            else if (mySide === 'top') hy = p.y - GRAB_OFFSET;
+            else if (mySide === 'left') hx = p.x - GRAB_OFFSET;
+            else hx = p.x + GRAB_OFFSET;
+            const cosA = Math.cos(myAngle), sinA = Math.sin(myAngle);
+            const dx = hx - world.w / 2, dy = hy - world.h / 2;
+            const rx = dx * cosA - dy * sinA + world.w / 2;
+            const ry = dx * sinA + dy * cosA + world.h / 2;
+            const rect = arenaRef.current.getBoundingClientRect();
+            const sx = (rx / world.w) * rect.width;
+            const sy = (ry / world.h) * rect.height;
+            hintDotRef.current.style.left = `${sx}px`;
+            hintDotRef.current.style.top = `${sy}px`;
+            hintDotRef.current.style.display = 'block';
+            hintTextRef.current.style.left = `${sx + 18}px`;
+            hintTextRef.current.style.top = `${sy - 12}px`;
+            hintTextRef.current.style.display = 'block';
+          }
+        }
       }
       // رسم
       draw(context, state, players, now, false, world, myAngle);
@@ -809,7 +834,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     if (paused || celebrating) return; if (isServing) { requestLaunch(); return; }
     (event.currentTarget as any).setPointerCapture?.(event.pointerId);
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 110 : 50;
+    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 130 : 50;
     let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
     hasDraggedRef.current=true; if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     drag.current = { side: mySide, x: tx, y: ty };
@@ -819,7 +844,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (!drag.current.side) return;
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 110 : 50;
+    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 130 : 50;
     let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
     drag.current.x = tx; drag.current.y = ty;
     stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
