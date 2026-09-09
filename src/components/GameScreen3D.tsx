@@ -261,6 +261,7 @@ export function GameScreen3D({
   const [timeLeft, setTimeLeft] = useState(settings.mode === 'time'? settings.duration : 0);
   const [rally, setRally] = useState(0);
   const [countdown, setCountdown] = useState(0);
+  const [countdownSide, setCountdownSide] = useState<string>('');
   const pausedRef = useRef(paused);
   const gameEndedRef = useRef(false);
   const frameIdRef = useRef<number>(0);
