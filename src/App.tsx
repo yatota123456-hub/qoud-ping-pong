@@ -702,12 +702,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         // تحديث المضارب (باستثناء مضرب اللاعب نفسه الذي تم تحديثه يدوياً)
         (['top','bottom','right','left'] as const).forEach(side => {
           if (!active(side)) return;
-          if (side === mySide) {
-            const myLerp = 0.15;
-            state.paddles[mySide].x += (state.targetPaddles[mySide].x - state.paddles[mySide].x) * myLerp;
-            state.paddles[mySide].y += (state.targetPaddles[mySide].y - state.paddles[mySide].y) * myLerp;
-            return;
-          }
           const target = state.targetPaddles[side];
           const current = state.paddles[side];
           current.x += (target.x - current.x) * lerpFactor;

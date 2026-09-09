@@ -480,25 +480,25 @@ export function GameScreen3D({
           const clampedZ = clamp(tz + OFFSET, 45, world.h * 0.38);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode &&!isHost) socket.sendPaddleTarget(clampedX, clampedZ);
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅ أزل !isHost
         } else if (mySide === 'bottom') {
           const clampedX = clamp(tx, 45, world.w - 45);
           const clampedZ = clamp(tz - OFFSET, world.h * 0.62, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode &&!isHost) socket.sendPaddleTarget(clampedX, clampedZ);
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
         } else if (mySide === 'left') {
           const clampedX = clamp(tx + OFFSET, 45, world.w * 0.38);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode &&!isHost) socket.sendPaddleTarget(clampedX, clampedZ);
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
         } else if (mySide === 'right') {
           const clampedX = clamp(tx - OFFSET, world.w * 0.62, world.w - 45);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode &&!isHost) socket.sendPaddleTarget(clampedX, clampedZ);
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
         }
       }
     };
@@ -679,19 +679,13 @@ useEffect(() => {
         state.ball.vy = state.ballTarget.vy;
 
         // تحديث المضارب (باستثناء مضرب اللاعب نفسه الذي تم تحديثه يدوياً)
-        const mySide = getMySide();
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
-          if (side === mySide) {
-            // تم تحديثه بالفعل من handlePointerMove
-            return;
-          }
           const target = state.targetPaddles[side];
           const current = state.paddles[side];
           current.x += (target.x - current.x) * lerpFactor;
           current.z += (target.z - current.z) * lerpFactor;
         });
-      }
 
       // رسم المشهد الثلاثي الأبعاد (بدون تغيير)
       if (threeRef.current) {
