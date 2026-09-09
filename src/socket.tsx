@@ -34,7 +34,7 @@ class ColyseusBridge {
   sendPaddleTarget(x: number, y: number) {
     if (!this.room) return;
     const now = Date.now();
-    if (now - this.lastPaddleEmit < 33) return;
+    if (now - this.lastPaddleEmit < 16) return;   // ~60 مرة/ثانية
     this.lastPaddleEmit = now;
     this.room.send('paddle-target', { x, y, z: y });
   }

@@ -1,11 +1,24 @@
 import { Room } from "@colyseus/core";
-import { QoudState, PlayerState, Paddle } from "./roomSchema";
+import { QoudState, PlayerState } from "./roomSchema";
+
+type PaddleXY = { x: number; y: number; z: number };
+type BallXY = { x: number; y: number; vx: number; vy: number; visible: boolean };
 
 export class QoudRoom extends Room<QoudState> {
   maxClients = 4;
   worldW = 700;
   worldH = 1050;
   ballSpeed = 10;
+
+  // ✅ بيانات اللعب الحيّة الآن خارج الـ Schema تمامًا
+  private ball: BallXY = { x: 0, y: 0, vx: 0, vy: 0, visible: true };
+  private paddles: Record<string, PaddleXY> = {};
+  private timeLeft = 0;
+  private rally = 0;
+  private countdown = 0;
+  private countdownSide = '';
+  private scorerSide = '';
+  private broadcastAccum = 0;
 
   onCreate(options: any) {
     this.setState(new QoudState());
@@ -22,17 +35,17 @@ export class QoudRoom extends Room<QoudState> {
     this.worldH = base.h * scale;
     this.state.worldW = this.worldW;
     this.state.worldH = this.worldH;
-    this.state.ball.x = this.worldW / 2;
-    this.state.ball.y = this.worldH / 2;
-    this.state.ball.visible = true;
+    this.ball.x = this.worldW / 2;
+    this.ball.y = this.worldH / 2;
+    this.ball.visible = true;
 
     ["bottom", "top", "left", "right"].forEach(side => {
-      const p = new Paddle();
+      const p: PaddleXY = { x: 0, y: 0, z: 0 };
       if (side === "bottom") { p.x = this.worldW / 2; p.y = this.worldH - 60; p.z = this.worldH - 60; }
       if (side === "top") { p.x = this.worldW / 2; p.y = 60; p.z = 60; }
       if (side === "left") { p.x = 60; p.y = this.worldH / 2; p.z = this.worldH / 2; }
       if (side === "right") { p.x = this.worldW - 60; p.y = this.worldH / 2; p.z = this.worldH / 2; }
-      this.state.paddles.set(side, p);
+      this.paddles[side] = p;
     });
 
     if (options.computerPlayers?.length) {
@@ -51,7 +64,7 @@ export class QoudRoom extends Room<QoudState> {
     this.onMessage("paddle-target", (client, data) => {
       const pl = this.state.players.get(client.sessionId);
       if (!pl) return;
-      const pad = this.state.paddles.get(pl.side);
+      const pad = this.paddles[pl.side];
       if (!pad) return;
       pad.x = Math.max(45, Math.min(this.worldW - 45, data.x));
       const z = data.z ?? data.y;
@@ -59,11 +72,10 @@ export class QoudRoom extends Room<QoudState> {
       pad.z = pad.y;
     });
 
-    // توافق مع كود قديم يستخدم paddle-input
     this.onMessage("paddle-input", (client, data) => {
       const pl = this.state.players.get(client.sessionId);
       if (!pl) return;
-      const pad = this.state.paddles.get(pl.side);
+      const pad = this.paddles[pl.side];
       if (!pad) return;
       const x = data.x ?? pad.x;
       const y = data.y ?? pad.y;
@@ -73,7 +85,7 @@ export class QoudRoom extends Room<QoudState> {
     });
 
     this.onMessage("request-serve", () => {
-      if (this.state.ball.vx === 0 && this.state.ball.vy === 0) this.launchBall();
+      if (this.ball.vx === 0 && this.ball.vy === 0) this.launchBall();
     });
 
     this.onMessage("start-game", () => {
@@ -82,7 +94,7 @@ export class QoudRoom extends Room<QoudState> {
       Array.from(this.state.players.values()).forEach(p => {
         if (!this.state.scores.has(p.id)) this.state.scores.set(p.id, 0);
       });
-      this.state.timeLeft = JSON.parse(this.state.settingsJson || "{}").duration || 180;
+      this.timeLeft = JSON.parse(this.state.settingsJson || "{}").duration || 180;
       this.startCountdown();
       this.broadcast("game-started", {});
     });
@@ -90,65 +102,74 @@ export class QoudRoom extends Room<QoudState> {
     this.setSimulationInterval((dt) => this.simulate(dt), 1000 / 60);
 
     this.clock.setInterval(() => {
-      if (this.state.status === "playing" && this.state.countdown === 0) {
-        this.state.timeLeft--;
-        if (this.state.timeLeft <= 0) this.finishByTime();
+      if (this.state.status === "playing" && this.countdown === 0) {
+        this.timeLeft--;
+        if (this.timeLeft <= 0) this.finishByTime();
       }
     }, 1000);
   }
 
   startCountdown() {
-    this.state.countdown = 3;
-    this.clock.setTimeout(() => { this.state.countdown = 2; }, 1000);
-    this.clock.setTimeout(() => { this.state.countdown = 1; }, 2000);
-    this.clock.setTimeout(() => { this.state.countdown = 0; this.launchBall(); }, 3000);
+    this.countdown = 3;
+    this.clock.setTimeout(() => { this.countdown = 2; }, 1000);
+    this.clock.setTimeout(() => { this.countdown = 1; }, 2000);
+    this.clock.setTimeout(() => { this.countdown = 0; this.launchBall(); }, 3000);
   }
 
   launchBall() {
     const spd = 6 + this.ballSpeed * 0.5;
     const ang = (Math.random() - 0.5) * 0.8;
     const dirY = Math.random() > 0.5 ? 1 : -1;
-    this.state.ball.vx = Math.sin(ang) * spd;
-    this.state.ball.vy = Math.cos(ang) * spd * dirY;
+    this.ball.vx = Math.sin(ang) * spd;
+    this.ball.vy = Math.cos(ang) * spd * dirY;
   }
 
   simulate(dt: number) {
-    if (this.state.status !== "playing" || this.state.countdown > 0) return;
-    const b = this.state.ball;
+    if (this.state.status !== "playing" || this.countdown > 0) return;
+    const b = this.ball;
 
-    // بوتات
     this.state.players.forEach(pl => {
       if (!pl.computer) return;
-      const pad = this.state.paddles.get(pl.side);
+      const pad = this.paddles[pl.side];
       if (!pad) return;
       const targetX = b.x + b.vx * 12;
       const targetY = b.y + b.vy * 12;
       if (pl.side === "bottom" || pl.side === "top") pad.x += (targetX - pad.x) * 0.08;
-      else pad.y += (targetY - pad.y) * 0.08, pad.z = pad.y;
+      else { pad.y += (targetY - pad.y) * 0.08; pad.z = pad.y; }
       pad.x = Math.max(45, Math.min(this.worldW - 45, pad.x));
       pad.y = Math.max(45, Math.min(this.worldH - 45, pad.y));
       pad.z = pad.y;
     });
 
-    b.x += b.vx;
-    b.y += b.vy;
+    // ✅ حل مشكلة اختراق الكرة للمضرب: تحرّك على خطوات فرعية بدل قفزة واحدة
+    const speed = Math.hypot(b.vx, b.vy);
+    const maxStep = 20; // أقل من نصف hitDist تقريبًا
+    const steps = Math.max(1, Math.ceil(speed / maxStep));
+    const stepVx = b.vx / steps, stepVy = b.vy / steps;
 
-    this.state.paddles.forEach((pad, side) => {
-      const dx = b.x - pad.x;
-      const dy = b.y - (pad.z ?? pad.y);
-      const dist = Math.hypot(dx, dy);
-      if (dist < 44) {
-        const nx = dx / (dist || 1), ny = dy / (dist || 1);
-        b.x = pad.x + nx * 50;
-        b.y = (pad.z ?? pad.y) + ny * 50;
-        if (side === "bottom") b.vy = -Math.abs(b.vy) - 1;
-        if (side === "top") b.vy = Math.abs(b.vy) + 1;
-        if (side === "left") b.vx = Math.abs(b.vx) + 1;
-        if (side === "right") b.vx = -Math.abs(b.vx) - 1;
-        this.state.rally++;
-        this.broadcast("hit-effect", { x: b.x, y: b.y, color: "#ffcf5a", power: 0.8 });
+    for (let i = 0; i < steps; i++) {
+      b.x += stepVx;
+      b.y += stepVy;
+
+      for (const side of Object.keys(this.paddles)) {
+        const pad = this.paddles[side];
+        const dx = b.x - pad.x;
+        const dy = b.y - (pad.z ?? pad.y);
+        const dist = Math.hypot(dx, dy);
+        if (dist < 44) {
+          const nx = dx / (dist || 1), ny = dy / (dist || 1);
+          b.x = pad.x + nx * 50;
+          b.y = (pad.z ?? pad.y) + ny * 50;
+          if (side === "bottom") b.vy = -Math.abs(b.vy) - 1;
+          if (side === "top") b.vy = Math.abs(b.vy) + 1;
+          if (side === "left") b.vx = Math.abs(b.vx) + 1;
+          if (side === "right") b.vx = -Math.abs(b.vx) - 1;
+          this.rally++;
+          this.broadcast("hit-effect", { x: b.x, y: b.y, color: "#ffcf5a", power: 0.8 });
+          break; // كرة واحدة لا تصطدم بأكثر من مضرب بنفس اللحظة
+        }
       }
-    });
+    }
 
     const GOAL_W = 260, GX1 = (this.worldW - GOAL_W) / 2, GX2 = GX1 + GOAL_W;
     if (b.y < 22) { if (b.x >= GX1 && b.x <= GX2) this.handleGoal("top"); else { b.y = 22; b.vy = Math.abs(b.vy); } }
@@ -156,14 +177,20 @@ export class QoudRoom extends Room<QoudState> {
     if (b.x < 22) { b.x = 22; b.vx = Math.abs(b.vx); }
     if (b.x > this.worldW - 22) { b.x = this.worldW - 22; b.vx = -Math.abs(b.vx); }
 
-    // مهم: إرسال حالة اللعبة للـ client كل فريم لحل مشكلة التعليق
-    this.broadcast("game-state", {
-      ball: { x: b.x, y: b.y, vx: b.vx, vy: b.vy },
-      paddles: Object.fromEntries(Array.from(this.state.paddles.entries()).map(([side, pad]: any) => [side, { x: pad.x, y: pad.y, z: pad.z }])),
-      countdown: this.state.countdown,
-      rally: this.state.rally,
-      scores: Object.fromEntries(this.state.scores.entries()),
-    });
+    // ✅ بث مُتحكم به بمعدل ~40 مرة/ثانية بدل 60، وبدون أي تكرار مع الـ Schema sync
+    this.broadcastAccum += dt;
+    if (this.broadcastAccum >= 1000 / 40) {
+      this.broadcastAccum = 0;
+      this.broadcast("game-state", {
+        ball: { x: b.x, y: b.y, vx: b.vx, vy: b.vy },
+        paddles: Object.fromEntries(Object.entries(this.paddles).map(([side, pad]) => [side, { x: pad.x, y: pad.y, z: pad.z }])),
+        countdown: this.countdown,
+        countdownSide: this.countdownSide,
+        rally: this.rally,
+        scores: Object.fromEntries(this.state.scores.entries()),
+        timeLeft: this.timeLeft,
+      });
+    }
   }
 
   handleGoal(missedSide: string) {
@@ -171,7 +198,8 @@ export class QoudRoom extends Room<QoudState> {
     const scorerSide = opposite[missedSide];
     const scorer = Array.from(this.state.players.values()).find(p => p.side === scorerSide);
     if (scorer) this.state.scores.set(scorer.id, (this.state.scores.get(scorer.id) || 0) + 1);
-    this.state.scorerSide = scorerSide || "";
+    this.scorerSide = scorerSide || "";
+    this.countdownSide = scorerSide || "";
     this.broadcast("goal-scored", { missedSide, scorerSide, scorerName: scorer?.name || scorerSide, scores: Object.fromEntries(this.state.scores.entries()) });
     const settings = JSON.parse(this.state.settingsJson || "{}");
     if (settings.mode === "goals") {
@@ -180,8 +208,8 @@ export class QoudRoom extends Room<QoudState> {
         if (sc >= goal) { this.broadcast("match-finished", { winnerId: id, scores: Object.fromEntries(this.state.scores.entries()) }); this.state.status = "waiting"; return; }
       }
     }
-    this.state.ball.x = this.worldW / 2; this.state.ball.y = this.worldH / 2;
-    this.state.ball.vx = 0; this.state.ball.vy = 0; this.state.rally = 0;
+    this.ball.x = this.worldW / 2; this.ball.y = this.worldH / 2;
+    this.ball.vx = 0; this.ball.vy = 0; this.rally = 0;
     this.startCountdown();
   }
 

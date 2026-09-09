@@ -680,20 +680,26 @@ useEffect(() => {
         // لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles
         // ============================================
         const lerpFactor = 0.15;
-        // تحديث الكرة: تقدّم فعلي بالسرعة كل فريم + تصحيح ناعم نحو موضع السيرفر (يقلل اللاج المحسوس)
+        const bounced =
+          (state.ball.vx !== 0 && Math.sign(state.ballTarget.vx) !== Math.sign(state.ball.vx)) ||
+          (state.ball.vy !== 0 && Math.sign(state.ballTarget.vy) !== Math.sign(state.ball.vy));
         state.ball.vx = state.ballTarget.vx;
         state.ball.vy = state.ballTarget.vy;
-        state.ball.x += state.ball.vx * delta;
-        state.ball.y += state.ball.vy * delta;
-        state.ball.x += (state.ballTarget.x - state.ball.x) * 0.12;
-        state.ball.y += (state.ballTarget.y - state.ball.y) * 0.12;
+        if (bounced) {
+          state.ball.x = state.ballTarget.x;
+          state.ball.y = state.ballTarget.y;
+        } else {
+          state.ball.x += state.ball.vx * delta;
+          state.ball.y += state.ball.vy * delta;
+          state.ball.x += (state.ballTarget.x - state.ball.x) * 0.4;
+          state.ball.y += (state.ballTarget.y - state.ball.y) * 0.4;
+        }
 
-        // تحديث المضارب (باستثناء مضرب اللاعب نفسه الذي تم تحديثه يدوياً)
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
           const target = state.targetPaddles[side];
           const current = state.paddles[side];
-          const lf = side === mySide ? 0.5 : lerpFactor;
+          const lf = side === mySide ? 1 : lerpFactor;
           current.x += (target.x - current.x) * lf;
           current.z += (target.z - current.z) * lf;
         });

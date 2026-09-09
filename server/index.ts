@@ -39,7 +39,7 @@ class QoudRoom extends Room<QoudRoomState> {
   private servingSide: PlayerSide = 'bottom';
   private servingStartedAt = 0;
   private servingRequested = false;
-
+  private broadcastAccum = 0;
   onCreate(options: CreateOptions) {
     const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     if (code.length !== 4) throw new Error('Invalid room code');
@@ -330,8 +330,11 @@ class QoudRoom extends Room<QoudRoomState> {
     this.moveComputerPaddles(delta);
     this.stepBall(delta);
   
-    // بث الحالة بعد كل التحديثات
-    this.broadcastGameState();
+    this.broadcastAccum += deltaMs;
+    if (this.broadcastAccum >= 1000 / 40) {
+      this.broadcastAccum = 0;
+      this.broadcastGameState();
+    }
   }
   
   // دالة مساعدة لبث game-state
@@ -392,7 +395,18 @@ class QoudRoom extends Room<QoudRoomState> {
     const r = 14;
     const paddleRadius = 26;
     const hitDist = r + paddleRadius;
+ // ✅ حل الاختراق: sub-stepping لضمان اكتشاف التصادم حتى بالسرعات العالية
+ const totalVx = ball.vx * delta, totalVy = ball.vy * delta;
+ const dist = Math.hypot(totalVx, totalVy);
+ const maxStep = 18;
+ const steps = Math.max(1, Math.ceil(dist / maxStep));
+ const stepVx = totalVx / steps, stepVy = totalVy / steps;
 
+ let missedSide: PlayerSide | null = null;
+
+ for (let i = 0; i < steps && !missedSide; i++) {
+   ball.x += stepVx;
+   ball.y += stepVy;
     for (const side of this.activeSides) {
       const paddle = this.state.paddles.get(side)!;
       const dx = ball.x - paddle.x, dy = ball.y - paddle.y;
