@@ -472,7 +472,7 @@ class QoudRoom extends Room<QoudRoomState> {
     const BALL_R = 14;
     const PADDLE_R = 26;
     const HIT_DIST = BALL_R + PADDLE_R; // 40
-
+ 
     const totalVx = ball.vx * delta;
     const totalVy = ball.vy * delta;
     const dist = Math.hypot(totalVx, totalVy);
@@ -480,35 +480,31 @@ class QoudRoom extends Room<QoudRoomState> {
     const steps = Math.max(1, Math.ceil(dist / maxStep));
     const stepVx = totalVx / steps;
     const stepVy = totalVy / steps;
-
+ 
     let missedSide: PlayerSide | null = null;
-
+ 
     for (let i = 0; i < steps && !missedSide; i++) {
       const prevX = ball.x;
       const prevY = ball.y;
       ball.x += stepVx;
       ball.y += stepVy;
-
+ 
       // --- swept circle vs circle for each paddle ---
       let bestHit: { side: PlayerSide; t: number; nx: number; ny: number; dist: number } | null = null;
-
+ 
       for (const side of this.activeSides) {
         // cooldown to prevent double hit same paddle in 80ms
         if (this.lastHitSide === side && Date.now() - this.lastHitTime < 80) continue;
-
+ 
         const paddle = this.state.paddles.get(side)!;
-        const pVel = this.paddleVel.get(side) || { vx: 0, vy: 0 };
-
-        // paddle center for this substep (linear interp between prev and current)
-        // we already updated paddle pos, so use current
         const px = paddle.x;
         const py = paddle.y;
-
+ 
         // segment ball prev -> curr
         const segX = ball.x - prevX;
         const segY = ball.y - prevY;
         const segLenSq = segX * segX + segY * segY;
-
+ 
         let t = 0;
         let closestX = prevX;
         let closestY = prevY;
@@ -517,30 +513,13 @@ class QoudRoom extends Room<QoudRoomState> {
           t = Math.max(0, Math.min(1, t));
           closestX = prevX + segX * t;
           closestY = prevY + segY * t;
-        } else {
-          closestX = prevX;
-          closestY = prevY;
-          t = 0;
         }
-
+ 
         const dx = closestX - px;
         const dy = closestY - py;
         const d = Math.hypot(dx, dy);
-
+ 
         if (d < HIT_DIST) {
-          // check approaching: ball moving towards paddle
-          const relVx = stepVx - pVel.vx * 0.1;
-          const relVy = stepVy - pVel.vy * 0.1;
-          // for side-specific approaching check (prevent hitting from behind)
-          const approaching =
-            (side === 'bottom' && ball.vy > -0.5 && ball.y > py - 35) ||
-            (side === 'top' && ball.vy < 0.5 && ball.y < py + 35) ||
-            (side === 'left' && ball.vx < 0.5 && ball.x < px + 35) ||
-            (side === 'right' && ball.vx > -0.5 && ball.x > px - 35) ||
-            d < HIT_DIST * 0.85; // very close always counts
-
-          if (!approaching) continue;
-
           if (!bestHit || t < bestHit.t) {
             bestHit = {
               side,
@@ -551,53 +530,47 @@ class QoudRoom extends Room<QoudRoomState> {
             };
           }
         }
-      }
-
+      } // === end for-side loop ===
+ 
       if (bestHit) {
         const side = bestHit.side;
         const paddle = this.state.paddles.get(side)!;
         const pVel = this.paddleVel.get(side) || { vx: 0, vy: 0 };
-
+ 
         // push ball out of paddle
-        const pushOut = HIT_DIST - bestHit.dist + 1.5;
         ball.x = paddle.x + bestHit.nx * (HIT_DIST + 1.5);
         ball.y = paddle.y + bestHit.ny * (HIT_DIST + 1.5);
-
+ 
         // --- PHYSICS WITH PADDLE VELOCITY ---
         const baseSpeed = 7 + Number(this.settings.ballSpeed || 10) * 0.6 + this.state.rally * 0.4;
-        // relative velocity
+        const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
+ 
+        // انعكاس بسيط حول الخط العمودي على المضرب
         let relVx = ball.vx - pVel.vx;
         let relVy = ball.vy - pVel.vy;
-
-        // reflect over normal
         const dot = relVx * bestHit.nx + relVy * bestHit.ny;
         if (dot < 0) {
           relVx -= 2 * dot * bestHit.nx;
           relVy -= 2 * dot * bestHit.ny;
         }
-
-        // add paddle influence (30% of paddle speed)
-        const paddleInfluence = 0.55;
-        let newVx = relVx + pVel.vx * paddleInfluence;
-        let newVy = relVy + pVel.vy * paddleInfluence;
-
-        // enforce minimum speed in scoring direction + add normal boost
-        const speedBoost = baseSpeed / Math.hypot(newVx, newVy || 1);
+ 
+        // إعادة تركيب السرعة: أساسية باتجاه اللعب + تأثير حقيقي لسرعة المضرب
+        const paddleKick = Math.min(paddleSpeed, 22) * 1.4;
+        let newVx: number, newVy: number;
         if (side === 'bottom') {
-          newVy = -Math.abs(newVx * 0.2 + baseSpeed);
-          newVx = newVx + bestHit.nx * 4 + pVel.vx * 0.4;
+          newVy = -(baseSpeed + paddleKick * 0.5);
+          newVx = relVx * 0.6 + pVel.vx * 1.1;
         } else if (side === 'top') {
-          newVy = Math.abs(newVx * 0.2 + baseSpeed);
-          newVx = newVx + bestHit.nx * 4 + pVel.vx * 0.4;
+          newVy = (baseSpeed + paddleKick * 0.5);
+          newVx = relVx * 0.6 + pVel.vx * 1.1;
         } else if (side === 'left') {
-          newVx = Math.abs(baseSpeed);
-          newVy = newVy + bestHit.ny * 4 + pVel.vy * 0.4;
-        } else if (side === 'right') {
-          newVx = -Math.abs(baseSpeed);
-          newVy = newVy + bestHit.ny * 4 + pVel.vy * 0.4;
+          newVx = (baseSpeed + paddleKick * 0.5);
+          newVy = relVy * 0.6 + pVel.vy * 1.1;
+        } else {
+          newVx = -(baseSpeed + paddleKick * 0.5);
+          newVy = relVy * 0.6 + pVel.vy * 1.1;
         }
-
-        // clamp max speed
+ 
         const maxSpeed = 28 + Number(this.settings.ballSpeed || 10) * 1.2 + this.state.rally * 0.5;
         const curSp = Math.hypot(newVx, newVy);
         if (curSp > maxSpeed) {
@@ -605,23 +578,22 @@ class QoudRoom extends Room<QoudRoomState> {
           newVx *= s;
           newVy *= s;
         }
-
+ 
         ball.vx = newVx;
         ball.vy = newVy;
         this.state.rally += 1;
         this.lastHitSide = side;
         this.lastHitTime = Date.now();
         this.broadcast('hit-effect', { x: ball.x, y: ball.y, side, power: Math.min(1, this.state.rally / 12), paddleVx: pVel.vx, paddleVy: pVel.vy });
-        // continue to next substep with new velocity
-      }
-
+      } // === end if (bestHit) ===
+ 
       // --- wall / goal check ---
       const goalW = w >= 900 ? 300 : 260;
       const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
       const gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
       const inGX = (x: number) => x >= gx1 && x <= gx2;
       const inGY = (y: number) => y >= gy1 && y <= gy2;
-
+ 
       if (ball.y - BALL_R <= 0) {
         if (this.activeSides.includes('top')) {
           if (inGX(ball.x)) missedSide = 'top';
@@ -646,7 +618,7 @@ class QoudRoom extends Room<QoudRoomState> {
           else { ball.x = w - BALL_R - 1; ball.vx = -Math.abs(ball.vx); }
         } else { ball.x = w - BALL_R - 1; ball.vx = -Math.abs(ball.vx); }
       }
-
+ 
       if (missedSide) {
         this.onGoal(missedSide);
         break;
