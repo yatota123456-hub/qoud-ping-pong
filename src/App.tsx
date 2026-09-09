@@ -258,13 +258,20 @@ function App() {
   }, [isHost]);
 
   const startMatch = useCallback(() => {
-    const canStart = isHost || playersRef.current.length <= 1 ||!socket.connected;
-    if (!canStart) { setError(isArRef.current? 'المنشئ هو من يبدأ الجولة' : 'Only the host can start'); return; }
-    const isOffline =!socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
-    const currentPlayers = isOffline? makePlayers() : (playersRef.current.length > 0? playersRef.current : makePlayers());
-    if (socket.connected &&!isOffline) socket.emit('start-game', { code: roomRef.current });
-    setPlayers(currentPlayers); setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0]))); setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); celebratingRef.current = null; setSeriesWins({}); setCurrentRound(1); setRoundWinner(null); setMatchKey((key) => key + 1); setScreen('game');
-  }, [isHost, makePlayers, settings.players, settings.vsComputer]);
+    const canStart = isHost || playersRef.current.length <= 1 || !socket.connected;
+    if (!canStart) { setError(isArRef.current ? 'المنشئ هو من يبدأ الجولة' : 'Only the host can start'); return; }
+    
+    const isOffline = !socket.connected; // ✅ فقط انقطاع الاتصال الحقيقي
+    const currentPlayers = isOffline ? makePlayers() : (playersRef.current.length > 0 ? playersRef.current : makePlayers());
+    
+    if (socket.connected) socket.emit('start-game', { code: roomRef.current }); // ✅ أرسل دائمًا عند الاتصال
+    
+    setPlayers(currentPlayers); 
+    setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0]))); 
+    setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); 
+    celebratingRef.current = null; setSeriesWins({}); setCurrentRound(1); setRoundWinner(null); 
+    setMatchKey((key) => key + 1); setScreen('game');
+}, [isHost, makePlayers, settings.players]);
 
   const goalScored = useCallback((missed: Player) => {
     const isOffline =!socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
@@ -621,6 +628,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           }
         });
       }
+      if (data.timeLeft !== undefined) setTimeLeft(data.timeLeft);
       if (data.countdown !== undefined) {
         stateRef.current.countdown = data.countdown;
         setCountdown(data.countdown);
@@ -695,7 +703,9 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         (['top','bottom','right','left'] as const).forEach(side => {
           if (!active(side)) return;
           if (side === mySide) {
-            // تم تحديثه بالفعل من drag
+            const myLerp = 0.15;
+            state.paddles[mySide].x += (state.targetPaddles[mySide].x - state.paddles[mySide].x) * myLerp;
+            state.paddles[mySide].y += (state.targetPaddles[mySide].y - state.paddles[mySide].y) * myLerp;
             return;
           }
           const target = state.targetPaddles[side];
