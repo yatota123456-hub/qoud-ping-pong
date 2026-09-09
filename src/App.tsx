@@ -614,7 +614,12 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
-      if (data.ball) { ... }
+      if (data.ball) {
+        stateRef.current.ballTarget.x = data.ball.x;
+        stateRef.current.ballTarget.y = data.ball.y;
+        stateRef.current.ballTarget.vx = data.ball.vx;
+        stateRef.current.ballTarget.vy = data.ball.vy;
+      }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
           if (side === mySide) return; // ✅
