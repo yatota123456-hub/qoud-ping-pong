@@ -176,7 +176,7 @@ function createArenaFrame(worldW: number, worldH: number) {
   lineTop.position.set(worldW/2, 1, 2);
   group.add(lineTop);
   const lineBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, 2, 6), lineMat);
-  lineBottom.position.set(worldW/2, 1, world.h-2);
+  lineBottom.position.set(worldW/2, 1, worldH-2);
   group.add(lineBottom);
 
   return group;
@@ -890,31 +890,6 @@ useEffect(() => {
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-        {/* زر الرجوع للقائمة - ثابت */}
-        <div style={{ position:'absolute', top: 12, left: 12, right: 12, display:'flex', justifyContent:'space-between', alignItems:'flex-start', zIndex:100, pointerEvents:'none' }}>
-          <div style={{ display:'flex', gap:8, pointerEvents:'auto' }}>
-            <button onClick={onExit} style={{ background:'rgba(0,0,0,0.9)', color:'#fff', border:'2px solid #ffcf5a', borderRadius:12, padding:'12px 20px', fontWeight:900, fontSize:14, display:'flex', alignItems:'center', gap:8, cursor:'pointer', boxShadow:'0 4px 12px rgba(0,0,0,0.6)' }}>
-              <span style={{fontSize:18}}>←</span> القائمة
-            </button>
-            <button onClick={onPause} style={{ background:'rgba(0,0,0,0.85)', color:'#fff', border:'2px solid #333', borderRadius:12, padding:'12px 16px', fontWeight:900, cursor:'pointer', fontSize:14 }}>
-              {paused? '▶️':'⏸️'}
-            </button>
-          </div>
-          <button onClick={()=>setShowCamMenu(v=>!v)} style={{ background:'rgba(0,0,0,0.85)', color:'#fff', border:'2px solid #333', borderRadius:12, padding:'12px 16px', fontWeight:900, pointerEvents:'auto', cursor:'pointer', fontSize:14 }}>🎥 كاميرا</button>
-        </div>
-        {/* خط الجولات كبير تحت */}
-        <div style={{ position:'absolute', bottom: 14, left: '50%', transform:'translateX(-50%)', zIndex:90, background:'rgba(0,0,0,0.92)', border:'2px solid #ffcf5a', borderRadius:16, padding:'10px 22px', display:'flex', gap:16, alignItems:'center', pointerEvents:'none', boxShadow:'0 4px 20px rgba(0,0,0,0.5)' }}>
-          <span style={{ color:'#ffcf5a', fontWeight:900, fontSize:15 }}>الجولة {currentRound} / {settings.seriesRounds || 3}</span>
-          <div style={{ display:'flex', gap:8 }}>
-            {players.map((p:any) => (
-              <div key={p.id} style={{ display:'flex', alignItems:'center', gap:6, background:'#111', padding:'6px 12px', borderRadius:999, border:`1px solid ${p.color}` }}>
-                <span style={{ width:10, height:10, borderRadius:'50%', background:p.color }} />
-                <span style={{ color:'#fff', fontSize:12, fontWeight:700 }}>{p.name}</span>
-                <strong style={{ color:'#ffcf5a', fontSize:14 }}>{(seriesWins as any)[p.id] ?? 0}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
         {countdown > 0 && (
   <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.72)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px', pointerEvents: 'none' }}>
     <span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>
