@@ -152,21 +152,21 @@ function createArenaFrame(worldW: number, worldH: number) {
   const outerTube = new THREE.Mesh(outerGeo, outerMat);
   outerTube.position.y = 26;
   group.add(outerTube);
-  const goalW = 380;
-  const goalH = 12;
-  const goalMat = new THREE.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ffcf5a', emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.3 });
+  const goalW = 360;
+  const goalH = 8;
+  const goalMat = new THREE.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ffcf5a', emissiveIntensity: 1.2, roughness: 0.1, metalness: 0.2 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalTop.position.set(worldW/2, -6, -bezelThickness/2);
+  goalTop.position.set(worldW/2, -8, -bezelThickness/2);
   group.add(goalTop);
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalBottom.position.set(worldW/2, -6, worldH + bezelThickness/2);
+  goalBottom.position.set(worldW/2, -8, worldH + bezelThickness/2);
   group.add(goalBottom);
   if (worldW >= 900) {
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalLeft.position.set(-bezelThickness/2, -6, worldH/2);
+    goalLeft.position.set(-bezelThickness/2, -8, worldH/2);
     group.add(goalLeft);
     const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalRight.position.set(worldW + bezelThickness/2, -6, worldH/2);
+    goalRight.position.set(worldW + bezelThickness/2, -8, worldH/2);
     group.add(goalRight);
   }
   return group;
@@ -417,17 +417,27 @@ export function GameScreen3D({
   }, [initialCam]);
 
   // ============================================================
-  // 1. مستمع game-state - تنعيم مباشر بدون تأخير
+  // 1. مستمع game-state - تصحيح فقط، الكرة تتحرك محلياً
   // ============================================================
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
       const mySide = getMySide();
       if (data.ball) {
+        // حفظ هدف التصحيح، لا ننقل الكرة مباشرة
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
         stateRef.current.ballTarget.vx = data.ball.vx;
         stateRef.current.ballTarget.vy = data.ball.vy;
+        // إذا المسافة كبيرة جداً (هدف أو بداية) صحح فوراً
+        const dx = data.ball.x - stateRef.current.ball.x;
+        const dy = data.ball.y - stateRef.current.ball.y;
+        if (Math.hypot(dx, dy) > 150) {
+          stateRef.current.ball.x = data.ball.x;
+          stateRef.current.ball.y = data.ball.y;
+          stateRef.current.ball.vx = data.ball.vx;
+          stateRef.current.ball.vy = data.ball.vy;
+        }
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
@@ -608,7 +618,8 @@ useEffect(() => {
   }, [world.w, world.h, playersKey]);
 
   // ============================================================
-  // 5. حلقة التحديث - تنعيم فائق 60fps بدون تقطيع
+  // 5. فيزياء العميل الكاملة - مثل الألعاب الكبيرة (Client Prediction)
+  // الكرة تتحرك محلياً 60fps بدون انتظار السيرفر
   // ============================================================
   useEffect(() => {
     const state = stateRef.current;
@@ -688,28 +699,74 @@ useEffect(() => {
         // لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles
         // ============================================
         const lerpFactor = 0.15;
-        // FIX: تنعيم فائق بدون تأخير - الكرة تتبع الهدف مباشرة
-        const target = state.ballTarget;
-        const dx = target.x - state.ball.x;
-        const dy = target.y - state.ball.y;
-        const dist = Math.hypot(dx, dy);
-        // إذا المسافة كبيرة (هدف جديد) اقفز مباشرة
-        if (dist > 120) {
-          state.ball.x = target.x;
-          state.ball.y = target.y;
-        } else {
-          // lerp سلس جداً 0.3
-          state.ball.x += dx * 0.32;
-          state.ball.y += dy * 0.32;
-        }
-        state.ball.vx = target.vx;
-        state.ball.vy = target.vy;
+        // === فيزياء محلية كاملة للكرة - بدون سيرفر ===
+        const ball = state.ball;
+        const w = world.w, h = world.h;
+        const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
 
+        if (state.countdown === 0) {
+          // حركة الكرة محلياً
+          ball.x += ball.vx * delta;
+          ball.y += ball.vy * delta;
+
+          // تصادم مع المضارب
+          (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+            if (!activeSide(side)) return;
+            const paddle = state.paddles[side];
+            const px = paddle.x, pz = (paddle as any).z;
+            const dx = ball.x - px, dy = ball.y - pz;
+            const d = Math.hypot(dx, dy);
+            if (d < HIT_DIST) {
+              const nx = d > 0.001 ? dx/d : 0;
+              const nz = d > 0.001 ? dy/d : (side==='bottom'?-1:side==='top'?1:0);
+              ball.x = px + nx*(HIT_DIST+1.2);
+              ball.y = pz + nz*(HIT_DIST+1.2);
+              const speed = getInitialSpeed();
+              if(side==='bottom'){ ball.vy = -Math.abs(speed); ball.vx = (ball.x-px)*0.18; }
+              else if(side==='top'){ ball.vy = Math.abs(speed); ball.vx = (ball.x-px)*0.18; }
+              else if(side==='left'){ ball.vx = Math.abs(speed); ball.vy = (ball.y-pz)*0.18; }
+              else { ball.vx = -Math.abs(speed); ball.vy = (ball.y-pz)*0.18; }
+              state.rally++; setRally(state.rally);
+            }
+          });
+
+          // جدران وأهداف - السيرفر هو الحكم النهائي لكن نتحرك محلياً
+          const goalW = 380;
+          const gx1 = (w-goalW)/2, gx2 = gx1+goalW;
+          const gy1 = (h-goalW)/2, gy2 = gy1+goalW;
+          if(ball.y < 16){
+            if(activeSide('top') && ball.x>=gx1 && ball.x<=gx2){ /* هدف - ننتظر السيرفر */ }
+            else { ball.y=16; ball.vy=Math.abs(ball.vy); }
+          }
+          if(ball.y > h-16){
+            if(activeSide('bottom') && ball.x>=gx1 && ball.x<=gx2){ /* هدف */ }
+            else { ball.y=h-16; ball.vy=-Math.abs(ball.vy); }
+          }
+          if(ball.x < 16){
+            if(activeSide('left') && ball.y>=gy1 && ball.y<=gy2){ }
+            else { ball.x=16; ball.vx=Math.abs(ball.vx); }
+          }
+          if(ball.x > w-16){
+            if(activeSide('right') && ball.y>=gy1 && ball.y<=gy2){ }
+            else { ball.x=w-16; ball.vx=-Math.abs(ball.vx); }
+          }
+
+          // تصحيح لطيف من السيرفر إذا ابتعدنا كثيراً
+          const corrX = state.ballTarget.x - ball.x;
+          const corrY = state.ballTarget.y - ball.y;
+          const corrDist = Math.hypot(corrX, corrY);
+          if (corrDist > 8 && corrDist < 120 && !isOfflineMode) {
+            ball.x += corrX * 0.04; // تصحيح 4% فقط = بدون تقطيع
+            ball.y += corrY * 0.04;
+          }
+        }
+
+        // تحريك المضارب بسلاسة
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
           const t = state.targetPaddles[side];
           const c = state.paddles[side];
-          const lf = side === mySide ? 0.7 : 0.28;
+          const lf = side === mySide ? 0.65 : 0.3;
           c.x += (t.x - c.x) * lf;
           c.z += (t.z - c.z) * lf;
         });
@@ -854,22 +911,19 @@ useEffect(() => {
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-        {/* زر الرجوع ثابت للجوال - fixed */}
-        <div style={{ position:'fixed', top: 70, left: 8, zIndex:9999, pointerEvents:'auto' }}>
-          <button onClick={onExit} style={{ background:'#ffcf5a', color:'#000', border:'3px solid #000', borderRadius:12, padding:'12px 20px', fontWeight:900, fontSize:15, display:'flex', alignItems:'center', gap:6, cursor:'pointer', boxShadow:'0 4px 0 #000' }}>
-            ← القائمة
-          </button>
+        {/* أزرار ثابتة للجوال - لا تغطي الأهداف */}
+        <div style={{ position:'fixed', top: 8, left: 8, zIndex:9999, pointerEvents:'auto' }}>
+          <button onClick={onExit} style={{ background:'#ffcf5a', color:'#000', border:'2px solid #000', borderRadius:10, padding:'8px 14px', fontWeight:900, fontSize:13, boxShadow:'0 3px 0 #000' }}>← القائمة</button>
         </div>
-        <div style={{ position:'fixed', top: 70, right: 8, zIndex:9999, pointerEvents:'auto', display:'flex', gap:8 }}>
-          <button onClick={onPause} style={{ background:'#000', color:'#fff', border:'2px solid #fff', borderRadius:10, padding:'10px 14px', fontWeight:900 }}>{paused? '▶️':'⏸️'}</button>
-          <button onClick={()=>setShowCamMenu(v=>!v)} style={{ background:'#000', color:'#fff', border:'2px solid #fff', borderRadius:10, padding:'10px 14px' }}>🎥</button>
+        <div style={{ position:'fixed', top: 8, right: 8, zIndex:9999, display:'flex', gap:6, pointerEvents:'auto' }}>
+          <button onClick={onPause} style={{ background:'rgba(0,0,0,0.8)', color:'#fff', border:'1px solid #fff', borderRadius:8, padding:'8px 12px', fontSize:12 }}>{paused? '▶️':'⏸️'}</button>
+          <button onClick={()=>setShowCamMenu(v=>!v)} style={{ background:'rgba(0,0,0,0.8)', color:'#fff', border:'1px solid #fff', borderRadius:8, padding:'8px 12px', fontSize:12 }}>🎥</button>
         </div>
-        {/* خط الجولات كبير تحت - فوق أزرار الأندرويد */}
-        <div style={{ position:'fixed', bottom: 70, left: '50%', transform:'translateX(-50%)', zIndex:9998, background:'rgba(0,0,0,0.95)', border:'3px solid #ffcf5a', borderRadius:20, padding:'10px 18px', display:'flex', gap:12, alignItems:'center', pointerEvents:'none' }}>
-          <span style={{ color:'#ffcf5a', fontWeight:900, fontSize:14 }}>الجولة {currentRound} / {settings.seriesRounds || 3}</span>
-          <span style={{ color:'#fff', fontSize:12 }}>|</span>
+        {/* خط الجولات صغير في الأعلى - لا يغطي */}
+        <div style={{ position:'fixed', top: 8, left: '50%', transform:'translateX(-50%)', zIndex:9998, background:'rgba(0,0,0,0.7)', borderRadius:10, padding:'4px 10px', display:'flex', gap:8, pointerEvents:'none' }}>
+          <span style={{ color:'#aaa', fontSize:10, fontWeight:700 }}>الجولة {currentRound}/{settings.seriesRounds || 4}</span>
           {players.slice(0,2).map((p:any) => (
-            <span key={p.id} style={{ color:p.color, fontWeight:800, fontSize:13 }}>{p.name}: {(seriesWins as any)[p.id] ?? 0}</span>
+            <span key={p.id} style={{ color:p.color, fontSize:10, fontWeight:800 }}>{p.name}:{(seriesWins as any)[p.id]??0}</span>
           ))}
         </div>
         {countdown > 0 && (
