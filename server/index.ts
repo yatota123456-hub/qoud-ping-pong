@@ -156,6 +156,7 @@ class QoudRoom extends Room<QoudRoomState> {
       this.initWorldAndPaddles();
       this.state.status = 'playing';
       this.startCountdown(null);
+      this.broadcastGameState();
       this.broadcast('game-started', { settings: this.state.settingsJson });
       return;
     }
@@ -230,6 +231,7 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.ball.y = this.state.worldH / 2;
     this.state.ball.visible = false;
     this.servingActive = false;
+    this.broadcastGameState();
   }
 
   private launchBall(fromServe = false, side: PlayerSide = 'bottom') {
@@ -445,6 +447,7 @@ class QoudRoom extends Room<QoudRoomState> {
       }
     }
     this.startCountdown(scorerSide);
+    this.broadcastGameState();
   }
 
   private finishMatch(winnerId?: string) {
