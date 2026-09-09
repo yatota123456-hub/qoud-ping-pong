@@ -11,7 +11,7 @@ type CreateOptions = {
   maxPlayers: number;
   settings?: Record<string, unknown>;
   player: { name: string; color: string; side: PlayerSide };
-  computerPlayers?: Array<{ name?: string; color?: string; side?: PlayerSide }>; // 🔥 جديد
+  computerPlayers?: Array<{ name?: string; color?: string; side?: PlayerSide }>;
 };
 
 const roomsByCode = new Map<string, QoudRoom>();
@@ -40,6 +40,7 @@ class QoudRoom extends Room<QoudRoomState> {
   private servingStartedAt = 0;
   private servingRequested = false;
   private broadcastAccum = 0;
+
   onCreate(options: CreateOptions) {
     const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     if (code.length !== 4) throw new Error('Invalid room code');
@@ -73,7 +74,8 @@ class QoudRoom extends Room<QoudRoomState> {
     }
     this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
 
-    this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 60);
+    // ✅ زيادة معدل المحاكاة إلى 120Hz لدقة أعلى في الفيزياء
+    this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 120);
   }
 
   private initWorldAndPaddles() {
@@ -204,7 +206,7 @@ class QoudRoom extends Room<QoudRoomState> {
     if (side === 'top') return { x: Math.max(45, Math.min(w - 45, x)), y: Math.max(45, Math.min(h * 0.38, y)) };
     if (side === 'bottom') return { x: Math.max(45, Math.min(w - 45, x)), y: Math.max(h * 0.62, Math.min(h - 45, y)) };
     if (side === 'left') return { x: Math.max(45, Math.min(w * 0.38, x)), y: Math.max(45, Math.min(h - 45, y)) };
-    return { x: Math.max(w * 0.62, Math.min(w - 45, x)), y: Math.max(45, Math.min(h - 45, y)) }; // right
+    return { x: Math.max(w * 0.62, Math.min(w - 45, x)), y: Math.max(45, Math.min(h - 45, y)) };
   }
 
   private humanCount() {
@@ -270,8 +272,7 @@ class QoudRoom extends Room<QoudRoomState> {
   private tick(deltaMs: number) {
     if (this.state.status !== 'playing') return;
     const delta = Math.min(deltaMs / 16.67, 2);
-  
-    // العد التنازلي بعد كل هدف
+
     if (this.state.countdown > 0) {
       const elapsed = (Date.now() - this.countdownStartedAt) / 1000;
       if (elapsed >= 3) {
@@ -285,15 +286,13 @@ class QoudRoom extends Room<QoudRoomState> {
         } else {
           this.launchBall(false);
         }
-        // بعد انتهاء العد التنازلي، نواصل البث
       } else {
         this.state.countdown = Math.max(1, Math.ceil(3 - elapsed));
-        this.broadcastGameState(); // بث أثناء العد التنازلي
+        this.broadcastGameState();
         return;
       }
     }
-  
-    // وضع "ابدأ من المضرب": الكرة ملتصقة بالمضرب لحين الطلب
+
     if (this.servingActive) {
       const paddle = this.state.paddles.get(this.servingSide);
       if (paddle) {
@@ -313,8 +312,7 @@ class QoudRoom extends Room<QoudRoomState> {
       this.broadcastGameState();
       return;
     }
-  
-    // الوقت
+
     if (this.settings.mode === 'time') {
       this.elapsedAccum += deltaMs / 1000;
       if (this.elapsedAccum >= 1) {
@@ -326,18 +324,18 @@ class QoudRoom extends Room<QoudRoomState> {
         }
       }
     }
-  
+
     this.moveComputerPaddles(delta);
     this.stepBall(delta);
-  
+
+    // ✅ زيادة معدل البث إلى 60Hz (من 40Hz)
     this.broadcastAccum += deltaMs;
-    if (this.broadcastAccum >= 1000 / 40) {
+    if (this.broadcastAccum >= 1000 / 60) {
       this.broadcastAccum = 0;
       this.broadcastGameState();
     }
   }
-  
-  // دالة مساعدة لبث game-state
+
   private broadcastGameState() {
     this.broadcast('game-state', {
       ball: {
@@ -390,76 +388,83 @@ class QoudRoom extends Room<QoudRoomState> {
   private stepBall(delta: number) {
     const ball = this.state.ball;
     const w = this.state.worldW, h = this.state.worldH;
-    ball.x += ball.vx * delta;
-    ball.y += ball.vy * delta;
     const r = 14;
     const paddleRadius = 26;
     const hitDist = r + paddleRadius;
- // ✅ حل الاختراق: sub-stepping لضمان اكتشاف التصادم حتى بالسرعات العالية
- const totalVx = ball.vx * delta, totalVy = ball.vy * delta;
- const dist = Math.hypot(totalVx, totalVy);
- const maxStep = 18;
- const steps = Math.max(1, Math.ceil(dist / maxStep));
- const stepVx = totalVx / steps, stepVy = totalVy / steps;
 
- let missedSide: PlayerSide | null = null;
+    // ✅ Sub-stepping محسّن: خطوات أصغر = دقة أعلى
+    const totalVx = ball.vx * delta;
+    const totalVy = ball.vy * delta;
+    const dist = Math.hypot(totalVx, totalVy);
+    
+    // ✅ تقليل maxStep من 18 إلى 10 للدقة الأعلى
+    const maxStep = 10;
+    const steps = Math.max(1, Math.ceil(dist / maxStep));
+    const stepVx = totalVx / steps;
+    const stepVy = totalVy / steps;
 
- for (let i = 0; i < steps && !missedSide; i++) {
-   ball.x += stepVx;
-   ball.y += stepVy;
-    for (const side of this.activeSides) {
-      const paddle = this.state.paddles.get(side)!;
-      const dx = ball.x - paddle.x, dy = ball.y - paddle.y;
-      const dist = Math.hypot(dx, dy);
-      const approaching =
-        (side === 'bottom' && ball.vy > 0 && ball.y > paddle.y - 20) ||
-        (side === 'top' && ball.vy < 0 && ball.y < paddle.y + 20) ||
-        (side === 'left' && ball.vx < 0 && ball.x > paddle.x - 20) ||
-        (side === 'right' && ball.vx > 0 && ball.x < paddle.x + 20);
-      if (dist < hitDist && approaching) {
-        const nx = dist > 0.5 ? dx / dist : 0;
-        const ny = dist > 0.5 ? dy / dist : (side === 'bottom' ? -1 : side === 'top' ? 1 : 0);
-        ball.x = paddle.x + nx * (hitDist + 1);
-        ball.y = paddle.y + ny * (hitDist + 1);
-        const baseSpeed = 8 + Number(this.settings.ballSpeed || 10) * 0.7 + this.state.rally * 0.5;
-        if (side === 'bottom') { ball.vy = -Math.abs(baseSpeed); ball.vx += nx * 3; }
-        else if (side === 'top') { ball.vy = Math.abs(baseSpeed); ball.vx += nx * 3; }
-        else if (side === 'left') { ball.vx = Math.abs(baseSpeed); ball.vy += ny * 3; }
-        else { ball.vx = -Math.abs(baseSpeed); ball.vy += ny * 3; }
-        this.state.rally += 1;
-        this.broadcast('hit-effect', { x: ball.x, y: ball.y, side, power: Math.min(1, this.state.rally / 12) });
-      }
-    }
-
-    const maxSpeed = 30 + Number(this.settings.ballSpeed || 10) * 1.4 + this.state.rally * 0.6;
-    const curSpeed = Math.hypot(ball.vx, ball.vy);
-    if (curSpeed > maxSpeed) { const s = maxSpeed / curSpeed; ball.vx *= s; ball.vy *= s; }
-
-    const goalW = w >= 900 ? 300 : 260;
-    const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
-    const gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
-    const inGX = (x: number) => x >= gx1 && x <= gx2;
-    const inGY = (y: number) => y >= gy1 && y <= gy2;
     let missedSide: PlayerSide | null = null;
 
-    if (ball.y - r <= 0) {
-      if (this.activeSides.includes('top')) { if (inGX(ball.x)) missedSide = 'top'; else { ball.y = r + 1; ball.vy = Math.abs(ball.vy); } }
-      else { ball.y = r + 1; ball.vy = Math.abs(ball.vy); }
-    }
-    if (!missedSide && ball.y + r >= h) {
-      if (this.activeSides.includes('bottom')) { if (inGX(ball.x)) missedSide = 'bottom'; else { ball.y = h - r - 1; ball.vy = -Math.abs(ball.vy); } }
-      else { ball.y = h - r - 1; ball.vy = -Math.abs(ball.vy); }
-    }
-    if (!missedSide && ball.x - r <= 0) {
-      if (this.activeSides.includes('left')) { if (inGY(ball.y)) missedSide = 'left'; else { ball.x = r + 1; ball.vx = Math.abs(ball.vx); } }
-      else { ball.x = r + 1; ball.vx = Math.abs(ball.vx); }
-    }
-    if (!missedSide && ball.x + r >= w) {
-      if (this.activeSides.includes('right')) { if (inGY(ball.y)) missedSide = 'right'; else { ball.x = w - r - 1; ball.vx = -Math.abs(ball.vx); } }
-      else { ball.x = w - r - 1; ball.vx = -Math.abs(ball.vx); }
-    }
+    for (let i = 0; i < steps && !missedSide; i++) {
+      ball.x += stepVx;
+      ball.y += stepVy;
 
-    if (missedSide) this.onGoal(missedSide);
+      for (const side of this.activeSides) {
+        const paddle = this.state.paddles.get(side)!;
+        const dx = ball.x - paddle.x;
+        const dy = ball.y - paddle.y;
+        const dist = Math.hypot(dx, dy);
+        const approaching =
+          (side === 'bottom' && ball.vy > 0 && ball.y > paddle.y - 30) ||
+          (side === 'top' && ball.vy < 0 && ball.y < paddle.y + 30) ||
+          (side === 'left' && ball.vx < 0 && ball.x > paddle.x - 30) ||
+          (side === 'right' && ball.vx > 0 && ball.x < paddle.x + 30);
+
+        if (dist < hitDist && approaching) {
+          const nx = dist > 0.5 ? dx / dist : 0;
+          const ny = dist > 0.5 ? dy / dist : (side === 'bottom' ? -1 : side === 'top' ? 1 : 0);
+          ball.x = paddle.x + nx * (hitDist + 1);
+          ball.y = paddle.y + ny * (hitDist + 1);
+          const baseSpeed = 8 + Number(this.settings.ballSpeed || 10) * 0.7 + this.state.rally * 0.5;
+          if (side === 'bottom') { ball.vy = -Math.abs(baseSpeed); ball.vx += nx * 3; }
+          else if (side === 'top') { ball.vy = Math.abs(baseSpeed); ball.vx += nx * 3; }
+          else if (side === 'left') { ball.vx = Math.abs(baseSpeed); ball.vy += ny * 3; }
+          else { ball.vx = -Math.abs(baseSpeed); ball.vy += ny * 3; }
+          this.state.rally += 1;
+          this.broadcast('hit-effect', { x: ball.x, y: ball.y, side, power: Math.min(1, this.state.rally / 12) });
+          break;
+        }
+      }
+
+      const maxSpeed = 30 + Number(this.settings.ballSpeed || 10) * 1.4 + this.state.rally * 0.6;
+      const curSpeed = Math.hypot(ball.vx, ball.vy);
+      if (curSpeed > maxSpeed) { const s = maxSpeed / curSpeed; ball.vx *= s; ball.vy *= s; }
+
+      const goalW = w >= 900 ? 300 : 260;
+      const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
+      const gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
+      const inGX = (x: number) => x >= gx1 && x <= gx2;
+      const inGY = (y: number) => y >= gy1 && y <= gy2;
+
+      if (ball.y - r <= 0) {
+        if (this.activeSides.includes('top')) { if (inGX(ball.x)) missedSide = 'top'; else { ball.y = r + 1; ball.vy = Math.abs(ball.vy); } }
+        else { ball.y = r + 1; ball.vy = Math.abs(ball.vy); }
+      }
+      if (!missedSide && ball.y + r >= h) {
+        if (this.activeSides.includes('bottom')) { if (inGX(ball.x)) missedSide = 'bottom'; else { ball.y = h - r - 1; ball.vy = -Math.abs(ball.vy); } }
+        else { ball.y = h - r - 1; ball.vy = -Math.abs(ball.vy); }
+      }
+      if (!missedSide && ball.x - r <= 0) {
+        if (this.activeSides.includes('left')) { if (inGY(ball.y)) missedSide = 'left'; else { ball.x = r + 1; ball.vx = Math.abs(ball.vx); } }
+        else { ball.x = r + 1; ball.vx = Math.abs(ball.vx); }
+      }
+      if (!missedSide && ball.x + r >= w) {
+        if (this.activeSides.includes('right')) { if (inGY(ball.y)) missedSide = 'right'; else { ball.x = w - r - 1; ball.vx = -Math.abs(ball.vx); } }
+        else { ball.x = w - r - 1; ball.vx = -Math.abs(ball.vx); }
+      }
+
+      if (missedSide) this.onGoal(missedSide);
+    }
   }
 
   private onGoal(missedSide: PlayerSide) {
