@@ -152,33 +152,23 @@ function createArenaFrame(worldW: number, worldH: number) {
   const outerTube = new THREE.Mesh(outerGeo, outerMat);
   outerTube.position.y = 26;
   group.add(outerTube);
-  // FIX: كبر خط الجول وجعله تحت وواضح
-  const goalW = 380; // كان 260 -> 380 أكبر
-  const goalH = 10; // أرفع وأنحف ليظهر كخط
+  const goalW = 380;
+  const goalH = 12;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ffcf5a', emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.3 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalTop.position.set(worldW/2, -4, -bezelThickness/2); // تحت الطاولة
+  goalTop.position.set(worldW/2, -6, -bezelThickness/2);
   group.add(goalTop);
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalBottom.position.set(worldW/2, -4, worldH + bezelThickness/2);
+  goalBottom.position.set(worldW/2, -6, worldH + bezelThickness/2);
   group.add(goalBottom);
   if (worldW >= 900) {
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalLeft.position.set(-bezelThickness/2, -4, worldH/2);
+    goalLeft.position.set(-bezelThickness/2, -6, worldH/2);
     group.add(goalLeft);
     const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalRight.position.set(worldW + bezelThickness/2, -4, worldH/2);
+    goalRight.position.set(worldW + bezelThickness/2, -6, worldH/2);
     group.add(goalRight);
   }
-  // إضافة خط نيون تحت الطاولة يوضح الجول
-  const lineMat = new THREE.MeshBasicMaterial({ color: '#ff2233', transparent: true, opacity: 0.9 });
-  const lineTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, 2, 6), lineMat);
-  lineTop.position.set(worldW/2, 1, 2);
-  group.add(lineTop);
-  const lineBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, 2, 6), lineMat);
-  lineBottom.position.set(worldW/2, 1, worldH-2);
-  group.add(lineBottom);
-
   return group;
 }
 
@@ -325,7 +315,6 @@ export function GameScreen3D({
   const audioCtxRef = useRef<AudioContext|null>(null);
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
-  const ballBuffer = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
     ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
@@ -428,15 +417,13 @@ export function GameScreen3D({
   }, [initialCam]);
 
   // ============================================================
-  // 1. مستمع game-state مع تنعيم بدون تقطيع
+  // 1. مستمع game-state - تنعيم مباشر بدون تأخير
   // ============================================================
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
       const mySide = getMySide();
       if (data.ball) {
-        ballBuffer.current.push({ x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, t: performance.now() });
-        if (ballBuffer.current.length > 10) ballBuffer.current.shift();
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
         stateRef.current.ballTarget.vx = data.ball.vx;
@@ -621,25 +608,9 @@ useEffect(() => {
   }, [world.w, world.h, playersKey]);
 
   // ============================================================
-  // 5. حلقة التحديث مع تنعيم فائق بدون تقطيع
+  // 5. حلقة التحديث - تنعيم فائق 60fps بدون تقطيع
   // ============================================================
   useEffect(() => {
-    // تنعيم الكرة بدون تأخير كبير
-    const getSmoothBall = () => {
-      const buf = ballBuffer.current;
-      if(isOfflineMode || buf.length<2) return stateRef.current.ballTarget;
-      // استخدام آخر نقطتين فقط لتنعيم فوري
-      const last = buf[buf.length-1];
-      const prev = buf[buf.length-2];
-      const dt = Math.max(0, Math.min(50, performance.now() - last.t)) / 1000;
-      return {
-        x: last.x + last.vx * dt * 20,
-        y: last.y + last.vy * dt * 20,
-        vx: last.vx,
-        vy: last.vy
-      };
-    };
-
     const state = stateRef.current;
     const needPlayers = Math.max(2, players.length, settings.players || 2);
     const sidesForCount: Player['side'][] = needPlayers === 2? ['bottom','top'] : ['bottom','top','right','left'];
@@ -717,37 +688,30 @@ useEffect(() => {
         // لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles
         // ============================================
         const lerpFactor = 0.15;
-        // FIX: تنعيم فائق - الكرة تتبع الهدف بسلاسة بدون تقطيع
-        if (isOfflineMode) {
-          state.ball.x += state.ball.vx * delta;
-          state.ball.y += state.ball.vy * delta;
+        // FIX: تنعيم فائق بدون تأخير - الكرة تتبع الهدف مباشرة
+        const target = state.ballTarget;
+        const dx = target.x - state.ball.x;
+        const dy = target.y - state.ball.y;
+        const dist = Math.hypot(dx, dy);
+        // إذا المسافة كبيرة (هدف جديد) اقفز مباشرة
+        if (dist > 120) {
+          state.ball.x = target.x;
+          state.ball.y = target.y;
         } else {
-          const smooth = getSmoothBall();
-          // كشف الارتداد - إذا تغير اتجاه السرعة فجأة، اقفز مباشرة
-          const bounced = (Math.sign(smooth.vx) !== Math.sign(state.ball.vx) && Math.abs(state.ball.vx) > 0.5) ||
-                         (Math.sign(smooth.vy) !== Math.sign(state.ball.vy) && Math.abs(state.ball.vy) > 0.5);
-          if (bounced) {
-            state.ball.x = smooth.x;
-            state.ball.y = smooth.y;
-          } else {
-            // lerp سلس 0.35 للكرة
-            state.ball.x += (smooth.x - state.ball.x) * 0.35;
-            state.ball.y += (smooth.y - state.ball.y) * 0.35;
-            // إضافة سرعة للتنبؤ
-            state.ball.x += smooth.vx * delta * 0.3;
-            state.ball.y += smooth.vy * delta * 0.3;
-          }
-          state.ball.vx = smooth.vx;
-          state.ball.vy = smooth.vy;
+          // lerp سلس جداً 0.3
+          state.ball.x += dx * 0.32;
+          state.ball.y += dy * 0.32;
         }
+        state.ball.vx = target.vx;
+        state.ball.vy = target.vy;
 
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
-          const target = state.targetPaddles[side];
-          const current = state.paddles[side];
-          const lf = side === mySide ? 0.6 : 0.25;
-          current.x += (target.x - current.x) * lf;
-          current.z += (target.z - current.z) * lf;
+          const t = state.targetPaddles[side];
+          const c = state.paddles[side];
+          const lf = side === mySide ? 0.7 : 0.28;
+          c.x += (t.x - c.x) * lf;
+          c.z += (t.z - c.z) * lf;
         });
       }
       // رسم المشهد الثلاثي الأبعاد (بدون تغيير)
@@ -890,6 +854,24 @@ useEffect(() => {
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
+        {/* زر الرجوع ثابت للجوال - fixed */}
+        <div style={{ position:'fixed', top: 70, left: 8, zIndex:9999, pointerEvents:'auto' }}>
+          <button onClick={onExit} style={{ background:'#ffcf5a', color:'#000', border:'3px solid #000', borderRadius:12, padding:'12px 20px', fontWeight:900, fontSize:15, display:'flex', alignItems:'center', gap:6, cursor:'pointer', boxShadow:'0 4px 0 #000' }}>
+            ← القائمة
+          </button>
+        </div>
+        <div style={{ position:'fixed', top: 70, right: 8, zIndex:9999, pointerEvents:'auto', display:'flex', gap:8 }}>
+          <button onClick={onPause} style={{ background:'#000', color:'#fff', border:'2px solid #fff', borderRadius:10, padding:'10px 14px', fontWeight:900 }}>{paused? '▶️':'⏸️'}</button>
+          <button onClick={()=>setShowCamMenu(v=>!v)} style={{ background:'#000', color:'#fff', border:'2px solid #fff', borderRadius:10, padding:'10px 14px' }}>🎥</button>
+        </div>
+        {/* خط الجولات كبير تحت - فوق أزرار الأندرويد */}
+        <div style={{ position:'fixed', bottom: 70, left: '50%', transform:'translateX(-50%)', zIndex:9998, background:'rgba(0,0,0,0.95)', border:'3px solid #ffcf5a', borderRadius:20, padding:'10px 18px', display:'flex', gap:12, alignItems:'center', pointerEvents:'none' }}>
+          <span style={{ color:'#ffcf5a', fontWeight:900, fontSize:14 }}>الجولة {currentRound} / {settings.seriesRounds || 3}</span>
+          <span style={{ color:'#fff', fontSize:12 }}>|</span>
+          {players.slice(0,2).map((p:any) => (
+            <span key={p.id} style={{ color:p.color, fontWeight:800, fontSize:13 }}>{p.name}: {(seriesWins as any)[p.id] ?? 0}</span>
+          ))}
+        </div>
         {countdown > 0 && (
   <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.72)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px', pointerEvents: 'none' }}>
     <span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>
