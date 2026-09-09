@@ -673,10 +673,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     paddles: { top: { x: world.w / 2, y: 40 + ZONE / 2 } as Vec2, bottom: { x: world.w / 2, y: world.h - 40 - ZONE / 2 } as Vec2, left: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2, right: { x: world.w - 40 - ZONE / 2, y: world.h / 2 } as Vec2 },
     targetPaddles: { top: { x: world.w / 2, y: 40 + ZONE / 2 } as Vec2, bottom: { x: world.w / 2, y: world.h - 40 - ZONE / 2 } as Vec2, left: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2, right: { x: world.w - 40 - ZONE / 2, y: world.h / 2 } as Vec2 },
     prevPaddles: { top: { x: world.w / 2, y: 40 + ZONE / 2 } as Vec2, bottom: { x: world.w / 2, y: world.h - 40 - ZONE / 2 } as Vec2, left: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2, right: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2 },
-    last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 0, countdownStart: 0, countdownSide: null as Player['side'] | null, effects: [] as { x: number; y: number; born: number; color: string; power: number }[]
+    last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 3, countdownStart: performance.now(), countdownSide: null as Player['side'] | null, effects: [] as { x: number; y: number; born: number; color: string; power: number }[]
   });
   const ballBuffer = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
-  const isOfflineMode =!socket.connected || players.length <= 1;
+  const isOfflineMode = players.length <= 1; // 2D محلي ضد الكمبيوتر
   const getWorldFromClient = useCallback((clientX:number, clientY:number)=>{
     const arena = arenaRef.current; if(!arena) return {x:world.w/2,y:world.h/2};
     const rect = arena.getBoundingClientRect();
@@ -687,7 +687,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     return { x: dx*cos - dy*sin + world.w/2, y: dx*sin + dy*cos + world.h/2 };
   }, [world, myAngle]);
 
-  // ===== إضافة مستمع game-state للجميع مع buffer =====
+  // ===== مستمع game-state مع buffer =====
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
@@ -767,113 +767,142 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           socket.sendPaddleTarget(state.targetPaddles[mySide].x, state.targetPaddles[mySide].y);
         }
 
-        // ===== FIX: فيزياء محلية للـ offline + interpolation للـ online =====
+        // ===== إصلاح 2D - فيزياء محلية ضد الكمبيوتر + تنعيم أونلاين =====
+        // عد تنازلي محلي للـ offline
+        if (isOfflineMode && state.countdown > 0) {
+          const elapsed = (now - state.countdownStart) / 1000;
+          const newCount = Math.max(0, 3 - Math.floor(elapsed));
+          if (newCount !== state.countdown) {
+            state.countdown = newCount;
+            setCountdown(newCount);
+            if (newCount === 0) {
+              // إعطاء الكرة سرعة أولية
+              const spd = getInitialSpeed();
+              const ang = (Math.random() - 0.5) * 0.8;
+              state.ball.vx = Math.sin(ang) * spd;
+              state.ball.vy = -Math.abs(Math.cos(ang) * spd) - 2;
+              state.ballTarget.vx = state.ball.vx;
+              state.ballTarget.vy = state.ball.vy;
+            }
+          }
+          // لا تحرك أثناء العد
+          if (state.countdown > 0) {
+            (['top','bottom','right','left'] as const).forEach(side => {
+              if (!active(side)) return;
+              const target = state.targetPaddles[side];
+              const current = state.paddles[side];
+              current.x += (target.x - current.x) * 0.2;
+              current.y += (target.y - current.y) * 0.2;
+            });
+            draw(context, state, players, now, false, world, myAngle);
+            frame = requestAnimationFrame(tick);
+            return;
+          }
+        }
+
         if (isOfflineMode) {
-          // --- OFFLINE PHYSICS (ضد الكمبيوتر) - كانت محذوفة وهذا سبب توقف 2D ---
           const ball = state.ball;
           const w = world.w, h = world.h;
-          const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R+PADDLE_R;
-          // تحريك البوتات
-          const predX = ball.x + ball.vx*12;
-          const predY = ball.y + ball.vy*12;
-          const diffMax = settings.difficulty==='easy'?0.85:settings.difficulty==='hard'?2.4:1.6;
-          const chase = (cur:number,target:number)=> {
-            const diff = target-cur;
-            if(Math.abs(diff)<2) return cur;
-            const step = Math.max(-diffMax, Math.min(diffMax, diff*0.18))*6*delta;
-            return cur+step;
+          const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
+          // بوتات
+          const predX = ball.x + ball.vx * 10;
+          const predY = ball.y + ball.vy * 10;
+          const diffMax = settings.difficulty === 'easy' ? 1.0 : settings.difficulty === 'hard' ? 3.0 : 2.0;
+          const chase = (cur: number, target: number) => {
+            const diff = target - cur;
+            if (Math.abs(diff) < 1) return cur;
+            return cur + Math.max(-diffMax, Math.min(diffMax, diff * 0.15)) * delta * 2;
           };
-          (['top','bottom','right','left'] as const).forEach(side=>{
-            if (!active(side) || side===mySide) return;
+          (['top','bottom','right','left'] as const).forEach(side => {
+            if (!active(side) || side === mySide) return;
             const p = state.paddles[side];
-            if(side==='top'||side==='bottom'){
-              p.x = Math.max(50, Math.min(w-50, chase(p.x, predX)));
+            if (side === 'top' || side === 'bottom') {
+              p.x = Math.max(60, Math.min(w - 60, chase(p.x, predX)));
             } else {
-              p.y = Math.max(50, Math.min(h-50, chase(p.y, predY)));
+              p.y = Math.max(60, Math.min(h - 60, chase(p.y, predY)));
             }
             state.targetPaddles[side].x = p.x;
             state.targetPaddles[side].y = p.y;
           });
-          // حركة الكرة
-          ball.x += ball.vx*delta;
-          ball.y += ball.vy*delta;
-          // تصادم مع المضارب
-          (['top','bottom','right','left'] as const).forEach(side=>{
-            if (!active(side)) return;
-            const paddle = state.paddles[side];
-            const dx = ball.x - paddle.x;
-            const dy = ball.y - paddle.y;
-            const d = Math.hypot(dx,dy);
-            if(d < HIT_DIST){
-              const nx = d>0.001? dx/d : 0;
-              const ny = d>0.001? dy/d : (side==='bottom'?-1:side==='top'?1:0);
-              ball.x = paddle.x + nx*(HIT_DIST+1);
-              ball.y = paddle.y + ny*(HIT_DIST+1);
-              const baseSpeed = getInitialSpeed() + state.rally*0.3;
-              if(side==='bottom'){ ball.vy = -Math.abs(baseSpeed); ball.vx = (ball.x-paddle.x)*0.15; }
-              else if(side==='top'){ ball.vy = Math.abs(baseSpeed); ball.vx = (ball.x-paddle.x)*0.15; }
-              else if(side==='left'){ ball.vx = Math.abs(baseSpeed); ball.vy = (ball.y-paddle.y)*0.15; }
-              else { ball.vx = -Math.abs(baseSpeed); ball.vy = (ball.y-paddle.y)*0.15; }
-              state.rally++; setRally(state.rally);
-            }
-          });
-          // جدران وأهداف
-          const goalW = w>=900?300:260;
-          const gx1=(w-goalW)/2, gx2=gx1+goalW;
-          const gy1=(h-goalW)/2, gy2=gy1+goalW;
-          if(ball.y < 14){
-            if(active('top') && ball.x>=gx1 && ball.x<=gx2){ onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
-            else { ball.y=14; ball.vy=Math.abs(ball.vy); }
+
+          // حركة الكرة مع خطوات
+          const steps = 3;
+          for (let s = 0; s < steps; s++) {
+            ball.x += (ball.vx * delta) / steps;
+            ball.y += (ball.vy * delta) / steps;
+            // تصادم
+            (['top','bottom','right','left'] as const).forEach(side => {
+              if (!active(side)) return;
+              const paddle = state.paddles[side];
+              const dx = ball.x - paddle.x;
+              const dy = ball.y - paddle.y;
+              const d = Math.hypot(dx, dy);
+              if (d < HIT_DIST && d > 0.5) {
+                const nx = dx / d, ny = dy / d;
+                ball.x = paddle.x + nx * (HIT_DIST + 1);
+                ball.y = paddle.y + ny * (HIT_DIST + 1);
+                const baseSpeed = getInitialSpeed() + state.rally * 0.25;
+                if (side === 'bottom') { ball.vy = -Math.abs(baseSpeed); ball.vx = (ball.x - paddle.x) * 0.18; }
+                else if (side === 'top') { ball.vy = Math.abs(baseSpeed); ball.vx = (ball.x - paddle.x) * 0.18; }
+                else if (side === 'left') { ball.vx = Math.abs(baseSpeed); ball.vy = (ball.y - paddle.y) * 0.18; }
+                else { ball.vx = -Math.abs(baseSpeed); ball.vy = (ball.y - paddle.y) * 0.18; }
+                state.rally++; setRally(state.rally);
+              }
+            });
           }
-          if(ball.y > h-14){
-            if(active('bottom') && ball.x>=gx1 && ball.x<=gx2){ onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
-            else { ball.y=h-14; ball.vy=-Math.abs(ball.vy); }
+
+          // أهداف
+          const goalW = 300;
+          const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
+          const gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
+          if (ball.y < 18) {
+            if (active('top') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
+            else { ball.y = 18; ball.vy = Math.abs(ball.vy); }
           }
-          if(ball.x < 14){
-            if(active('left') && ball.y>=gy1 && ball.y<=gy2){ onGoalRef.current(playerForSide('right')); resetBall('left'); }
-            else { ball.x=14; ball.vx=Math.abs(ball.vx); }
+          if (ball.y > h - 18) {
+            if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
+            else { ball.y = h - 18; ball.vy = -Math.abs(ball.vy); }
           }
-          if(ball.x > w-14){
-            if(active('right') && ball.y>=gy1 && ball.y<=gy2){ onGoalRef.current(playerForSide('left')); resetBall('right'); }
-            else { ball.x=w-14; ball.vx=-Math.abs(ball.vx); }
+          if (ball.x < 18) {
+            if (active('left') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
+            else { ball.x = 18; ball.vx = Math.abs(ball.vx); }
           }
-          // مضربك يتحرك فوراً
+          if (ball.x > w - 18) {
+            if (active('right') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
+            else { ball.x = w - 18; ball.vx = -Math.abs(ball.vx); }
+          }
+
+          // مضربك
           const cur = state.paddles[mySide];
           const tgt = state.targetPaddles[mySide];
-          cur.x += (tgt.x - cur.x)*0.5;
-          cur.y += (tgt.y - cur.y)*0.5;
+          cur.x += (tgt.x - cur.x) * 0.5;
+          cur.y += (tgt.y - cur.y) * 0.5;
         } else {
-          // --- ONLINE: interpolation مع buffer 100ms ---
-          const now = performance.now();
+          // أونلاين - تنعيم بدون تقطيع
+          const nowMs = performance.now();
           const buf = ballBuffer.current;
-          let smooth = state.ball;
-          if(buf.length>=2){
-            const renderTime = now - 100;
-            for(let i=buf.length-1;i>=1;i--){
-              if(buf[i-1].t <= renderTime && renderTime <= buf[i].t){
-                const a=buf[i-1], b=buf[i];
-                const t = (renderTime - a.t)/(b.t - a.t || 1);
-                smooth = { x: a.x + (b.x-a.x)*t, y: a.y + (b.y-a.y)*t, vx: b.vx, vy: b.vy } as any;
-                break;
-              }
-            }
-            if(smooth===state.ball && buf.length>0){
-              const last = buf[buf.length-1];
-              const dt = (now-last.t)/1000;
-              if(dt < 0.18){
-                smooth = { x: last.x + last.vx*dt*300, y: last.y + last.vy*dt*300, vx:last.vx, vy:last.vy } as any;
-              }
+          let smoothX = state.ballTarget.x, smoothY = state.ballTarget.y, smoothVx = state.ballTarget.vx, smoothVy = state.ballTarget.vy;
+          if (buf.length >= 2) {
+            const last = buf[buf.length - 1];
+            const dt = (nowMs - last.t) / 1000;
+            if (dt < 0.15) {
+              smoothX = last.x + last.vx * dt * 60;
+              smoothY = last.y + last.vy * dt * 60;
             }
           }
-          state.ball.x = (smooth as any).x;
-          state.ball.y = (smooth as any).y;
-          state.ball.vx = (smooth as any).vx;
-          state.ball.vy = (smooth as any).vy;
+          const dx = smoothX - state.ball.x, dy = smoothY - state.ball.y;
+          if (Math.hypot(dx, dy) > 100) {
+            state.ball.x = smoothX; state.ball.y = smoothY;
+          } else {
+            state.ball.x += dx * 0.3;
+            state.ball.y += dy * 0.3;
+          }
+          state.ball.vx = smoothVx; state.ball.vy = smoothVy;
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side)) return;
             const target = state.targetPaddles[side];
             const current = state.paddles[side];
-            const lf = side === mySide ? 1 : 0.28;
+            const lf = side === mySide ? 0.6 : 0.25;
             current.x += (target.x - current.x) * lf;
             current.y += (target.y - current.y) * lf;
           });

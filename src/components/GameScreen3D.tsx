@@ -153,20 +153,20 @@ function createArenaFrame(worldW: number, worldH: number) {
   outerTube.position.y = 26;
   group.add(outerTube);
   const goalW = 360;
-  const goalH = 8;
-  const goalMat = new THREE.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ffcf5a', emissiveIntensity: 1.2, roughness: 0.1, metalness: 0.2 });
+  const goalH = 10;
+  const goalMat = new THREE.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ffcf5a', emissiveIntensity: 1.0, roughness: 0.2, metalness: 0.3 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalTop.position.set(worldW/2, -8, -bezelThickness/2);
+  goalTop.position.set(worldW/2, -6, -bezelThickness/2);
   group.add(goalTop);
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalBottom.position.set(worldW/2, -8, worldH + bezelThickness/2);
+  goalBottom.position.set(worldW/2, -6, worldH + bezelThickness/2);
   group.add(goalBottom);
   if (worldW >= 900) {
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalLeft.position.set(-bezelThickness/2, -8, worldH/2);
+    goalLeft.position.set(-bezelThickness/2, -6, worldH/2);
     group.add(goalLeft);
     const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalRight.position.set(worldW + bezelThickness/2, -8, worldH/2);
+    goalRight.position.set(worldW + bezelThickness/2, -6, worldH/2);
     group.add(goalRight);
   }
   return group;
@@ -417,27 +417,17 @@ export function GameScreen3D({
   }, [initialCam]);
 
   // ============================================================
-  // 1. مستمع game-state - تصحيح فقط، الكرة تتحرك محلياً
+  // 1. مستمع game-state للجميع (بدلاً من المستمع الخاص بغير المضيف)
   // ============================================================
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
       const mySide = getMySide();
       if (data.ball) {
-        // حفظ هدف التصحيح، لا ننقل الكرة مباشرة
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
         stateRef.current.ballTarget.vx = data.ball.vx;
         stateRef.current.ballTarget.vy = data.ball.vy;
-        // إذا المسافة كبيرة جداً (هدف أو بداية) صحح فوراً
-        const dx = data.ball.x - stateRef.current.ball.x;
-        const dy = data.ball.y - stateRef.current.ball.y;
-        if (Math.hypot(dx, dy) > 150) {
-          stateRef.current.ball.x = data.ball.x;
-          stateRef.current.ball.y = data.ball.y;
-          stateRef.current.ball.vx = data.ball.vx;
-          stateRef.current.ball.vy = data.ball.vy;
-        }
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
@@ -598,12 +588,25 @@ useEffect(() => {
     threeRef.current = { scene, camera, renderer, ball, paddles, hitGroup, surfaceTexture, tableMaterial };
     const ro = new ResizeObserver(() => {
       if (!mountRef.current ||!threeRef.current) return;
-      camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
+      const w = mountRef.current.clientWidth;
+      const h = mountRef.current.clientHeight;
+      if (h < 100) return; // تجاهل القياسات الخاطئة
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     });
     ro.observe(mount);
+    // إصلاح أولي للكانفاس
+    setTimeout(() => {
+      if (mountRef.current && threeRef.current) {
+        const w = mountRef.current.clientWidth;
+        const h = mountRef.current.clientHeight;
+        threeRef.current.camera.aspect = w / h;
+        threeRef.current.camera.updateProjectionMatrix();
+        threeRef.current.renderer.setSize(w, h);
+      }
+    }, 100);
     return () => {
       ro.disconnect();
       try {
@@ -618,8 +621,7 @@ useEffect(() => {
   }, [world.w, world.h, playersKey]);
 
   // ============================================================
-  // 5. فيزياء العميل الكاملة - مثل الألعاب الكبيرة (Client Prediction)
-  // الكرة تتحرك محلياً 60fps بدون انتظار السيرفر
+  // 5. فيزياء محددة بدون عشوائية - إصلاح الحركة العشوائية
   // ============================================================
   useEffect(() => {
     const state = stateRef.current;
@@ -699,76 +701,126 @@ useEffect(() => {
         // لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles
         // ============================================
         const lerpFactor = 0.15;
-        // === فيزياء محلية كاملة للكرة - بدون سيرفر ===
+        // === فيزياء محددة بدون عشوائية ===
         const ball = state.ball;
         const w = world.w, h = world.h;
         const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
 
         if (state.countdown === 0) {
-          // حركة الكرة محلياً
-          ball.x += ball.vx * delta;
-          ball.y += ball.vy * delta;
+          // حركة الكرة مع تقسيم الخطوات لمنع المرور عبر المضرب
+          const totalVx = ball.vx * delta;
+          const totalVy = ball.vy * delta;
+          const dist = Math.hypot(totalVx, totalVy);
+          const steps = Math.max(1, Math.ceil(dist / 8));
+          const stepVx = totalVx / steps;
+          const stepVy = totalVy / steps;
 
-          // تصادم مع المضارب
-          (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
-            if (!activeSide(side)) return;
-            const paddle = state.paddles[side];
-            const px = paddle.x, pz = (paddle as any).z;
-            const dx = ball.x - px, dy = ball.y - pz;
-            const d = Math.hypot(dx, dy);
-            if (d < HIT_DIST) {
-              const nx = d > 0.001 ? dx/d : 0;
-              const nz = d > 0.001 ? dy/d : (side==='bottom'?-1:side==='top'?1:0);
-              ball.x = px + nx*(HIT_DIST+1.2);
-              ball.y = pz + nz*(HIT_DIST+1.2);
-              const speed = getInitialSpeed();
-              if(side==='bottom'){ ball.vy = -Math.abs(speed); ball.vx = (ball.x-px)*0.18; }
-              else if(side==='top'){ ball.vy = Math.abs(speed); ball.vx = (ball.x-px)*0.18; }
-              else if(side==='left'){ ball.vx = Math.abs(speed); ball.vy = (ball.y-pz)*0.18; }
-              else { ball.vx = -Math.abs(speed); ball.vy = (ball.y-pz)*0.18; }
-              state.rally++; setRally(state.rally);
+          for (let i = 0; i < steps; i++) {
+            ball.x += stepVx;
+            ball.y += stepVy;
+
+            // تصادم مع المضارب - محدد بدون عشوائية
+            for (const side of (['top','bottom','left','right'] as Player['side'][])) {
+              if (!activeSide(side)) continue;
+              const paddle = state.paddles[side];
+              const px = paddle.x, pz = (paddle as any).z;
+              const dx = ball.x - px, dy = ball.y - pz;
+              const d = Math.hypot(dx, dy);
+              if (d < HIT_DIST && d > 0.1) {
+                const nx = dx / d, nz = dy / d;
+                ball.x = px + nx * (HIT_DIST + 1.5);
+                ball.y = pz + nz * (HIT_DIST + 1.5);
+                const speed = getInitialSpeed();
+                // ارتداد محدد حسب مكان الضرب
+                if (side === 'bottom') {
+                  ball.vy = -Math.abs(speed);
+                  ball.vx = (ball.x - px) * 0.15;
+                } else if (side === 'top') {
+                  ball.vy = Math.abs(speed);
+                  ball.vx = (ball.x - px) * 0.15;
+                } else if (side === 'left') {
+                  ball.vx = Math.abs(speed);
+                  ball.vy = (ball.y - pz) * 0.15;
+                } else {
+                  ball.vx = -Math.abs(speed);
+                  ball.vy = (ball.y - pz) * 0.15;
+                }
+                // حد أقصى للسرعة لمنع العشوائية
+                const maxSpeed = 18;
+                const curSpeed = Math.hypot(ball.vx, ball.vy);
+                if (curSpeed > maxSpeed) {
+                  ball.vx = (ball.vx / curSpeed) * maxSpeed;
+                  ball.vy = (ball.vy / curSpeed) * maxSpeed;
+                }
+                state.rally++; setRally(state.rally);
+                break;
+              }
             }
-          });
-
-          // جدران وأهداف - السيرفر هو الحكم النهائي لكن نتحرك محلياً
-          const goalW = 380;
-          const gx1 = (w-goalW)/2, gx2 = gx1+goalW;
-          const gy1 = (h-goalW)/2, gy2 = gy1+goalW;
-          if(ball.y < 16){
-            if(activeSide('top') && ball.x>=gx1 && ball.x<=gx2){ /* هدف - ننتظر السيرفر */ }
-            else { ball.y=16; ball.vy=Math.abs(ball.vy); }
-          }
-          if(ball.y > h-16){
-            if(activeSide('bottom') && ball.x>=gx1 && ball.x<=gx2){ /* هدف */ }
-            else { ball.y=h-16; ball.vy=-Math.abs(ball.vy); }
-          }
-          if(ball.x < 16){
-            if(activeSide('left') && ball.y>=gy1 && ball.y<=gy2){ }
-            else { ball.x=16; ball.vx=Math.abs(ball.vx); }
-          }
-          if(ball.x > w-16){
-            if(activeSide('right') && ball.y>=gy1 && ball.y<=gy2){ }
-            else { ball.x=w-16; ball.vx=-Math.abs(ball.vx); }
           }
 
-          // تصحيح لطيف من السيرفر إذا ابتعدنا كثيراً
-          const corrX = state.ballTarget.x - ball.x;
-          const corrY = state.ballTarget.y - ball.y;
-          const corrDist = Math.hypot(corrX, corrY);
-          if (corrDist > 8 && corrDist < 120 && !isOfflineMode) {
-            ball.x += corrX * 0.04; // تصحيح 4% فقط = بدون تقطيع
-            ball.y += corrY * 0.04;
+          // جدران
+          if (ball.y < 16) {
+            const goalW = 360;
+            const gx1 = (w - goalW)/2, gx2 = gx1 + goalW;
+            if (activeSide('top') && ball.x >= gx1 && ball.x <= gx2) {
+              // هدف - السيرفر يحسبه
+            } else {
+              ball.y = 16; ball.vy = Math.abs(ball.vy);
+            }
+          }
+          if (ball.y > h - 16) {
+            const goalW = 360;
+            const gx1 = (w - goalW)/2, gx2 = gx1 + goalW;
+            if (activeSide('bottom') && ball.x >= gx1 && ball.x <= gx2) {
+            } else {
+              ball.y = h - 16; ball.vy = -Math.abs(ball.vy);
+            }
+          }
+          if (ball.x < 16) {
+            const goalW = 360;
+            const gy1 = (h - goalW)/2, gy2 = gy1 + goalW;
+            if (activeSide('left') && ball.y >= gy1 && ball.y <= gy2) {
+            } else {
+              ball.x = 16; ball.vx = Math.abs(ball.vx);
+            }
+          }
+          if (ball.x > w - 16) {
+            const goalW = 360;
+            const gy1 = (h - goalW)/2, gy2 = gy1 + goalW;
+            if (activeSide('right') && ball.y >= gy1 && ball.y <= gy2) {
+            } else {
+              ball.x = w - 16; ball.vx = -Math.abs(ball.vx);
+            }
+          }
+
+          // تصحيح لطيف من السيرفر بدون قفز
+          if (!isOfflineMode) {
+            const corrX = state.ballTarget.x - ball.x;
+            const corrY = state.ballTarget.y - ball.y;
+            if (Math.hypot(corrX, corrY) > 100) {
+              ball.x = state.ballTarget.x;
+              ball.y = state.ballTarget.y;
+              ball.vx = state.ballTarget.vx;
+              ball.vy = state.ballTarget.vy;
+            } else if (Math.hypot(corrX, corrY) > 10) {
+              ball.x += corrX * 0.03;
+              ball.y += corrY * 0.03;
+            }
           }
         }
 
-        // تحريك المضارب بسلاسة
+        // تحريك المضارب بسلاسة بدون تكرار
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
           const t = state.targetPaddles[side];
           const c = state.paddles[side];
-          const lf = side === mySide ? 0.65 : 0.3;
-          c.x += (t.x - c.x) * lf;
-          c.z += (t.z - c.z) * lf;
+          if (side === mySide) {
+            c.x += (t.x - c.x) * 0.6;
+            c.z += (t.z - c.z) * 0.6;
+          } else {
+            c.x += (t.x - c.x) * 0.25;
+            c.z += (t.z - c.z) * 0.25;
+          }
         });
       }
       // رسم المشهد الثلاثي الأبعاد (بدون تغيير)
@@ -911,20 +963,13 @@ useEffect(() => {
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-        {/* أزرار ثابتة للجوال - لا تغطي الأهداف */}
-        <div style={{ position:'fixed', top: 8, left: 8, zIndex:9999, pointerEvents:'auto' }}>
-          <button onClick={onExit} style={{ background:'#ffcf5a', color:'#000', border:'2px solid #000', borderRadius:10, padding:'8px 14px', fontWeight:900, fontSize:13, boxShadow:'0 3px 0 #000' }}>← القائمة</button>
+        {/* إصلاح الكانفاس - زر القائمة ثابت لا يغطي */}
+        <div style={{ position:'fixed', top: 6, left: 6, zIndex:9999, pointerEvents:'auto' }}>
+          <button onClick={onExit} style={{ background:'#ffcf5a', color:'#000', border:'2px solid #000', borderRadius:10, padding:'8px 14px', fontWeight:900, fontSize:12, boxShadow:'0 2px 0 #000' }}>← القائمة</button>
         </div>
-        <div style={{ position:'fixed', top: 8, right: 8, zIndex:9999, display:'flex', gap:6, pointerEvents:'auto' }}>
-          <button onClick={onPause} style={{ background:'rgba(0,0,0,0.8)', color:'#fff', border:'1px solid #fff', borderRadius:8, padding:'8px 12px', fontSize:12 }}>{paused? '▶️':'⏸️'}</button>
-          <button onClick={()=>setShowCamMenu(v=>!v)} style={{ background:'rgba(0,0,0,0.8)', color:'#fff', border:'1px solid #fff', borderRadius:8, padding:'8px 12px', fontSize:12 }}>🎥</button>
-        </div>
-        {/* خط الجولات صغير في الأعلى - لا يغطي */}
-        <div style={{ position:'fixed', top: 8, left: '50%', transform:'translateX(-50%)', zIndex:9998, background:'rgba(0,0,0,0.7)', borderRadius:10, padding:'4px 10px', display:'flex', gap:8, pointerEvents:'none' }}>
-          <span style={{ color:'#aaa', fontSize:10, fontWeight:700 }}>الجولة {currentRound}/{settings.seriesRounds || 4}</span>
-          {players.slice(0,2).map((p:any) => (
-            <span key={p.id} style={{ color:p.color, fontSize:10, fontWeight:800 }}>{p.name}:{(seriesWins as any)[p.id]??0}</span>
-          ))}
+        <div style={{ position:'fixed', top: 6, right: 6, zIndex:9999, display:'flex', gap:6, pointerEvents:'auto' }}>
+          <button onClick={onPause} style={{ background:'rgba(0,0,0,0.8)', color:'#fff', border:'1px solid #fff', borderRadius:8, padding:'8px 10px', fontSize:11 }}>{paused? '▶️':'⏸️'}</button>
+          <button onClick={()=>setShowCamMenu(v=>!v)} style={{ background:'rgba(0,0,0,0.8)', color:'#fff', border:'1px solid #fff', borderRadius:8, padding:'8px 10px', fontSize:11 }}>🎥</button>
         </div>
         {countdown > 0 && (
   <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.72)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px', pointerEvents: 'none' }}>
