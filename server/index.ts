@@ -41,12 +41,30 @@ class QoudRoom extends Room<QoudRoomState> {
   private servingRequested = false;
   private broadcastAccum = 0;
 
+  // === Physics fix ===
+  private paddlePrev = new Map<PlayerSide, { x: number; y: number }>();
+  private paddleVel = new Map<PlayerSide, { vx: number; vy: number }>();
+  private lastHitSide: PlayerSide | null = null;
+  private lastHitTime = 0;
+
+  // === Series fix ===
+  private currentRound = 1;
+  private totalRounds = 3;
+  private seriesType: 'single' | 'series' = 'single';
+  private seriesWinsMap = new Map<string, number>();
+  private roundHistory: Array<{ round: number; scores: Record<string, number>; winnerId: string | null; isDraw: boolean }> = [];
+
   onCreate(options: CreateOptions) {
     const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     if (code.length !== 4) throw new Error('Invalid room code');
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
-    this.settings = { mode: 'time', duration: 180, goal: 7, ballSpeed: 10, difficulty: 'normal', arenaSize: 'medium', start: 'center', ...options.settings };
+    this.settings = { mode: 'time', duration: 180, goal: 7, ballSpeed: 10, difficulty: 'normal', arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3, ...options.settings };
     this.maxClients = maxPlayers;
+    this.seriesType = this.settings.seriesType === 'series' ? 'series' : 'single';
+    this.totalRounds = Math.max(2, Math.min(10, Number(this.settings.seriesRounds) || 3));
+    this.currentRound = 1;
+    this.seriesWinsMap.clear();
+    this.roundHistory = [];
 
     const state = new QoudRoomState();
     state.code = code;
@@ -55,6 +73,12 @@ class QoudRoom extends Room<QoudRoomState> {
     state.hostSessionId = '';
     state.settingsJson = JSON.stringify(this.settings);
     state.ball = new BallState();
+    // init new fields if exist in schema
+    try {
+      (state as any).currentRound = 1;
+      (state as any).totalRounds = this.totalRounds;
+      (state as any).seriesType = this.seriesType;
+    } catch {}
     this.setState(state);
     this.setMetadata({ code });
     roomsByCode.set(code, this);
@@ -74,7 +98,7 @@ class QoudRoom extends Room<QoudRoomState> {
     }
     this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
 
-    // ✅ زيادة معدل المحاكاة إلى 120Hz لدقة أعلى في الفيزياء
+    // 120Hz simulation for precision
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 120);
   }
 
@@ -84,7 +108,13 @@ class QoudRoom extends Room<QoudRoomState> {
     const world = getArenaWorld(needed, this.settings.arenaSize);
     this.state.worldW = world.w;
     this.state.worldH = world.h;
+    try {
+      (this.state as any).currentRound = this.currentRound;
+      (this.state as any).totalRounds = this.totalRounds;
+    } catch {}
     this.state.paddles.clear();
+    this.paddlePrev.clear();
+    this.paddleVel.clear();
     const defaults: Record<PlayerSide, [number, number]> = {
       top: [world.w / 2, 52],
       bottom: [world.w / 2, world.h - 52],
@@ -96,6 +126,8 @@ class QoudRoom extends Room<QoudRoomState> {
       p.x = defaults[side][0];
       p.y = defaults[side][1];
       this.state.paddles.set(side, p);
+      this.paddlePrev.set(side, { x: p.x, y: p.y });
+      this.paddleVel.set(side, { vx: 0, vy: 0 });
     });
     this.state.ball.x = world.w / 2;
     this.state.ball.y = world.h / 2;
@@ -103,6 +135,7 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.ball.vy = 0;
     this.state.ball.visible = false;
     this.state.timeLeft = this.settings.mode === 'time' ? Number(this.settings.duration || 180) : 0;
+    this.lastHitSide = null;
   }
 
   onJoin(client: { sessionId: string }, options: { name?: string; player?: Partial<PlayerState> } = {}) {
@@ -124,6 +157,10 @@ class QoudRoom extends Room<QoudRoomState> {
     player.computer = false;
     this.state.players.set(client.sessionId, player);
     this.state.scores.set(client.sessionId, 0);
+    // init series wins for new player
+    if (!this.seriesWinsMap.has(client.sessionId)) {
+      try { (this.state as any).seriesWins?.set(client.sessionId, 0); } catch {}
+    }
     if (!this.state.hostSessionId) this.state.hostSessionId = client.sessionId;
     this.broadcastRoom();
   }
@@ -167,12 +204,25 @@ class QoudRoom extends Room<QoudRoomState> {
 
     if (type === 'start-game') {
       this.assertHost(client);
-      for (const p of this.state.players.values()) this.state.scores.set(p.id, 0);
+      // reset full series
+      this.currentRound = 1;
+      this.seriesWinsMap.clear();
+      this.roundHistory = [];
+      try {
+        (this.state as any).currentRound = 1;
+        (this.state as any).seriesWins?.clear();
+      } catch {}
+      for (const p of this.state.players.values()) {
+        this.state.scores.set(p.id, 0);
+        this.seriesWinsMap.set(p.id, 0);
+        try { (this.state as any).seriesWins?.set(p.id, 0); } catch {}
+      }
       this.initWorldAndPaddles();
       this.state.status = 'playing';
       this.startCountdown(null);
       this.broadcastGameState();
       this.broadcast('game-started', { settings: this.state.settingsJson });
+      this.broadcast('series-started', { totalRounds: this.totalRounds, seriesType: this.seriesType, currentRound: this.currentRound });
       return;
     }
 
@@ -232,6 +282,13 @@ class QoudRoom extends Room<QoudRoomState> {
       players: [...this.state.players.values()].map((p) => ({
         id: p.id, name: p.name, color: p.color, side: p.side, computer: p.computer, socketId: p.id,
       })),
+      series: {
+        currentRound: this.currentRound,
+        totalRounds: this.totalRounds,
+        seriesType: this.seriesType,
+        seriesWins: Object.fromEntries(this.seriesWinsMap.entries()),
+        roundHistory: this.roundHistory,
+      }
     });
   }
 
@@ -246,6 +303,7 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.ball.y = this.state.worldH / 2;
     this.state.ball.visible = false;
     this.servingActive = false;
+    this.lastHitSide = null;
     this.broadcastGameState();
   }
 
@@ -319,18 +377,30 @@ class QoudRoom extends Room<QoudRoomState> {
         this.elapsedAccum = 0;
         this.state.timeLeft = Math.max(0, this.state.timeLeft - 1);
         if (this.state.timeLeft === 0) {
-          this.finishMatch();
+          this.onTimeUpRound();
           return;
         }
       }
     }
 
-    this.moveComputerPaddles(delta);
-    this.stepBall(delta);
+    // update paddle velocities before moving bots
+    for (const side of this.activeSides) {
+      const paddle = this.state.paddles.get(side);
+      if (!paddle) continue;
+      const prev = this.paddlePrev.get(side);
+      if (prev) {
+        const vx = (paddle.x - prev.x) * 0.5; // smoothing
+        const vy = (paddle.y - prev.y) * 0.5;
+        this.paddleVel.set(side, { vx, vy });
+      }
+      this.paddlePrev.set(side, { x: paddle.x, y: paddle.y });
+    }
 
-    // ✅ زيادة معدل البث إلى 60Hz (من 40Hz)
+    this.moveComputerPaddles(delta);
+    this.stepBallImproved(delta);
+
     this.broadcastAccum += deltaMs;
-    if (this.broadcastAccum >= 1000 / 60) {
+    if (this.broadcastAccum >= 1000 / 60) { // 60Hz سريع كما طلبت - بدون تبطيء
       this.broadcastAccum = 0;
       this.broadcastGameState();
     }
@@ -348,7 +418,7 @@ class QoudRoom extends Room<QoudRoomState> {
       paddles: Object.fromEntries(
         Array.from(this.state.paddles.entries()).map(([side, paddle]) => [
           side,
-          { x: paddle.x, y: paddle.y }
+          { x: paddle.x, y: paddle.y, vx: this.paddleVel.get(side as PlayerSide)?.vx || 0, vy: this.paddleVel.get(side as PlayerSide)?.vy || 0 }
         ])
       ),
       countdown: this.state.countdown,
@@ -356,18 +426,27 @@ class QoudRoom extends Room<QoudRoomState> {
       rally: this.state.rally,
       scores: Object.fromEntries(this.state.scores.entries()),
       timeLeft: this.state.timeLeft,
+      series: {
+        currentRound: this.currentRound,
+        totalRounds: this.totalRounds,
+        seriesType: this.seriesType,
+        seriesWins: Object.fromEntries(this.seriesWinsMap.entries()),
+        roundHistory: this.roundHistory,
+      }
     });
   }
 
   private moveComputerPaddles(delta: number) {
-    const w = this.state.worldW, h = this.state.worldH;
-    const predX = this.state.ball.x + this.state.ball.vx * 12;
-    const predY = this.state.ball.y + this.state.ball.vy * 12;
-    const diffMax = this.settings.difficulty === 'easy' ? 0.85 : this.settings.difficulty === 'hard' ? 2.15 : 1.45;
+    const w = this.state.worldW;
+    const h = this.state.worldH;
+    // predict where ball will be
+    const predX = this.state.ball.x + this.state.ball.vx * 14;
+    const predY = this.state.ball.y + this.state.ball.vy * 14;
+    const diffMax = this.settings.difficulty === 'easy' ? 0.85 : this.settings.difficulty === 'hard' ? 2.4 : 1.6;
     const chase = (cur: number, target: number) => {
       const diff = target - cur;
-      if (Math.abs(diff) < 4) return cur;
-      const step = Math.max(-diffMax, Math.min(diffMax, diff * 0.15)) * 6 * delta;
+      if (Math.abs(diff) < 2) return cur;
+      const step = Math.max(-diffMax, Math.min(diffMax, diff * 0.18)) * 6 * delta;
       return cur + step;
     };
     for (const side of this.activeSides) {
@@ -385,20 +464,18 @@ class QoudRoom extends Room<QoudRoomState> {
     }
   }
 
-  private stepBall(delta: number) {
+  // ===== NEW IMPROVED PHYSICS - NO PENETRATION + PADDLE SPEED INFLUENCE =====
+  private stepBallImproved(delta: number) {
     const ball = this.state.ball;
     const w = this.state.worldW, h = this.state.worldH;
-    const r = 14;
-    const paddleRadius = 26;
-    const hitDist = r + paddleRadius;
+    const BALL_R = 14;
+    const PADDLE_R = 26;
+    const HIT_DIST = BALL_R + PADDLE_R; // 40
 
-    // ✅ Sub-stepping محسّن: خطوات أصغر = دقة أعلى
     const totalVx = ball.vx * delta;
     const totalVy = ball.vy * delta;
     const dist = Math.hypot(totalVx, totalVy);
-    
-    // ✅ تقليل maxStep من 18 إلى 10 للدقة الأعلى
-    const maxStep = 10;
+    const maxStep = 8; // smaller = more accurate
     const steps = Math.max(1, Math.ceil(dist / maxStep));
     const stepVx = totalVx / steps;
     const stepVy = totalVy / steps;
@@ -406,64 +483,173 @@ class QoudRoom extends Room<QoudRoomState> {
     let missedSide: PlayerSide | null = null;
 
     for (let i = 0; i < steps && !missedSide; i++) {
+      const prevX = ball.x;
+      const prevY = ball.y;
       ball.x += stepVx;
       ball.y += stepVy;
 
-      for (const side of this.activeSides) {
-        const paddle = this.state.paddles.get(side)!;
-        const dx = ball.x - paddle.x;
-        const dy = ball.y - paddle.y;
-        const dist = Math.hypot(dx, dy);
-        const approaching =
-          (side === 'bottom' && ball.vy > 0 && ball.y > paddle.y - 30) ||
-          (side === 'top' && ball.vy < 0 && ball.y < paddle.y + 30) ||
-          (side === 'left' && ball.vx < 0 && ball.x > paddle.x - 30) ||
-          (side === 'right' && ball.vx > 0 && ball.x < paddle.x + 30);
+      // --- swept circle vs circle for each paddle ---
+      let bestHit: { side: PlayerSide; t: number; nx: number; ny: number; dist: number } | null = null;
 
-        if (dist < hitDist && approaching) {
-          const nx = dist > 0.5 ? dx / dist : 0;
-          const ny = dist > 0.5 ? dy / dist : (side === 'bottom' ? -1 : side === 'top' ? 1 : 0);
-          ball.x = paddle.x + nx * (hitDist + 1);
-          ball.y = paddle.y + ny * (hitDist + 1);
-          const baseSpeed = 8 + Number(this.settings.ballSpeed || 10) * 0.7 + this.state.rally * 0.5;
-          if (side === 'bottom') { ball.vy = -Math.abs(baseSpeed); ball.vx += nx * 3; }
-          else if (side === 'top') { ball.vy = Math.abs(baseSpeed); ball.vx += nx * 3; }
-          else if (side === 'left') { ball.vx = Math.abs(baseSpeed); ball.vy += ny * 3; }
-          else { ball.vx = -Math.abs(baseSpeed); ball.vy += ny * 3; }
-          this.state.rally += 1;
-          this.broadcast('hit-effect', { x: ball.x, y: ball.y, side, power: Math.min(1, this.state.rally / 12) });
-          break;
+      for (const side of this.activeSides) {
+        // cooldown to prevent double hit same paddle in 80ms
+        if (this.lastHitSide === side && Date.now() - this.lastHitTime < 80) continue;
+
+        const paddle = this.state.paddles.get(side)!;
+        const pVel = this.paddleVel.get(side) || { vx: 0, vy: 0 };
+
+        // paddle center for this substep (linear interp between prev and current)
+        // we already updated paddle pos, so use current
+        const px = paddle.x;
+        const py = paddle.y;
+
+        // segment ball prev -> curr
+        const segX = ball.x - prevX;
+        const segY = ball.y - prevY;
+        const segLenSq = segX * segX + segY * segY;
+
+        let t = 0;
+        let closestX = prevX;
+        let closestY = prevY;
+        if (segLenSq > 0.0001) {
+          t = ((px - prevX) * segX + (py - prevY) * segY) / segLenSq;
+          t = Math.max(0, Math.min(1, t));
+          closestX = prevX + segX * t;
+          closestY = prevY + segY * t;
+        } else {
+          closestX = prevX;
+          closestY = prevY;
+          t = 0;
+        }
+
+        const dx = closestX - px;
+        const dy = closestY - py;
+        const d = Math.hypot(dx, dy);
+
+        if (d < HIT_DIST) {
+          // check approaching: ball moving towards paddle
+          const relVx = stepVx - pVel.vx * 0.1;
+          const relVy = stepVy - pVel.vy * 0.1;
+          // for side-specific approaching check (prevent hitting from behind)
+          const approaching =
+            (side === 'bottom' && ball.vy > -0.5 && ball.y > py - 35) ||
+            (side === 'top' && ball.vy < 0.5 && ball.y < py + 35) ||
+            (side === 'left' && ball.vx < 0.5 && ball.x < px + 35) ||
+            (side === 'right' && ball.vx > -0.5 && ball.x > px - 35) ||
+            d < HIT_DIST * 0.85; // very close always counts
+
+          if (!approaching) continue;
+
+          if (!bestHit || t < bestHit.t) {
+            bestHit = {
+              side,
+              t,
+              nx: d > 0.001 ? dx / d : 0,
+              ny: d > 0.001 ? dy / d : (side === 'bottom' ? -1 : side === 'top' ? 1 : 0),
+              dist: d,
+            };
+          }
         }
       }
 
-      const maxSpeed = 30 + Number(this.settings.ballSpeed || 10) * 1.4 + this.state.rally * 0.6;
-      const curSpeed = Math.hypot(ball.vx, ball.vy);
-      if (curSpeed > maxSpeed) { const s = maxSpeed / curSpeed; ball.vx *= s; ball.vy *= s; }
+      if (bestHit) {
+        const side = bestHit.side;
+        const paddle = this.state.paddles.get(side)!;
+        const pVel = this.paddleVel.get(side) || { vx: 0, vy: 0 };
 
+        // push ball out of paddle
+        const pushOut = HIT_DIST - bestHit.dist + 1.5;
+        ball.x = paddle.x + bestHit.nx * (HIT_DIST + 1.5);
+        ball.y = paddle.y + bestHit.ny * (HIT_DIST + 1.5);
+
+        // --- PHYSICS WITH PADDLE VELOCITY ---
+        const baseSpeed = 7 + Number(this.settings.ballSpeed || 10) * 0.6 + this.state.rally * 0.4;
+        // relative velocity
+        let relVx = ball.vx - pVel.vx;
+        let relVy = ball.vy - pVel.vy;
+
+        // reflect over normal
+        const dot = relVx * bestHit.nx + relVy * bestHit.ny;
+        if (dot < 0) {
+          relVx -= 2 * dot * bestHit.nx;
+          relVy -= 2 * dot * bestHit.ny;
+        }
+
+        // add paddle influence (30% of paddle speed)
+        const paddleInfluence = 0.55;
+        let newVx = relVx + pVel.vx * paddleInfluence;
+        let newVy = relVy + pVel.vy * paddleInfluence;
+
+        // enforce minimum speed in scoring direction + add normal boost
+        const speedBoost = baseSpeed / Math.hypot(newVx, newVy || 1);
+        if (side === 'bottom') {
+          newVy = -Math.abs(newVx * 0.2 + baseSpeed);
+          newVx = newVx + bestHit.nx * 4 + pVel.vx * 0.4;
+        } else if (side === 'top') {
+          newVy = Math.abs(newVx * 0.2 + baseSpeed);
+          newVx = newVx + bestHit.nx * 4 + pVel.vx * 0.4;
+        } else if (side === 'left') {
+          newVx = Math.abs(baseSpeed);
+          newVy = newVy + bestHit.ny * 4 + pVel.vy * 0.4;
+        } else if (side === 'right') {
+          newVx = -Math.abs(baseSpeed);
+          newVy = newVy + bestHit.ny * 4 + pVel.vy * 0.4;
+        }
+
+        // clamp max speed
+        const maxSpeed = 28 + Number(this.settings.ballSpeed || 10) * 1.2 + this.state.rally * 0.5;
+        const curSp = Math.hypot(newVx, newVy);
+        if (curSp > maxSpeed) {
+          const s = maxSpeed / curSp;
+          newVx *= s;
+          newVy *= s;
+        }
+
+        ball.vx = newVx;
+        ball.vy = newVy;
+        this.state.rally += 1;
+        this.lastHitSide = side;
+        this.lastHitTime = Date.now();
+        this.broadcast('hit-effect', { x: ball.x, y: ball.y, side, power: Math.min(1, this.state.rally / 12), paddleVx: pVel.vx, paddleVy: pVel.vy });
+        // continue to next substep with new velocity
+      }
+
+      // --- wall / goal check ---
       const goalW = w >= 900 ? 300 : 260;
       const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
       const gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
       const inGX = (x: number) => x >= gx1 && x <= gx2;
       const inGY = (y: number) => y >= gy1 && y <= gy2;
 
-      if (ball.y - r <= 0) {
-        if (this.activeSides.includes('top')) { if (inGX(ball.x)) missedSide = 'top'; else { ball.y = r + 1; ball.vy = Math.abs(ball.vy); } }
-        else { ball.y = r + 1; ball.vy = Math.abs(ball.vy); }
+      if (ball.y - BALL_R <= 0) {
+        if (this.activeSides.includes('top')) {
+          if (inGX(ball.x)) missedSide = 'top';
+          else { ball.y = BALL_R + 1; ball.vy = Math.abs(ball.vy); }
+        } else { ball.y = BALL_R + 1; ball.vy = Math.abs(ball.vy); }
       }
-      if (!missedSide && ball.y + r >= h) {
-        if (this.activeSides.includes('bottom')) { if (inGX(ball.x)) missedSide = 'bottom'; else { ball.y = h - r - 1; ball.vy = -Math.abs(ball.vy); } }
-        else { ball.y = h - r - 1; ball.vy = -Math.abs(ball.vy); }
+      if (!missedSide && ball.y + BALL_R >= h) {
+        if (this.activeSides.includes('bottom')) {
+          if (inGX(ball.x)) missedSide = 'bottom';
+          else { ball.y = h - BALL_R - 1; ball.vy = -Math.abs(ball.vy); }
+        } else { ball.y = h - BALL_R - 1; ball.vy = -Math.abs(ball.vy); }
       }
-      if (!missedSide && ball.x - r <= 0) {
-        if (this.activeSides.includes('left')) { if (inGY(ball.y)) missedSide = 'left'; else { ball.x = r + 1; ball.vx = Math.abs(ball.vx); } }
-        else { ball.x = r + 1; ball.vx = Math.abs(ball.vx); }
+      if (!missedSide && ball.x - BALL_R <= 0) {
+        if (this.activeSides.includes('left')) {
+          if (inGY(ball.y)) missedSide = 'left';
+          else { ball.x = BALL_R + 1; ball.vx = Math.abs(ball.vx); }
+        } else { ball.x = BALL_R + 1; ball.vx = Math.abs(ball.vx); }
       }
-      if (!missedSide && ball.x + r >= w) {
-        if (this.activeSides.includes('right')) { if (inGY(ball.y)) missedSide = 'right'; else { ball.x = w - r - 1; ball.vx = -Math.abs(ball.vx); } }
-        else { ball.x = w - r - 1; ball.vx = -Math.abs(ball.vx); }
+      if (!missedSide && ball.x + BALL_R >= w) {
+        if (this.activeSides.includes('right')) {
+          if (inGY(ball.y)) missedSide = 'right';
+          else { ball.x = w - BALL_R - 1; ball.vx = -Math.abs(ball.vx); }
+        } else { ball.x = w - BALL_R - 1; ball.vx = -Math.abs(ball.vx); }
       }
 
-      if (missedSide) this.onGoal(missedSide);
+      if (missedSide) {
+        this.onGoal(missedSide);
+        break;
+      }
     }
   }
 
@@ -473,14 +659,116 @@ class QoudRoom extends Room<QoudRoomState> {
     if (scorer) {
       const newScore = (this.state.scores.get(scorer.id) ?? 0) + 1;
       this.state.scores.set(scorer.id, newScore);
-      this.broadcast('goal-scored', { missedSide, scores: Object.fromEntries(this.state.scores.entries()) });
+      this.broadcast('goal-scored', {
+        missedSide,
+        scorerSide,
+        scorerId: scorer.id,
+        scores: Object.fromEntries(this.state.scores.entries()),
+        series: {
+          currentRound: this.currentRound,
+          totalRounds: this.totalRounds,
+          seriesWins: Object.fromEntries(this.seriesWinsMap.entries()),
+        }
+      });
+
+      // goal mode: check if round ends
       if (this.settings.mode === 'goals' && newScore >= Number(this.settings.goal || 7)) {
-        this.finishMatch(scorer.id);
+        this.finishRound(scorer.id, false);
         return;
       }
     }
+    // time mode continues, goal mode continues if not finished
     this.startCountdown(scorerSide);
     this.broadcastGameState();
+  }
+
+  private onTimeUpRound() {
+    // time finished for this round
+    const sorted = [...this.state.scores.entries()].sort((a, b) => b[1] - a[1]);
+    const maxScore = sorted[0]?.[1] ?? 0;
+    const topPlayers = sorted.filter(([_, s]) => s === maxScore);
+    if (topPlayers.length === 1) {
+      this.finishRound(topPlayers[0][0], false);
+    } else {
+      // draw round
+      this.finishRound(null, true);
+    }
+  }
+
+  private finishRound(winnerId: string | null, isDraw: boolean) {
+    const roundScores = Object.fromEntries(this.state.scores.entries());
+    const record = {
+      round: this.currentRound,
+      scores: roundScores,
+      winnerId: winnerId,
+      isDraw,
+    };
+    this.roundHistory.push(record);
+
+    if (!isDraw && winnerId) {
+      const cur = this.seriesWinsMap.get(winnerId) ?? 0;
+      this.seriesWinsMap.set(winnerId, cur + 1);
+      try { (this.state as any).seriesWins?.set(winnerId, cur + 1); } catch {}
+    }
+
+    this.broadcast('round-finished', {
+      round: this.currentRound,
+      scores: roundScores,
+      winnerId,
+      isDraw,
+      seriesWins: Object.fromEntries(this.seriesWinsMap.entries()),
+      roundHistory: this.roundHistory,
+      totalRounds: this.totalRounds,
+      currentRound: this.currentRound,
+    });
+
+    if (this.seriesType === 'series') {
+      if (this.currentRound >= this.totalRounds) {
+        this.finishMatchSeries();
+      } else {
+        // next round
+        this.currentRound++;
+        try { (this.state as any).currentRound = this.currentRound; } catch {}
+        // reset scores for next round
+        for (const id of this.state.players.keys()) {
+          this.state.scores.set(id, 0);
+        }
+        this.initWorldAndPaddles();
+        this.startCountdown(null);
+        this.broadcast('next-round', {
+          currentRound: this.currentRound,
+          totalRounds: this.totalRounds,
+          seriesWins: Object.fromEntries(this.seriesWinsMap.entries()),
+          roundHistory: this.roundHistory,
+        });
+      }
+    } else {
+      // single mode
+      this.finishMatch(winnerId || undefined);
+    }
+  }
+
+  private finishMatchSeries() {
+    // overall winner = most rounds won
+    const entries = [...this.seriesWinsMap.entries()].sort((a, b) => b[1] - a[1]);
+    const maxWins = entries[0]?.[1] ?? 0;
+    const top = entries.filter(([_, w]) => w === maxWins);
+    let finalWinnerId: string | null = null;
+    let isOverallDraw = false;
+    if (top.length === 1) finalWinnerId = top[0][0];
+    else if (top.length > 1) isOverallDraw = true;
+
+    this.broadcast('match-finished', {
+      winnerId: finalWinnerId,
+      isDraw: isOverallDraw,
+      scores: Object.fromEntries(this.state.scores.entries()),
+      seriesWins: Object.fromEntries(this.seriesWinsMap.entries()),
+      roundHistory: this.roundHistory,
+      totalRounds: this.totalRounds,
+      seriesType: 'series',
+    });
+    this.state.status = 'waiting';
+    // reset for lobby display but keep history until next start-game
   }
 
   private finishMatch(winnerId?: string) {
@@ -489,7 +777,13 @@ class QoudRoom extends Room<QoudRoomState> {
       const sorted = [...this.state.scores.entries()].sort((a, b) => b[1] - a[1]);
       finalWinnerId = sorted[0]?.[0];
     }
-    this.broadcast('match-finished', { winnerId: finalWinnerId, scores: Object.fromEntries(this.state.scores.entries()) });
+    this.broadcast('match-finished', {
+      winnerId: finalWinnerId,
+      scores: Object.fromEntries(this.state.scores.entries()),
+      seriesWins: Object.fromEntries(this.seriesWinsMap.entries()),
+      roundHistory: this.roundHistory,
+      seriesType: this.seriesType,
+    });
     this.state.status = 'waiting';
   }
 }

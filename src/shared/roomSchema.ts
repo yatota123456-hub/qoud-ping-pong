@@ -28,7 +28,7 @@ export const QoudRoomState = schema({
   status: t.string(),
   hostSessionId: t.string(),
   settingsJson: t.string(),
-  scores: t.map("number"), // ✅ تم الإصلاح هنا
+  scores: t.map("number"),
   players: t.map(PlayerState),
   
   worldW: t.number(),
@@ -42,8 +42,14 @@ export const QoudRoomState = schema({
   countdownSide: t.string(),
   rally: t.number(),
   timeLeft: t.number(),
+
+  // === NEW: Series system ===
+  currentRound: t.number(),
+  totalRounds: t.number(),
+  seriesType: t.string(),
+  seriesWins: t.map("number"),
+  roundHistoryJson: t.string(), // store JSON string of roundHistory
 });
 
-// للتوافق
 export const QoudState = QoudRoomState;
 export { QoudRoomState as QoudStateClass };

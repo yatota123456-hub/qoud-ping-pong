@@ -34,34 +34,7 @@ function randomRoom(existing: string[] = []) {
 }
 function loadWins(): Record<string, number> { try { return JSON.parse(localStorage.getItem('qoud-ping-pong-wins')?? '{}') as Record<string, number>; } catch { return {}; } }
 
-type SocketListener = (...args: any[]) => void;
-class ColyseusBridge {
-  room: any = null;
-  listeners = new Map<string, Set<SocketListener>>();
-  get connected() { return Boolean(this.room); }
-  get id() { return this.room?.sessionId?? ''; }
-  on(event: string, listener: SocketListener) { if (!this.listeners.has(event)) this.listeners.set(event, new Set()); this.listeners.get(event)!.add(listener); return this; }
-  off(event: string, listener?: SocketListener) { if (!listener) this.listeners.delete(event); else this.listeners.get(event)?.delete(listener); return this; }
-  emit(event: string, payload?: unknown) { if (!this.room) return false; this.room.send(event, payload); return true; }
-  attach(room: any) {
-    this.room = room;
-    for (const messageType of ['room-update', 'game-started', 'goal-scored', 'match-finished', 'host-left', 'game-state', 'paddle-input']) {
-      room.onMessage(messageType, (payload: unknown) => this.dispatch(messageType, payload));
-    }
-    room.onStateChange((state: any) => this.dispatch('room-update', this.roomData(state)));
-    room.onError?.((code: number, message: string) => this.dispatch('error', message || `Connection error (${code})`));
-    room.onLeave?.((code: number) => { if (this.room === room) this.dispatch('connection-lost', code); });
-    if (room.state) this.dispatch('room-update', this.roomData(room.state));
-  }
-  async leave() { const room = this.room; this.room = null; if (room) await room.leave(true); }
-  private dispatch(event: string,...args: any[]) { this.listeners.get(event)?.forEach((listener) => listener(...args)); }
-  private roomData(state: any): RoomData {
-    const players = state?.players? Array.from(state.players.values()).map((player: any) => ({ id: player.id, name: player.name, color: player.color, side: player.side, computer: Boolean(player.computer), socketId: player.id, })) : [];
-    let settings: Partial<Settings> | undefined;
-    try { settings = state?.settingsJson? JSON.parse(state.settingsJson) : undefined; } catch {}
-    return { code: state?.code?? '', status: state?.status?? 'waiting', maxPlayers: Number(state?.maxPlayers?? players.length), hostSocketId: state?.hostSessionId, hostName: players.find((player: Player) => player.id === state?.hostSessionId)?.name, players, settings, };
-  }
-}
+
 function getArenaWorld(playersCount: number, arenaSize: ArenaSize = 'medium') {
   const baseWorld = playersCount >= 3? SQUARE_WORLD : RECTANGULAR_WORLD;
   const scale = ARENA_SCALES[arenaSize] || 1.0;
@@ -111,35 +84,130 @@ function App() {
   useEffect(() => { currentRoundRef.current = currentRound; }, [currentRound]);
   useEffect(() => { void fetch('/api/rooms').then(r => r.ok? r.json() : null).then((d: any) => { if (d?.count!== undefined) setRoomsCount(d.count); }).catch(() => {}); }, []);
 
-  useEffect(() => {
-    const onRoomUpdate = (roomData: RoomData) => {
-      setRoom(prev => roomData.code || prev || roomRef.current);
-      if (screenRef.current!== 'game' && roomData.players?.length > 0) setPlayers(roomData.players);
-      if (roomData.settings && screenRef.current!== 'game') setSettings((current) => ({...current,...roomData.settings }));
-      if (roomData.hostSocketId) setIsHost(roomData.hostSocketId === socket.id);
-      if (roomData.status === 'playing' && screenRef.current === 'waiting') { setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); setMatchKey((k) => k + 1); setScreen('game'); }
-    };
-    const onGameStarted = () => { setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); setMatchKey((k) => k + 1); setScreen('game'); };
-    const onMatchFinished = ({ winnerId, scores: serverScores }: any) => {
-      if (celebratingRef.current) {
-        setScores(serverScores); setWinner(playersRef.current.find((p) => p.id === winnerId)?? celebratingRef.current); setScreen('results'); setCelebrating(null); setMatchPaused(false);
-      } else {
-        setScores(serverScores); setWinner(playersRef.current.find((p) => p.id === winnerId)?? null); setScreen('results');
-      }
-    };
-    const onGoalScored = ({ scores: serverScores, missedSide }: any) => {
-      const isOfflineLocal =!socket.connected || playersRef.current.length < 2;
-      if (!socket.connected) return;
-      setScores(serverScores);
-      const missed = playersRef.current.find((p) => p.side === missedSide);
-      if (missed) { setLastGoal(missed.name); window.setTimeout(() => setLastGoal(null), 1300); }
-    };
-    const onError = (msg: string) => setError(msg);
-    const onLost = () => { setError(isArRef.current? 'انقطع الاتصال بالخادم' : 'Connection lost'); setScreen('setup'); setPlayers([]); };
-    const onHostLeft = () => { setError(isArRef.current? 'منشئ الغرفة غادر' : 'Host left'); setScreen('setup'); };
-    socket.on('room-update', onRoomUpdate); socket.on('game-started', onGameStarted); socket.on('match-finished', onMatchFinished); socket.on('goal-scored', onGoalScored); socket.on('error', onError); socket.on('connection-lost', onLost); socket.on('host-left', onHostLeft);
-    return () => { socket.off('room-update', onRoomUpdate); socket.off('game-started', onGameStarted); socket.off('match-finished', onMatchFinished); socket.off('goal-scored', onGoalScored); socket.off('error', onError); socket.off('connection-lost', onLost); socket.off('host-left', onHostLeft); };
-  }, []);
+ // هذا هو الـ useEffect المصحح كامل - انسخ هذا واستبدل الـ useEffect القديم كله في App.tsx
+
+useEffect(() => {
+  const onRoomUpdate = (roomData: RoomData) => {
+    setRoom(prev => roomData.code || prev || roomRef.current);
+    if (screenRef.current!== 'game' && roomData.players?.length > 0) setPlayers(roomData.players);
+    if (roomData.settings && screenRef.current!== 'game') setSettings((current) => ({...current,...roomData.settings }));
+    if (roomData.hostSocketId) setIsHost(roomData.hostSocketId === socket.id);
+    if (roomData.status === 'playing' && screenRef.current === 'waiting') { setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); setMatchKey((k) => k + 1); setScreen('game'); }
+    if ((roomData as any).series) {
+      const s = (roomData as any).series;
+      if (s.seriesWins) setSeriesWins(s.seriesWins);
+      if (s.currentRound) setCurrentRound(s.currentRound);
+    }
+  };
+
+  const onGameStarted = () => { 
+    setWinner(null); 
+    setLastGoal(null); 
+    setMatchPaused(false); 
+    setCelebrating(null); 
+    setMatchKey((k) => k + 1); 
+    setScreen('game'); 
+  };
+  
+  const onMatchFinished = ({ winnerId, scores: serverScores, seriesWins: sWins }: any) => {
+    setScores(serverScores);
+    if (sWins) setSeriesWins(sWins);
+    if (!winnerId && sWins) {
+      setWinner(null);
+      setScreen('results');
+      setCelebrating(null);
+      setMatchPaused(false);
+      return;
+    }
+    if (celebratingRef.current) {
+      setWinner(playersRef.current.find((p) => p.id === winnerId)?? celebratingRef.current); 
+      setScreen('results'); 
+      setCelebrating(null); 
+      setMatchPaused(false);
+    } else {
+      setWinner(playersRef.current.find((p) => p.id === winnerId)?? null); 
+      setScreen('results');
+    }
+  };
+
+  const onGoalScored = ({ scores: serverScores, missedSide }: any) => {
+    if (!socket.connected) return;
+    setScores(serverScores);
+    const missed = playersRef.current.find((p) => p.side === missedSide);
+    if (missed) { 
+      setLastGoal(missed.name); 
+      window.setTimeout(() => setLastGoal(null), 1300); 
+    }
+  };
+
+  const onRoundFinished = (data:any) => {
+    setSeriesWins(data.seriesWins);
+    setCurrentRound(data.currentRound);
+    setScores(data.scores);
+    const w = playersRef.current.find(p=>String(p.id)===String(data.winnerId));
+    if(w) { 
+      setRoundWinner(w); 
+      setCelebrating(w); 
+    } else {
+      setLastGoal(isArRef.current ? 'تعادل في الجولة!' : 'Round Draw!');
+      setTimeout(()=>setLastGoal(null), 2000);
+      setCelebrating({ id: 'draw', name: isArRef.current ? 'تعادل' : 'Draw', color: '#fff', side: 'bottom', computer: false } as any);
+      setTimeout(()=>{ setCelebrating(null); }, 2500);
+    }
+  };
+
+  const onNextRound = (data:any) => {
+    setCurrentRound(data.currentRound);
+    setSeriesWins(data.seriesWins);
+    setScores(Object.fromEntries(playersRef.current.map(p => [p.id, 0])));
+    setCelebrating(null);
+    celebratingRef.current = null;
+    setRoundWinner(null);
+    setLastGoal(null);
+    setMatchKey(k=>k+1);
+  };
+
+  const onSeriesStarted = (data:any) => {
+    setCurrentRound(data.currentRound);
+    setSeriesWins({});
+  };
+
+  const onError = (msg: string) => setError(msg);
+  const onLost = () => { 
+    setError(isArRef.current? 'انقطع الاتصال بالخادم' : 'Connection lost'); 
+    setScreen('setup'); 
+    setPlayers([]); 
+  };
+  const onHostLeft = () => { 
+    setError(isArRef.current? 'منشئ الغرفة غادر' : 'Host left'); 
+    setScreen('setup'); 
+  };
+
+  socket.on('room-update', onRoomUpdate);
+  socket.on('game-started', onGameStarted);
+  socket.on('match-finished', onMatchFinished);
+  socket.on('goal-scored', onGoalScored);
+  socket.on('round-finished', onRoundFinished);
+  socket.on('next-round', onNextRound);
+  socket.on('series-started', onSeriesStarted);
+  socket.on('error', onError);
+  socket.on('connection-lost', onLost);
+  socket.on('host-left', onHostLeft);
+
+  return () => {
+    socket.off('room-update', onRoomUpdate);
+    socket.off('game-started', onGameStarted);
+    socket.off('match-finished', onMatchFinished);
+    socket.off('goal-scored', onGoalScored);
+    socket.off('round-finished', onRoundFinished);
+    socket.off('next-round', onNextRound);
+    socket.off('series-started', onSeriesStarted);
+    socket.off('error', onError);
+    socket.off('connection-lost', onLost);
+    socket.off('host-left', onHostLeft);
+  };
+}, []);
+
 
   const updateSettings = (patch: Partial<Settings>) => {
     setSettings((current) => {
@@ -689,7 +757,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         }
 
         // ===== لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles =====
-        const lerpFactor = 0.15;
+        const lerpFactor = 0.35;
         const bounced =
           (state.ball.vx !== 0 && Math.sign(state.ballTarget.vx) !== Math.sign(state.ball.vx)) ||
           (state.ball.vy !== 0 && Math.sign(state.ballTarget.vy) !== Math.sign(state.ball.vy));
@@ -701,8 +769,8 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         } else {
           state.ball.x += state.ball.vx * delta;
           state.ball.y += state.ball.vy * delta;
-          state.ball.x += (state.ballTarget.x - state.ball.x) * 0.4;
-          state.ball.y += (state.ballTarget.y - state.ball.y) * 0.4;
+          state.ball.x += (state.ballTarget.x - state.ball.x) * 0.65;
+          state.ball.y += (state.ballTarget.y - state.ball.y) * 0.65;
         }
 
         (['top','bottom','right','left'] as const).forEach(side => {
