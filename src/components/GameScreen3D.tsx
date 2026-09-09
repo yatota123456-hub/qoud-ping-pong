@@ -315,6 +315,7 @@ export function GameScreen3D({
   const audioCtxRef = useRef<AudioContext|null>(null);
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
+  const ballBuffer = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
     ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
@@ -417,13 +418,15 @@ export function GameScreen3D({
   }, [initialCam]);
 
   // ============================================================
-  // 1. مستمع game-state للجميع (بدلاً من المستمع الخاص بغير المضيف)
+  // 1. مستمع game-state للجميع مع buffer سلس 100ms
   // ============================================================
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
       const mySide = getMySide();
       if (data.ball) {
+        ballBuffer.current.push({ x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, t: performance.now() });
+        if (ballBuffer.current.length > 15) ballBuffer.current.shift();
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
         stateRef.current.ballTarget.vx = data.ball.vx;
@@ -487,25 +490,33 @@ export function GameScreen3D({
           const clampedZ = clamp(tz + OFFSET, 45, world.h * 0.38);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅ أزل !isHost
+          stateRef.current.paddles[mySide].x = clampedX;
+          stateRef.current.paddles[mySide].z = clampedZ;
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'bottom') {
           const clampedX = clamp(tx, 45, world.w - 45);
           const clampedZ = clamp(tz - OFFSET, world.h * 0.62, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
+          stateRef.current.paddles[mySide].x = clampedX;
+          stateRef.current.paddles[mySide].z = clampedZ;
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'left') {
           const clampedX = clamp(tx + OFFSET, 45, world.w * 0.38);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
+          stateRef.current.paddles[mySide].x = clampedX;
+          stateRef.current.paddles[mySide].z = clampedZ;
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'right') {
           const clampedX = clamp(tx - OFFSET, world.w * 0.62, world.w - 45);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
+          stateRef.current.paddles[mySide].x = clampedX;
+          stateRef.current.paddles[mySide].z = clampedZ;
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         }
       }
     };
@@ -600,9 +611,29 @@ useEffect(() => {
   }, [world.w, world.h, playersKey]);
 
   // ============================================================
-  // 5. حلقة التحديث (tick) مع إلغاء الفيزياء المحلية واستخدام الاستيفاء
+  // 5. حلقة التحديث مع interpolation 100ms + offline physics (مصحح)
   // ============================================================
   useEffect(() => {
+    const getSmoothBall = () => {
+      const now = performance.now();
+      const buf = ballBuffer.current;
+      if(isOfflineMode || buf.length<2) return stateRef.current.ball;
+      const renderTime = now - 100;
+      for(let i=buf.length-1;i>=1;i--){
+        if(buf[i-1].t <= renderTime && renderTime <= buf[i].t){
+          const a=buf[i-1], b=buf[i];
+          const t = (renderTime - a.t)/(b.t - a.t || 1);
+          return { x: a.x + (b.x-a.x)*t, y: a.y + (b.y-a.y)*t, vx: b.vx, vy: b.vy };
+        }
+      }
+      const last = buf[buf.length-1];
+      const dt = (now-last.t)/1000;
+      if(dt < 0.18){
+        return { x: last.x + last.vx*dt*400, y: last.y + last.vy*dt*400, vx:last.vx, vy:last.vy };
+      }
+      return last;
+    };
+
     const state = stateRef.current;
     const needPlayers = Math.max(2, players.length, settings.players || 2);
     const sidesForCount: Player['side'][] = needPlayers === 2? ['bottom','top'] : ['bottom','top','right','left'];
@@ -680,26 +711,23 @@ useEffect(() => {
         // لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles
         // ============================================
         const lerpFactor = 0.15;
-        const bounced =
-          (state.ball.vx !== 0 && Math.sign(state.ballTarget.vx) !== Math.sign(state.ball.vx)) ||
-          (state.ball.vy !== 0 && Math.sign(state.ballTarget.vy) !== Math.sign(state.ball.vy));
-        state.ball.vx = state.ballTarget.vx;
-        state.ball.vy = state.ballTarget.vy;
-        if (bounced) {
-          state.ball.x = state.ballTarget.x;
-          state.ball.y = state.ballTarget.y;
-        } else {
+        // FIX: استخدام buffer سلس 100ms بدل bounced logic المكسور
+        if (isOfflineMode) {
           state.ball.x += state.ball.vx * delta;
           state.ball.y += state.ball.vy * delta;
-          state.ball.x += (state.ballTarget.x - state.ball.x) * 0.4;
-          state.ball.y += (state.ballTarget.y - state.ball.y) * 0.4;
+        } else {
+          const smooth = getSmoothBall();
+          state.ball.x = (smooth as any).x;
+          state.ball.y = (smooth as any).y;
+          state.ball.vx = (smooth as any).vx;
+          state.ball.vy = (smooth as any).vy;
         }
 
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
           const target = state.targetPaddles[side];
           const current = state.paddles[side];
-          const lf = side === mySide ? 1 : lerpFactor;
+          const lf = side === mySide ? 0.5 : 0.22;
           current.x += (target.x - current.x) * lf;
           current.z += (target.z - current.z) * lf;
         });

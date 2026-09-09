@@ -42,6 +42,7 @@ class QoudRoom extends Room<QoudRoomState> {
   private broadcastAccum = 0;
 
   // === Physics fix ===
+  private paddleTargets = new Map<PlayerSide, { x: number; y: number }>();
   private paddlePrev = new Map<PlayerSide, { x: number; y: number }>();
   private paddleVel = new Map<PlayerSide, { vx: number; vy: number }>();
   private lastHitSide: PlayerSide | null = null;
@@ -99,7 +100,8 @@ class QoudRoom extends Room<QoudRoomState> {
     this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
 
     // 120Hz simulation for precision
-    this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 120);
+    this.setPatchRate(1000 / 30);
+    this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 60);
   }
 
   private initWorldAndPaddles() {
@@ -115,6 +117,7 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.paddles.clear();
     this.paddlePrev.clear();
     this.paddleVel.clear();
+    this.paddleTargets.clear();
     const defaults: Record<PlayerSide, [number, number]> = {
       top: [world.w / 2, 52],
       bottom: [world.w / 2, world.h - 52],
@@ -128,6 +131,7 @@ class QoudRoom extends Room<QoudRoomState> {
       this.state.paddles.set(side, p);
       this.paddlePrev.set(side, { x: p.x, y: p.y });
       this.paddleVel.set(side, { vx: 0, vy: 0 });
+      this.paddleTargets.set(side, { x: p.x, y: p.y });
     });
     this.state.ball.x = world.w / 2;
     this.state.ball.y = world.h / 2;
@@ -231,14 +235,11 @@ class QoudRoom extends Room<QoudRoomState> {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
       const side = player.side as PlayerSide;
-      const paddle = this.state.paddles.get(side);
-      if (!paddle) return;
       const x = Number(payload?.x);
       const y = Number(payload?.y ?? payload?.z);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const clamped = this.clampPaddle(side, x, y);
-      paddle.x = clamped.x;
-      paddle.y = clamped.y;
+      this.paddleTargets.set(side, clamped);
       if (this.servingActive && this.servingSide === side) this.servingRequested = true;
       return;
     }
@@ -383,25 +384,39 @@ class QoudRoom extends Room<QoudRoomState> {
       }
     }
 
-    // update paddle velocities before moving bots
+    // FIX: lerp للمضارب البشرية نحو target + حساب السرعة
+    const dtSec = Math.min(deltaMs, 50) / 1000;
+    for (const side of this.activeSides) {
+      const paddle = this.state.paddles.get(side)!;
+      const target = this.paddleTargets.get(side);
+      if (!target) continue;
+      const player = [...this.state.players.values()].find(p=>p.side===side);
+      if (player?.computer) continue;
+      const prev = this.paddlePrev.get(side) || { x: paddle.x, y: paddle.y };
+      paddle.x += (target.x - paddle.x) * Math.min(1, dtSec * 14);
+      paddle.y += (target.y - paddle.y) * Math.min(1, dtSec * 14);
+      const vx = (paddle.x - prev.x) / dtSec;
+      const vy = (paddle.y - prev.y) / dtSec;
+      this.paddleVel.set(side, { vx: vx*0.5, vy: vy*0.5 });
+      this.paddlePrev.set(side, { x: paddle.x, y: paddle.y });
+    }
     for (const side of this.activeSides) {
       const paddle = this.state.paddles.get(side);
       if (!paddle) continue;
+      const player = [...this.state.players.values()].find(p=>p.side===side);
+      if (!player?.computer) continue;
       const prev = this.paddlePrev.get(side);
       if (prev) {
-        const vx = (paddle.x - prev.x) * 0.5; // smoothing
-        const vy = (paddle.y - prev.y) * 0.5;
-        this.paddleVel.set(side, { vx, vy });
+        this.paddleVel.set(side, { vx: (paddle.x - prev.x)/dtSec*0.5, vy: (paddle.y - prev.y)/dtSec*0.5 });
       }
       this.paddlePrev.set(side, { x: paddle.x, y: paddle.y });
     }
-
 
     this.moveComputerPaddles(delta);
     this.stepBallImproved(delta);
 
     this.broadcastAccum += deltaMs;
-    if (this.broadcastAccum >= 1000 / 60) { // 60Hz سريع
+    if (this.broadcastAccum >= 16) {
       this.broadcastAccum = 0;
       this.broadcastGameState();
     }

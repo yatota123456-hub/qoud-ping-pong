@@ -9,6 +9,7 @@ class ColyseusBridge {
   room: any = null;
   listeners = new Map<string, Set<SocketListener>>();
   private lastPaddleEmit = 0;
+  private lastPaddlePos = { x: 0, y: 0 };
 
   get connected() { return Boolean(this.room); }
   get id() { return this.room?.sessionId ?? ''; }
@@ -30,9 +31,14 @@ class ColyseusBridge {
   }
   sendPaddleTarget(x: number, y: number) {
     const now = performance.now();
-    if (now - this.lastPaddleEmit < 16) return; // 60Hz
+    const dx = x - this.lastPaddlePos.x;
+    const dy = y - this.lastPaddlePos.y;
+    const distSq = dx*dx + dy*dy;
+    if (distSq < 4 && now - this.lastPaddleEmit < 32) return;
+    if (now - this.lastPaddleEmit < 16) return;
     this.lastPaddleEmit = now;
-    this.emit('paddle-target', { x, y });
+    this.lastPaddlePos = { x, y };
+    this.emit('paddle-target', { x: Math.round(x), y: Math.round(y) });
   }
   attach(room: any) {
     this.room = room;
@@ -83,21 +89,14 @@ class ColyseusBridge {
   }
 }
 
-// === FIX MIXED CONTENT ===
-// على https:// لازم wss:// بدون بورت 5000
 function getColyseusEndpoint() {
-  // لو محدد من .env استخدمه
   const envUrl = (import.meta as any).env?.VITE_COLYSEUS_URL;
   if (envUrl) return envUrl;
-
   const isHttps = window.location.protocol === 'https:';
   const host = window.location.hostname;
-  
-  // على Render أو أي استضافة https -> نفس الدومين بدون بورت + wss
   if (isHttps) {
     return `wss://${window.location.host}`;
   }
-  // محلي -> ws://localhost:5000
   return `ws://${host}:5000`;
 }
 

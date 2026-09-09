@@ -43,12 +43,11 @@ export const QoudRoomState = schema({
   rally: t.number(),
   timeLeft: t.number(),
 
-  // === NEW: Series system ===
   currentRound: t.number(),
   totalRounds: t.number(),
   seriesType: t.string(),
   seriesWins: t.map("number"),
-  roundHistoryJson: t.string(), // store JSON string of roundHistory
+  roundHistoryJson: t.string(),
 });
 
 export const QoudState = QoudRoomState;
