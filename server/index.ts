@@ -396,11 +396,12 @@ class QoudRoom extends Room<QoudRoomState> {
       this.paddlePrev.set(side, { x: paddle.x, y: paddle.y });
     }
 
+
     this.moveComputerPaddles(delta);
     this.stepBallImproved(delta);
 
     this.broadcastAccum += deltaMs;
-    if (this.broadcastAccum >= 1000 / 60) { // 60Hz سريع كما طلبت - بدون تبطيء
+    if (this.broadcastAccum >= 1000 / 60) { // 60Hz سريع
       this.broadcastAccum = 0;
       this.broadcastGameState();
     }
