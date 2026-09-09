@@ -421,6 +421,7 @@ export function GameScreen3D({
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
+      const mySide = getMySide();
       if (data.ball) {
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
@@ -673,6 +674,7 @@ useEffect(() => {
       const delta = Math.min((now - state.last) / 16.67, 2);
       state.last = now;
       if (!pausedRef.current && !gameEndedRef.current) {
+        const mySide = getMySide(); 
         // ============================================
         // لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles
         // ============================================
@@ -691,8 +693,8 @@ useEffect(() => {
           const target = state.targetPaddles[side];
           const current = state.paddles[side];
           const lf = side === mySide ? 0.5 : lerpFactor;
-          current.x += (target.x - current.x) * lerpFactor;
-          current.z += (target.z - current.z) * lerpFactor;
+          current.x += (target.x - current.x) * lf;
+          current.z += (target.z - current.z) * lf;
         });
       }
       // رسم المشهد الثلاثي الأبعاد (بدون تغيير)
