@@ -129,7 +129,7 @@ function App() {
     };
     const onGoalScored = ({ scores: serverScores, missedSide }: any) => {
       const isOfflineLocal =!socket.connected || playersRef.current.length < 2;
-      if (isOfflineLocal) return;
+      if (!socket.connected) return;
       setScores(serverScores);
       const missed = playersRef.current.find((p) => p.side === missedSide);
       if (missed) { setLastGoal(missed.name); window.setTimeout(() => setLastGoal(null), 1300); }
@@ -536,6 +536,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const [isServing, setIsServing] = useState(settings.start === 'paddle');
   const [countdown, setCountdown] = useState(0);
   const [countdownName, setCountdownName] = useState('');
+  const [countdownSide, setCountdownSide] = useState('');
   const soundRef = useRef(sound);
   const onTimeUpRef = useRef(onTimeUp);
   const onGoalRef = useRef(onGoal);
@@ -613,14 +614,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
-      if (data.ball) {
-        stateRef.current.ballTarget.x = data.ball.x;
-        stateRef.current.ballTarget.y = data.ball.y;
-        stateRef.current.ballTarget.vx = data.ball.vx;
-        stateRef.current.ballTarget.vy = data.ball.vy;
-      }
+      if (data.ball) { ... }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
+          if (side === mySide) return; // ✅
           const p = data.paddles[side];
           if (stateRef.current.targetPaddles[side as Player['side']]) {
             stateRef.current.targetPaddles[side as Player['side']].x = p.x;
@@ -628,18 +625,13 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           }
         });
       }
-      if (data.timeLeft !== undefined) setTimeLeft(data.timeLeft);
-      if (data.countdown !== undefined) {
-        stateRef.current.countdown = data.countdown;
-        setCountdown(data.countdown);
-      }
-      if (data.rally !== undefined) {
-        setRally(data.rally);
-      }
+      if (data.countdown !== undefined) { stateRef.current.countdown = data.countdown; setCountdown(data.countdown); }
+      if (data.countdownSide !== undefined) { setCountdownSide(data.countdownSide || ''); } // 🔥 جديد
+      if (data.rally !== undefined) setRally(data.rally);
     };
     socket.on('game-state', handleGameState);
     return () => { socket.off('game-state', handleGameState); };
-  }, []);
+  }, [mySide]);
 
   useEffect(() => {
     const canvas = canvasRef.current; const arena = arenaRef.current; if (!canvas ||!arena) return; const context = canvas.getContext('2d'); if (!context) return; const state = stateRef.current;
@@ -693,17 +685,20 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
 
         // ===== لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles =====
         const lerpFactor = 0.15;
-        // تحديث الكرة
-        state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
-        state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
+        // تحديث الكرة: تقدّم فعلي بالسرعة كل فريم + تصحيح ناعم نحو موضع السيرفر (يقلل اللاج المحسوس)
         state.ball.vx = state.ballTarget.vx;
         state.ball.vy = state.ballTarget.vy;
+        state.ball.x += state.ball.vx * delta;
+        state.ball.y += state.ball.vy * delta;
+        state.ball.x += (state.ballTarget.x - state.ball.x) * 0.12;
+        state.ball.y += (state.ballTarget.y - state.ball.y) * 0.12;
 
         // تحديث المضارب (باستثناء مضرب اللاعب نفسه الذي تم تحديثه يدوياً)
         (['top','bottom','right','left'] as const).forEach(side => {
           if (!active(side)) return;
           const target = state.targetPaddles[side];
           const current = state.paddles[side];
+          const lf = side === mySide ? 0.5 : lerpFactor; 
           current.x += (target.x - current.x) * lerpFactor;
           current.y += (target.y - current.y) * lerpFactor;
         });
@@ -773,7 +768,16 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           <canvas ref={canvasRef} style={{ touchAction: 'none', width: '100%', height: '100%' }} />
           <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
           <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-          {countdown>0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}><span style={{ fontSize: '110px', fontWeight: 900, color: '#ff2233' }}>{countdown}</span><span style={{ background: '#222', color: '#fff', padding: '8px 18px', borderRadius: 999, fontWeight: 800 }}>{countdownName} سيل!</span></div>}
+          {countdown>0 && (
+  <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.75)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, pointerEvents: 'none' }}>
+    <span style={{ fontSize: '110px', fontWeight: 900, color: '#ff2233', textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>
+    {countdownSide && (
+      <span style={{ background: '#222', color: '#fff', padding: '8px 18px', borderRadius: 999, fontWeight: 800 }}>
+        {players.find((p:any)=>p.side===countdownSide)?.name || ''} سجل!
+      </span>
+    )}
+  </div>
+)}
           {lastGoal &&!celebrating && <div style={{ position: 'absolute', top: '48%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.92)', color: '#fff', padding: '12px 22px', borderRadius: 12, fontWeight: 900, zIndex: 11 }}>هدف! {lastGoal}</div>}
           {celebrating && (
   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>

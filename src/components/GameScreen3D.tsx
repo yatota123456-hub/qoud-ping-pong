@@ -429,6 +429,7 @@ export function GameScreen3D({
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
+          if (side === mySide) return;
           const p = data.paddles[side];
           if (stateRef.current.targetPaddles[side as Player['side']]) {
             stateRef.current.targetPaddles[side as Player['side']].x = p.x;
@@ -440,13 +441,17 @@ export function GameScreen3D({
         stateRef.current.countdown = data.countdown;
         setCountdown(data.countdown);
       }
+      if (data.countdownSide !== undefined) { // 🔥 جديد
+        stateRef.current.countdownSide = data.countdownSide || null;
+        setCountdownSide(data.countdownSide || '');
+      }
       if (data.rally !== undefined) {
         setRally(data.rally);
       }
     };
     socket.on('game-state', handleGameState);
     return () => { socket.off('game-state', handleGameState); };
-  }, []);
+  }, [getMySide]);
 
   // ============================================================
   // 2. إرسال paddle-target بدلاً من paddle-input
@@ -672,17 +677,20 @@ useEffect(() => {
         // لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles
         // ============================================
         const lerpFactor = 0.15;
-        // تحديث الكرة
-        state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
-        state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
+        // تحديث الكرة: تقدّم فعلي بالسرعة كل فريم + تصحيح ناعم نحو موضع السيرفر (يقلل اللاج المحسوس)
         state.ball.vx = state.ballTarget.vx;
         state.ball.vy = state.ballTarget.vy;
+        state.ball.x += state.ball.vx * delta;
+        state.ball.y += state.ball.vy * delta;
+        state.ball.x += (state.ballTarget.x - state.ball.x) * 0.12;
+        state.ball.y += (state.ballTarget.y - state.ball.y) * 0.12;
 
         // تحديث المضارب (باستثناء مضرب اللاعب نفسه الذي تم تحديثه يدوياً)
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
           const target = state.targetPaddles[side];
           const current = state.paddles[side];
+          const lf = side === mySide ? 0.5 : lerpFactor;
           current.x += (target.x - current.x) * lerpFactor;
           current.z += (target.z - current.z) * lerpFactor;
         });
@@ -827,7 +835,16 @@ useEffect(() => {
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-        {countdown > 0 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px' }}><span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1 }}>{countdown}</span><span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>{getNameForSide(stateRef.current.countdownSide)} {isAr? 'سجل!' : 'Scored!'}</span></div>}
+        {countdown > 0 && (
+  <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.72)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px', pointerEvents: 'none' }}>
+    <span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>
+    {countdownSide && (
+      <span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>
+        {getNameForSide(countdownSide as Player['side'])} {isAr ? 'سجل!' : 'Scored!'}
+      </span>
+    )}
+  </div>
+)}
         {lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
         {/* --- ADDED: احتفال الفوز بالجولة مع رقم الجولة --- */}
         {celebrating && (

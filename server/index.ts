@@ -11,6 +11,7 @@ type CreateOptions = {
   maxPlayers: number;
   settings?: Record<string, unknown>;
   player: { name: string; color: string; side: PlayerSide };
+  computerPlayers?: Array<{ name?: string; color?: string; side?: PlayerSide }>; // 🔥 جديد
 };
 
 const roomsByCode = new Map<string, QoudRoom>();
@@ -58,6 +59,18 @@ class QoudRoom extends Room<QoudRoomState> {
     roomsByCode.set(code, this);
 
     this.initWorldAndPaddles();
+    if (options.computerPlayers?.length) {
+      options.computerPlayers.forEach((bot, i) => {
+        const ps = new PlayerState();
+        ps.id = `bot-${i}`;
+        ps.name = bot.name || `بوت ${i + 1}`;
+        ps.color = bot.color || COLORS[this.state.players.size % COLORS.length];
+        ps.side = (bot.side as PlayerSide) || this.nextSide();
+        ps.computer = true;
+        this.state.players.set(ps.id, ps);
+        this.state.scores.set(ps.id, 0);
+      });
+    }
     this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
 
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 60);
@@ -338,6 +351,7 @@ class QoudRoom extends Room<QoudRoomState> {
         ])
       ),
       countdown: this.state.countdown,
+      countdownSide: this.state.countdownSide,
       rally: this.state.rally,
       scores: Object.fromEntries(this.state.scores.entries()),
       timeLeft: this.state.timeLeft,
