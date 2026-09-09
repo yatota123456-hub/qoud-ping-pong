@@ -154,21 +154,13 @@ function createArenaFrame(worldW: number, worldH: number) {
   group.add(outerTube);
   const goalW = 360;
   const goalH = 10;
-  const goalMat = new THREE.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ffcf5a', emissiveIntensity: 1.0, roughness: 0.2, metalness: 0.3 });
+  const goalMat = new THREE.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ffcf5a', emissiveIntensity: 1.0, roughness: 0.3, metalness: 0.2 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
   goalTop.position.set(worldW/2, -6, -bezelThickness/2);
   group.add(goalTop);
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
   goalBottom.position.set(worldW/2, -6, worldH + bezelThickness/2);
   group.add(goalBottom);
-  if (worldW >= 900) {
-    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalLeft.position.set(-bezelThickness/2, -6, worldH/2);
-    group.add(goalLeft);
-    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalRight.position.set(worldW + bezelThickness/2, -6, worldH/2);
-    group.add(goalRight);
-  }
   return group;
 }
 
@@ -487,33 +479,25 @@ export function GameScreen3D({
           const clampedZ = clamp(tz + OFFSET, 45, world.h * 0.38);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          stateRef.current.paddles[mySide].x = clampedX;
-          stateRef.current.paddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅ أزل !isHost
         } else if (mySide === 'bottom') {
           const clampedX = clamp(tx, 45, world.w - 45);
           const clampedZ = clamp(tz - OFFSET, world.h * 0.62, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          stateRef.current.paddles[mySide].x = clampedX;
-          stateRef.current.paddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
         } else if (mySide === 'left') {
           const clampedX = clamp(tx + OFFSET, 45, world.w * 0.38);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          stateRef.current.paddles[mySide].x = clampedX;
-          stateRef.current.paddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
         } else if (mySide === 'right') {
           const clampedX = clamp(tx - OFFSET, world.w * 0.62, world.w - 45);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          stateRef.current.paddles[mySide].x = clampedX;
-          stateRef.current.paddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
         }
       }
     };
@@ -588,25 +572,12 @@ useEffect(() => {
     threeRef.current = { scene, camera, renderer, ball, paddles, hitGroup, surfaceTexture, tableMaterial };
     const ro = new ResizeObserver(() => {
       if (!mountRef.current ||!threeRef.current) return;
-      const w = mountRef.current.clientWidth;
-      const h = mountRef.current.clientHeight;
-      if (h < 100) return; // تجاهل القياسات الخاطئة
-      camera.aspect = w / h;
+      camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+      renderer.setPixelRatio(1); // Render fix: 1 بدلاً من 2 لتقليل lag
     });
     ro.observe(mount);
-    // إصلاح أولي للكانفاس
-    setTimeout(() => {
-      if (mountRef.current && threeRef.current) {
-        const w = mountRef.current.clientWidth;
-        const h = mountRef.current.clientHeight;
-        threeRef.current.camera.aspect = w / h;
-        threeRef.current.camera.updateProjectionMatrix();
-        threeRef.current.renderer.setSize(w, h);
-      }
-    }, 100);
     return () => {
       ro.disconnect();
       try {
@@ -621,7 +592,7 @@ useEffect(() => {
   }, [world.w, world.h, playersKey]);
 
   // ============================================================
-  // 5. فيزياء محددة بدون عشوائية - إصلاح الحركة العشوائية
+  // 5. حلقة التحديث (tick) مع إلغاء الفيزياء المحلية واستخدام الاستيفاء
   // ============================================================
   useEffect(() => {
     const state = stateRef.current;
@@ -701,126 +672,55 @@ useEffect(() => {
         // لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles
         // ============================================
         const lerpFactor = 0.15;
-        // === فيزياء محددة بدون عشوائية ===
+        // Render Optimized: فيزياء خفيفة بدون عشوائية
         const ball = state.ball;
         const w = world.w, h = world.h;
         const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
 
         if (state.countdown === 0) {
-          // حركة الكرة مع تقسيم الخطوات لمنع المرور عبر المضرب
-          const totalVx = ball.vx * delta;
-          const totalVy = ball.vy * delta;
-          const dist = Math.hypot(totalVx, totalVy);
-          const steps = Math.max(1, Math.ceil(dist / 8));
-          const stepVx = totalVx / steps;
-          const stepVy = totalVy / steps;
+          // delta مقيد لتجنب lag 58ms
+          const safeDelta = Math.min(delta, 1);
+          ball.x += ball.vx * safeDelta * 0.5;
+          ball.y += ball.vy * safeDelta * 0.5;
 
-          for (let i = 0; i < steps; i++) {
-            ball.x += stepVx;
-            ball.y += stepVy;
-
-            // تصادم مع المضارب - محدد بدون عشوائية
-            for (const side of (['top','bottom','left','right'] as Player['side'][])) {
-              if (!activeSide(side)) continue;
-              const paddle = state.paddles[side];
-              const px = paddle.x, pz = (paddle as any).z;
-              const dx = ball.x - px, dy = ball.y - pz;
-              const d = Math.hypot(dx, dy);
-              if (d < HIT_DIST && d > 0.1) {
-                const nx = dx / d, nz = dy / d;
-                ball.x = px + nx * (HIT_DIST + 1.5);
-                ball.y = pz + nz * (HIT_DIST + 1.5);
-                const speed = getInitialSpeed();
-                // ارتداد محدد حسب مكان الضرب
-                if (side === 'bottom') {
-                  ball.vy = -Math.abs(speed);
-                  ball.vx = (ball.x - px) * 0.15;
-                } else if (side === 'top') {
-                  ball.vy = Math.abs(speed);
-                  ball.vx = (ball.x - px) * 0.15;
-                } else if (side === 'left') {
-                  ball.vx = Math.abs(speed);
-                  ball.vy = (ball.y - pz) * 0.15;
-                } else {
-                  ball.vx = -Math.abs(speed);
-                  ball.vy = (ball.y - pz) * 0.15;
-                }
-                // حد أقصى للسرعة لمنع العشوائية
-                const maxSpeed = 18;
-                const curSpeed = Math.hypot(ball.vx, ball.vy);
-                if (curSpeed > maxSpeed) {
-                  ball.vx = (ball.vx / curSpeed) * maxSpeed;
-                  ball.vy = (ball.vy / curSpeed) * maxSpeed;
-                }
-                state.rally++; setRally(state.rally);
-                break;
-              }
+          // تصادم مبسط وسريع
+          for (const side of (['top','bottom','left','right'] as Player['side'][])) {
+            if (!activeSide(side)) continue;
+            const paddle = state.paddles[side];
+            const dx = ball.x - paddle.x, dy = ball.y - (paddle as any).z;
+            const d = Math.hypot(dx, dy);
+            if (d < HIT_DIST && d > 0.5) {
+              const nx = dx / d, nz = dy / d;
+              ball.x = paddle.x + nx * (HIT_DIST + 1);
+              ball.y = (paddle as any).z + nz * (HIT_DIST + 1);
+              const speed = getInitialSpeed();
+              if (side === 'bottom') { ball.vy = -Math.abs(speed); ball.vx = (ball.x - paddle.x) * 0.12; }
+              else if (side === 'top') { ball.vy = Math.abs(speed); ball.vx = (ball.x - paddle.x) * 0.12; }
+              else if (side === 'left') { ball.vx = Math.abs(speed); ball.vy = (ball.y - (paddle as any).z) * 0.12; }
+              else { ball.vx = -Math.abs(speed); ball.vy = (ball.y - (paddle as any).z) * 0.12; }
+              state.rally++; setRally(state.rally);
+              break;
             }
           }
 
-          // جدران
-          if (ball.y < 16) {
-            const goalW = 360;
-            const gx1 = (w - goalW)/2, gx2 = gx1 + goalW;
-            if (activeSide('top') && ball.x >= gx1 && ball.x <= gx2) {
-              // هدف - السيرفر يحسبه
-            } else {
-              ball.y = 16; ball.vy = Math.abs(ball.vy);
-            }
-          }
-          if (ball.y > h - 16) {
-            const goalW = 360;
-            const gx1 = (w - goalW)/2, gx2 = gx1 + goalW;
-            if (activeSide('bottom') && ball.x >= gx1 && ball.x <= gx2) {
-            } else {
-              ball.y = h - 16; ball.vy = -Math.abs(ball.vy);
-            }
-          }
-          if (ball.x < 16) {
-            const goalW = 360;
-            const gy1 = (h - goalW)/2, gy2 = gy1 + goalW;
-            if (activeSide('left') && ball.y >= gy1 && ball.y <= gy2) {
-            } else {
-              ball.x = 16; ball.vx = Math.abs(ball.vx);
-            }
-          }
-          if (ball.x > w - 16) {
-            const goalW = 360;
-            const gy1 = (h - goalW)/2, gy2 = gy1 + goalW;
-            if (activeSide('right') && ball.y >= gy1 && ball.y <= gy2) {
-            } else {
-              ball.x = w - 16; ball.vx = -Math.abs(ball.vx);
-            }
-          }
+          if (ball.y < 16) { const goalW = 360, gx1 = (w - goalW)/2, gx2 = gx1 + goalW; if (!(activeSide('top') && ball.x >= gx1 && ball.x <= gx2)) { ball.y = 16; ball.vy = Math.abs(ball.vy); } }
+          if (ball.y > h - 16) { const goalW = 360, gx1 = (w - goalW)/2, gx2 = gx1 + goalW; if (!(activeSide('bottom') && ball.x >= gx1 && ball.x <= gx2)) { ball.y = h - 16; ball.vy = -Math.abs(ball.vy); } }
+          if (ball.x < 16) { const goalW = 360, gy1 = (h - goalW)/2, gy2 = gy1 + goalW; if (!(activeSide('left') && ball.y >= gy1 && ball.y <= gy2)) { ball.x = 16; ball.vx = Math.abs(ball.vx); } }
+          if (ball.x > w - 16) { const goalW = 360, gy1 = (h - goalW)/2, gy2 = gy1 + goalW; if (!(activeSide('right') && ball.y >= gy1 && ball.y <= gy2)) { ball.x = w - 16; ball.vx = -Math.abs(ball.vx); } }
 
-          // تصحيح لطيف من السيرفر بدون قفز
-          if (!isOfflineMode) {
-            const corrX = state.ballTarget.x - ball.x;
-            const corrY = state.ballTarget.y - ball.y;
-            if (Math.hypot(corrX, corrY) > 100) {
-              ball.x = state.ballTarget.x;
-              ball.y = state.ballTarget.y;
-              ball.vx = state.ballTarget.vx;
-              ball.vy = state.ballTarget.vy;
-            } else if (Math.hypot(corrX, corrY) > 10) {
-              ball.x += corrX * 0.03;
-              ball.y += corrY * 0.03;
-            }
+          // تصحيح من Render فقط إذا الفرق كبير جداً
+          if (players.length > 1) {
+            const corrX = state.ballTarget.x - ball.x, corrY = state.ballTarget.y - ball.y;
+            if (Math.hypot(corrX, corrY) > 120) { ball.x = state.ballTarget.x; ball.y = state.ballTarget.y; ball.vx = state.ballTarget.vx; ball.vy = state.ballTarget.vy; }
           }
         }
 
-        // تحريك المضارب بسلاسة بدون تكرار
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
-          const t = state.targetPaddles[side];
-          const c = state.paddles[side];
-          if (side === mySide) {
-            c.x += (t.x - c.x) * 0.6;
-            c.z += (t.z - c.z) * 0.6;
-          } else {
-            c.x += (t.x - c.x) * 0.25;
-            c.z += (t.z - c.z) * 0.25;
-          }
+          const t = state.targetPaddles[side]; const c = state.paddles[side];
+          const lf = side === mySide ? 0.55 : 0.22;
+          c.x += (t.x - c.x) * lf;
+          c.z += (t.z - c.z) * lf;
         });
       }
       // رسم المشهد الثلاثي الأبعاد (بدون تغيير)
@@ -963,14 +863,6 @@ useEffect(() => {
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-        {/* إصلاح الكانفاس - زر القائمة ثابت لا يغطي */}
-        <div style={{ position:'fixed', top: 6, left: 6, zIndex:9999, pointerEvents:'auto' }}>
-          <button onClick={onExit} style={{ background:'#ffcf5a', color:'#000', border:'2px solid #000', borderRadius:10, padding:'8px 14px', fontWeight:900, fontSize:12, boxShadow:'0 2px 0 #000' }}>← القائمة</button>
-        </div>
-        <div style={{ position:'fixed', top: 6, right: 6, zIndex:9999, display:'flex', gap:6, pointerEvents:'auto' }}>
-          <button onClick={onPause} style={{ background:'rgba(0,0,0,0.8)', color:'#fff', border:'1px solid #fff', borderRadius:8, padding:'8px 10px', fontSize:11 }}>{paused? '▶️':'⏸️'}</button>
-          <button onClick={()=>setShowCamMenu(v=>!v)} style={{ background:'rgba(0,0,0,0.8)', color:'#fff', border:'1px solid #fff', borderRadius:8, padding:'8px 10px', fontSize:11 }}>🎥</button>
-        </div>
         {countdown > 0 && (
   <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.72)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px', pointerEvents: 'none' }}>
     <span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>

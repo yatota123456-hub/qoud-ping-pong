@@ -676,7 +676,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 3, countdownStart: performance.now(), countdownSide: null as Player['side'] | null, effects: [] as { x: number; y: number; born: number; color: string; power: number }[]
   });
   const ballBuffer = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
-  const isOfflineMode = players.length <= 1; // 2D محلي ضد الكمبيوتر
+  const isOfflineMode = players.length <= 1; // ضد الكمبيوتر = محلي حتى على Render
   const getWorldFromClient = useCallback((clientX:number, clientY:number)=>{
     const arena = arenaRef.current; if(!arena) return {x:world.w/2,y:world.h/2};
     const rect = arena.getBoundingClientRect();
@@ -687,13 +687,14 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     return { x: dx*cos - dy*sin + world.w/2, y: dx*sin + dy*cos + world.h/2 };
   }, [world, myAngle]);
 
-  // ===== مستمع game-state مع buffer =====
+  // ===== Render Fix: تجاهل السيرفر في وضع ضد الكمبيوتر =====
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
+      if (players.length <= 1) return; // ضد الكمبيوتر = لا تنتظر Render
       if (data.ball) {
         ballBuffer.current.push({ x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, t: performance.now() });
-        if (ballBuffer.current.length > 12) ballBuffer.current.shift();
+        if (ballBuffer.current.length > 8) ballBuffer.current.shift();
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
         stateRef.current.ballTarget.vx = data.ball.vx;
@@ -767,8 +768,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           socket.sendPaddleTarget(state.targetPaddles[mySide].x, state.targetPaddles[mySide].y);
         }
 
-        // ===== إصلاح 2D - فيزياء محلية ضد الكمبيوتر + تنعيم أونلاين =====
-        // عد تنازلي محلي للـ offline
+        // ===== Render Optimized: محلي سريع ضد الكمبيوتر =====
         if (isOfflineMode && state.countdown > 0) {
           const elapsed = (now - state.countdownStart) / 1000;
           const newCount = Math.max(0, 3 - Math.floor(elapsed));
@@ -776,7 +776,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             state.countdown = newCount;
             setCountdown(newCount);
             if (newCount === 0) {
-              // إعطاء الكرة سرعة أولية
               const spd = getInitialSpeed();
               const ang = (Math.random() - 0.5) * 0.8;
               state.ball.vx = Math.sin(ang) * spd;
@@ -785,15 +784,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               state.ballTarget.vy = state.ball.vy;
             }
           }
-          // لا تحرك أثناء العد
           if (state.countdown > 0) {
-            (['top','bottom','right','left'] as const).forEach(side => {
-              if (!active(side)) return;
-              const target = state.targetPaddles[side];
-              const current = state.paddles[side];
-              current.x += (target.x - current.x) * 0.2;
-              current.y += (target.y - current.y) * 0.2;
-            });
             draw(context, state, players, now, false, world, myAngle);
             frame = requestAnimationFrame(tick);
             return;
@@ -804,105 +795,65 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           const ball = state.ball;
           const w = world.w, h = world.h;
           const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
-          // بوتات
-          const predX = ball.x + ball.vx * 10;
-          const predY = ball.y + ball.vy * 10;
+          const predX = ball.x + ball.vx * 8;
+          const predY = ball.y + ball.vy * 8;
           const diffMax = settings.difficulty === 'easy' ? 1.0 : settings.difficulty === 'hard' ? 3.0 : 2.0;
           const chase = (cur: number, target: number) => {
             const diff = target - cur;
             if (Math.abs(diff) < 1) return cur;
-            return cur + Math.max(-diffMax, Math.min(diffMax, diff * 0.15)) * delta * 2;
+            return cur + Math.max(-diffMax, Math.min(diffMax, diff * 0.12)) * delta;
           };
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side) || side === mySide) return;
             const p = state.paddles[side];
-            if (side === 'top' || side === 'bottom') {
-              p.x = Math.max(60, Math.min(w - 60, chase(p.x, predX)));
-            } else {
-              p.y = Math.max(60, Math.min(h - 60, chase(p.y, predY)));
-            }
+            if (side === 'top' || side === 'bottom') p.x = Math.max(60, Math.min(w - 60, chase(p.x, predX)));
+            else p.y = Math.max(60, Math.min(h - 60, chase(p.y, predY)));
             state.targetPaddles[side].x = p.x;
             state.targetPaddles[side].y = p.y;
           });
-
-          // حركة الكرة مع خطوات
-          const steps = 3;
-          for (let s = 0; s < steps; s++) {
-            ball.x += (ball.vx * delta) / steps;
-            ball.y += (ball.vy * delta) / steps;
-            // تصادم
-            (['top','bottom','right','left'] as const).forEach(side => {
-              if (!active(side)) return;
-              const paddle = state.paddles[side];
-              const dx = ball.x - paddle.x;
-              const dy = ball.y - paddle.y;
-              const d = Math.hypot(dx, dy);
-              if (d < HIT_DIST && d > 0.5) {
-                const nx = dx / d, ny = dy / d;
-                ball.x = paddle.x + nx * (HIT_DIST + 1);
-                ball.y = paddle.y + ny * (HIT_DIST + 1);
-                const baseSpeed = getInitialSpeed() + state.rally * 0.25;
-                if (side === 'bottom') { ball.vy = -Math.abs(baseSpeed); ball.vx = (ball.x - paddle.x) * 0.18; }
-                else if (side === 'top') { ball.vy = Math.abs(baseSpeed); ball.vx = (ball.x - paddle.x) * 0.18; }
-                else if (side === 'left') { ball.vx = Math.abs(baseSpeed); ball.vy = (ball.y - paddle.y) * 0.18; }
-                else { ball.vx = -Math.abs(baseSpeed); ball.vy = (ball.y - paddle.y) * 0.18; }
-                state.rally++; setRally(state.rally);
-              }
-            });
-          }
-
-          // أهداف
+          ball.x += ball.vx * delta * 0.5;
+          ball.y += ball.vy * delta * 0.5;
+          (['top','bottom','right','left'] as const).forEach(side => {
+            if (!active(side)) return;
+            const paddle = state.paddles[side];
+            const dx = ball.x - paddle.x, dy = ball.y - paddle.y, d = Math.hypot(dx, dy);
+            if (d < HIT_DIST && d > 0.5) {
+              const nx = dx / d, ny = dy / d;
+              ball.x = paddle.x + nx * (HIT_DIST + 1);
+              ball.y = paddle.y + ny * (HIT_DIST + 1);
+              const baseSpeed = getInitialSpeed() + state.rally * 0.2;
+              if (side === 'bottom') { ball.vy = -Math.abs(baseSpeed); ball.vx = (ball.x - paddle.x) * 0.15; }
+              else if (side === 'top') { ball.vy = Math.abs(baseSpeed); ball.vx = (ball.x - paddle.x) * 0.15; }
+              else if (side === 'left') { ball.vx = Math.abs(baseSpeed); ball.vy = (ball.y - paddle.y) * 0.15; }
+              else { ball.vx = -Math.abs(baseSpeed); ball.vy = (ball.y - paddle.y) * 0.15; }
+              state.rally++; setRally(state.rally);
+            }
+          });
           const goalW = 300;
-          const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
-          const gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
-          if (ball.y < 18) {
-            if (active('top') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
-            else { ball.y = 18; ball.vy = Math.abs(ball.vy); }
-          }
-          if (ball.y > h - 18) {
-            if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
-            else { ball.y = h - 18; ball.vy = -Math.abs(ball.vy); }
-          }
-          if (ball.x < 18) {
-            if (active('left') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
-            else { ball.x = 18; ball.vx = Math.abs(ball.vx); }
-          }
-          if (ball.x > w - 18) {
-            if (active('right') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
-            else { ball.x = w - 18; ball.vx = -Math.abs(ball.vx); }
-          }
-
-          // مضربك
-          const cur = state.paddles[mySide];
-          const tgt = state.targetPaddles[mySide];
-          cur.x += (tgt.x - cur.x) * 0.5;
-          cur.y += (tgt.y - cur.y) * 0.5;
+          const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW, gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
+          if (ball.y < 18) { if (active('top') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); } else { ball.y = 18; ball.vy = Math.abs(ball.vy); } }
+          if (ball.y > h - 18) { if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); } else { ball.y = h - 18; ball.vy = -Math.abs(ball.vy); } }
+          if (ball.x < 18) { if (active('left') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('right')); resetBall('left'); } else { ball.x = 18; ball.vx = Math.abs(ball.vx); } }
+          if (ball.x > w - 18) { if (active('right') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('left')); resetBall('right'); } else { ball.x = w - 18; ball.vx = -Math.abs(ball.vx); } }
+          const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
+          cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
         } else {
-          // أونلاين - تنعيم بدون تقطيع
           const nowMs = performance.now();
           const buf = ballBuffer.current;
-          let smoothX = state.ballTarget.x, smoothY = state.ballTarget.y, smoothVx = state.ballTarget.vx, smoothVy = state.ballTarget.vy;
+          let smoothX = state.ballTarget.x, smoothY = state.ballTarget.y;
           if (buf.length >= 2) {
             const last = buf[buf.length - 1];
             const dt = (nowMs - last.t) / 1000;
-            if (dt < 0.15) {
-              smoothX = last.x + last.vx * dt * 60;
-              smoothY = last.y + last.vy * dt * 60;
-            }
+            if (dt < 0.1) { smoothX = last.x + last.vx * dt * 30; smoothY = last.y + last.vy * dt * 30; }
           }
           const dx = smoothX - state.ball.x, dy = smoothY - state.ball.y;
-          if (Math.hypot(dx, dy) > 100) {
-            state.ball.x = smoothX; state.ball.y = smoothY;
-          } else {
-            state.ball.x += dx * 0.3;
-            state.ball.y += dy * 0.3;
-          }
-          state.ball.vx = smoothVx; state.ball.vy = smoothVy;
+          if (Math.hypot(dx, dy) > 80) { state.ball.x = smoothX; state.ball.y = smoothY; }
+          else { state.ball.x += dx * 0.25; state.ball.y += dy * 0.25; }
+          state.ball.vx = state.ballTarget.vx; state.ball.vy = state.ballTarget.vy;
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side)) return;
-            const target = state.targetPaddles[side];
-            const current = state.paddles[side];
-            const lf = side === mySide ? 0.6 : 0.25;
+            const target = state.targetPaddles[side]; const current = state.paddles[side];
+            const lf = side === mySide ? 0.5 : 0.22;
             current.x += (target.x - current.x) * lf;
             current.y += (target.y - current.y) * lf;
           });
