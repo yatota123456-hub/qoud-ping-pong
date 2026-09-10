@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { ChevronLeft, ChevronRight, LogIn, Minus, Monitor, Pause, Play, Plus, Volume2, X, Zap, ArrowLeft, Gamepad2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import  GameScreen3D from './components/GameScreen3D';
-import { socket, colyseus } from './socket';
+import { GameScreen3D } from './components/GameScreen3D';
+import { socket, colyseus } from './socket.tsx';
 
 type Screen = 'setup' | 'waiting' | 'game' | 'results';
 type StartMode = 'paddle' | 'center';
