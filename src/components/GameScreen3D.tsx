@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { ChevronLeft, ChevronRight, LogIn, Minus, Monitor, Pause, Play, Plus, Volume2, X, Zap, ArrowLeft, Gamepad2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { GameScreen3D } from './components/GameScreen3D';
-import { socket, colyseus } from './socket.tsx';
+import { socket, colyseus } from '../socket';
 
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
 type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: any; series?: any };
@@ -36,7 +35,7 @@ function getArenaWorld(playersCount: number, arenaSize: ArenaSize = 'medium') {
   return { w: baseWorld.w * scale, h: baseWorld.h * scale };
 }
 
-function GameScreen({ 
+function GameScreen3D({ 
   roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating, 
   seriesWins, currentRound, roundWinner, onGoal, onTimeUp, onPause, onExit 
 }: any) {
@@ -927,4 +926,4 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
   context.restore();
 }
 
-export { GameScreen };
+export default GameScreen3D ;
