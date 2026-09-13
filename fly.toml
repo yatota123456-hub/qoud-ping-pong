@@ -13,20 +13,27 @@ primary_region = 'fra'
   NODE_ENV = 'production'
   PORT = '2567'
 
-[http_service]
+# استبدلي [http_service] تماماً بـ [[services]]
+[[services]]
+  http_checks = []
   internal_port = 2567
-  force_https = true
-  auto_stop_machines = 'stop'
-  auto_start_machines = true
-  min_machines_running = 1 # اجعلها 1 لضمان بقاء الخادم نشطاً دائماً
+  processes = ["app"]
+  protocol = "tcp"
+  script_checks = []
+  [services.concurrency]
+    hard_limit = 25
+    soft_limit = 20
+    type = "connections"
 
+  [[services.ports]]
+    force_https = true
+    handlers = ["http"]
+    port = 80
 
-[[vm]]
-  memory = '512mb'
-  cpu_kind = 'shared'
-  cpus = 1
-  memory_mb = 512
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
 
- [experimental]
+[experimental]
   entrypoint = ["pnpm", "start"]
- 
+
