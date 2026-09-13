@@ -90,20 +90,21 @@ class ColyseusBridge {
 }
 
 function getColyseusEndpoint() {
-  // هذا هو الخادم الجديد الذي أطلقناه
-  const FLY_URL = 'wss://qoud-ping-pong-velvet-violet-1550.fly.dev';
+  // الرابط الجديد الصحيح الذي ظهر في الـ Terminal الخاص بك
+  const FLY_URL = 'wss://qoud-ping-pong-tqk-6q.fly.dev';
   
   const envUrl = (import.meta as any).env?.VITE_COLYSEUS_URL;
   if (envUrl) return envUrl;
   
-  // إذا كنا في بيئة الإنتاج، نستخدم خادم Fly.io مباشرة
+  // إذا كنا في بيئة الإنتاج، نستخدم الرابط الصحيح
   if (window.location.hostname !== 'localhost') {
     return FLY_URL;
   }
   
-  // للبيئة المحلية (localhost)
+  // للبيئة المحلية
   return `ws://${window.location.hostname}:2567`;
 }
+
 
 
 export const colyseus = new Client(getColyseusEndpoint());
