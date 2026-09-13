@@ -908,6 +908,14 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       }
       // رسم
       draw(context, state, players, now, false, world, myAngle);
+      
+      // التعديل: إذا كانت اللعبة متوقفة، لا تستمر في تحديث الإطارات للحركة، 
+      // بل استمر في الرسم فقط ليبقى المشهد ثابتاً
+      if (pausedRef.current || gameEndedRef.current) {
+        frame = requestAnimationFrame(tick);
+        return;
+      }
+
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
