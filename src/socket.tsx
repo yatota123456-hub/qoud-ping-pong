@@ -90,15 +90,21 @@ class ColyseusBridge {
 }
 
 function getColyseusEndpoint() {
+  // هذا هو الخادم الجديد الذي أطلقناه
+  const FLY_URL = 'wss://qoud-ping-pong-velvet-violet-1550.fly.dev';
+  
   const envUrl = (import.meta as any).env?.VITE_COLYSEUS_URL;
   if (envUrl) return envUrl;
-  const isHttps = window.location.protocol === 'https:';
-  const host = window.location.hostname;
-  if (isHttps) {
-    return `wss://${window.location.host}`;
+  
+  // إذا كنا في بيئة الإنتاج، نستخدم خادم Fly.io مباشرة
+  if (window.location.hostname !== 'localhost') {
+    return FLY_URL;
   }
-  return `ws://${host}:5000`;
+  
+  // للبيئة المحلية (localhost)
+  return `ws://${window.location.hostname}:2567`;
 }
+
 
 export const colyseus = new Client(getColyseusEndpoint());
 export const socket = new ColyseusBridge();
