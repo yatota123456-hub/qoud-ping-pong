@@ -840,39 +840,38 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         } else {
           const nowMs = performance.now();
           // ============================================
-          // تنعيم حركة الكرة (2D) - منطق أكثر سلاسة
+          // حركة الكرة بتقسيم الخطوات (Sub-stepping) لمنع الاختراق
           // ============================================
-          const lerpFactor = 0.25;
-          // تحديث الموقع الأساسي بناءً على السرعة
-          state.ball.x += state.ball.vx * delta;
-          state.ball.y += state.ball.vy * delta;
-          
-          // مزامنة الموقع مع الخادم لتقليل الانجراف
-          state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
-          state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
-          
-          state.ball.vx = state.ballTarget.vx;
-          state.ball.vy = state.ballTarget.vy;
+          const SUBSTEPS = 4;
+          const stepDelta = delta / SUBSTEPS;
 
-          // ============================================
-          // منع اختراق المضارب (2D)
-          // ============================================
-          const HIT_DIST = 40; 
-          (['top','bottom','right','left'] as const).forEach(side => {
-            if (!active(side)) return;
-            const paddle = state.paddles[side];
-            const dx = state.ball.x - paddle.x;
-            const dy = state.ball.y - paddle.y;
-            const dist = Math.hypot(dx, dy);
+          for (let i = 0; i < SUBSTEPS; i++) {
+            state.ball.x += state.ball.vx * stepDelta;
+            state.ball.y += state.ball.vy * stepDelta;
 
-            if (dist < HIT_DIST) {
-              const overlap = HIT_DIST - dist;
-              const nx = dx / dist;
-              const ny = dy / dist;
-              state.ball.x += nx * overlap;
-              state.ball.y += ny * overlap;
-            }
-          });
+            // كشف التصادم مع المضارب في كل خطوة صغيرة
+            const HIT_DIST = 40;
+            (['top','bottom','right','left'] as const).forEach(side => {
+              if (!active(side)) return;
+              const paddle = state.paddles[side];
+              const dx = state.ball.x - paddle.x;
+              const dy = state.ball.y - paddle.y;
+              const dist = Math.hypot(dx, dy);
+
+              if (dist < HIT_DIST) {
+                const overlap = HIT_DIST - dist;
+                state.ball.x += (dx / dist) * overlap;
+                state.ball.y += (dy / dist) * overlap;
+                // ارتداد خفيف
+                state.ball.vx *= -1;
+                state.ball.vy *= -1;
+              }
+            });
+          }
+
+          // مزامنة الموقع مع الخادم تدريجياً
+          state.ball.x += (state.ballTarget.x - state.ball.x) * 0.1;
+          state.ball.y += (state.ballTarget.y - state.ball.y) * 0.1;
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side)) return;
             const target = state.targetPaddles[side]; const current = state.paddles[side];
