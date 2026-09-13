@@ -677,23 +677,43 @@ useEffect(() => {
       if (!pausedRef.current && !gameEndedRef.current) {
         const mySide = getMySide(); 
         // ============================================
-        // لا فيزياء محلية، فقط استيفاء من ballTarget و targetPaddles
+        // فيزياء الحركة الملساء مع منع الاختراق
         // ============================================
-        const lerpFactor = 0.15;
-        const bounced =
-          (state.ball.vx !== 0 && Math.sign(state.ballTarget.vx) !== Math.sign(state.ball.vx)) ||
-          (state.ball.vy !== 0 && Math.sign(state.ballTarget.vy) !== Math.sign(state.ball.vy));
+        const lerpFactor = 0.25;
+        
+        // تحريك الكرة بناءً على السرعة الحالية
+        state.ball.x += state.ball.vx * delta;
+        state.ball.y += state.ball.vy * delta;
+
+        // دمج الموقع مع الهدف القادم من الخادم لضمان المزامنة
+        state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
+        state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
+
+        // تحديث السرعة
         state.ball.vx = state.ballTarget.vx;
         state.ball.vy = state.ballTarget.vy;
-        if (bounced) {
-          state.ball.x = state.ballTarget.x;
-          state.ball.y = state.ballTarget.y;
-        } else {
-          state.ball.x += state.ball.vx * delta;
-          state.ball.y += state.ball.vy * delta;
-          state.ball.x += (state.ballTarget.x - state.ball.x) * 0.4;
-          state.ball.y += (state.ballTarget.y - state.ball.y) * 0.4;
-        }
+
+        // منع اختراق المضارب (Collision Detection)
+        const BALL_R = 14;
+        const PADDLE_R = 26;
+        const HIT_DIST = BALL_R + PADDLE_R;
+
+        (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+          if (!activeSide(side)) return;
+          const paddle = state.paddles[side];
+          const dx = state.ball.x - paddle.x;
+          const dy = state.ball.y - paddle.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < HIT_DIST) {
+            // دفع الكرة خارج المضرب فوراً لمنع الاختراق
+            const overlap = HIT_DIST - dist;
+            const nx = dx / dist;
+            const ny = dy / dist;
+            state.ball.x += nx * overlap;
+            state.ball.y += ny * overlap;
+          }
+        });
 
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
