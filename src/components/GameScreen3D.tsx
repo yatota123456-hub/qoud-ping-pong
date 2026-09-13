@@ -911,6 +911,30 @@ useEffect(() => {
     </div>
   </div>
 )}
+        {/* زر الرجوع */}
+        <button 
+          onClick={() => window.location.reload()} 
+          style={{ 
+            position: 'absolute', 
+            top: 12, 
+            left: 12, 
+            zIndex: 100, 
+            background: '#ff2d2d', 
+            color: 'white', 
+            border: 'none', 
+            padding: '10px 14px', 
+            borderRadius: 12, 
+            fontWeight: 800, 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 6,
+            cursor: 'pointer',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+          }}
+        >
+          <ArrowLeft size={18} /> {isAr ? 'خروج' : 'Exit'}
+        </button>
+
         {showCamMenu &&!hideUI && (
           <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

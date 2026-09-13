@@ -839,17 +839,14 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
         } else {
           const nowMs = performance.now();
-          const buf = ballBuffer.current;
-          let smoothX = state.ballTarget.x, smoothY = state.ballTarget.y;
-          if (buf.length >= 2) {
-            const last = buf[buf.length - 1];
-            const dt = (nowMs - last.t) / 1000;
-            if (dt < 0.1) { smoothX = last.x + last.vx * dt * 30; smoothY = last.y + last.vy * dt * 30; }
-          }
-          const dx = smoothX - state.ball.x, dy = smoothY - state.ball.y;
-          if (Math.hypot(dx, dy) > 80) { state.ball.x = smoothX; state.ball.y = smoothY; }
-          else { state.ball.x += dx * 0.25; state.ball.y += dy * 0.25; }
-          state.ball.vx = state.ballTarget.vx; state.ball.vy = state.ballTarget.vy;
+          // ============================================
+          // تنعيم حركة الكرة (2D) - منطق أكثر سلاسة
+          // ============================================
+          const lerpFactor = 0.25;
+          state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
+          state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
+          state.ball.vx = state.ballTarget.vx;
+          state.ball.vy = state.ballTarget.vy;
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side)) return;
             const target = state.targetPaddles[side]; const current = state.paddles[side];
@@ -988,6 +985,19 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       <canvas ref={canvasRef} style={{ touchAction: 'none', width: '100%', height: '100%' }} />
       <div ref={hintDotRef} style={{ position: 'absolute', width: '14px', height: '14px', borderRadius: '50%', background: '#00e5ff', border: '2px solid #fff', display: 'none', zIndex: 20, pointerEvents: 'none', animation: 'hintPulse 1.2s infinite' }} />
       <div ref={hintTextRef} style={{ position: 'absolute', background: '#00e5ff', color: '#000', padding: '6px 12px', borderRadius: 999, fontSize: '12px', fontWeight: 900, display: 'none', zIndex: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>👆 حرك المضرب من هنا</div>
+      {/* زر خروج للجوال */}
+      <button 
+        onClick={() => window.location.reload()} 
+        style={{ 
+          position: 'absolute', top: 12, left: 12, zIndex: 100, 
+          background: 'rgba(255, 45, 45, 0.9)', color: 'white', 
+          border: 'none', padding: '8px 12px', borderRadius: 8, 
+          fontSize: '12px', fontWeight: 800, cursor: 'pointer' 
+        }}
+      >
+        {isAr ? 'خروج' : 'Exit'}
+      </button>
+
 
       {countdown > 0 && (
         <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.75)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, pointerEvents: 'none' }}>
