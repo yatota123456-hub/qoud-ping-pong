@@ -693,25 +693,41 @@ useEffect(() => {
         state.ball.vx = state.ballTarget.vx;
         state.ball.vy = state.ballTarget.vy;
 
-        // منع اختراق المضارب (Collision Detection)
-        const BALL_R = 14;
-        const PADDLE_R = 26;
-        const HIT_DIST = BALL_R + PADDLE_R;
+        // ============================================
+        // تنعيم حركة مضارب الخصوم ومنع اختراق الكرة لهم
+        // ============================================
+        const PADDLE_LERP = 0.3; // سرعة التنعيم (يمكن زيادتها لتقليل التأخير)
 
         (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
           if (!activeSide(side)) return;
+          
           const paddle = state.paddles[side];
+          const target = state.targetPaddles[side];
+
+          // 1. تنعيم حركة المضارب (إذا لم يكن المضرب هو مضرب اللاعب نفسه)
+          if (side !== getMySide()) {
+            paddle.x += (target.x - paddle.x) * PADDLE_LERP;
+            paddle.y += (target.y - paddle.y) * PADDLE_LERP;
+          }
+
+          // 2. منع اختراق الكرة للمضرب (حتى لو كان المضرب ثابتاً)
           const dx = state.ball.x - paddle.x;
           const dy = state.ball.y - paddle.y;
           const dist = Math.hypot(dx, dy);
+          const HIT_DIST = 40; // مسافة تصادم محسنة (BALL_R + PADDLE_R)
 
           if (dist < HIT_DIST) {
-            // دفع الكرة خارج المضرب فوراً لمنع الاختراق
             const overlap = HIT_DIST - dist;
             const nx = dx / dist;
             const ny = dy / dist;
+            
+            // دفع الكرة خارج نطاق المضرب
             state.ball.x += nx * overlap;
             state.ball.y += ny * overlap;
+
+            // عكس اتجاه الكرة بناءً على سرعة المضرب (إن وجد)
+            state.ball.vx = (state.ball.vx * -0.8) + (state.paddleVel[side]?.vx || 0) * 0.2;
+            state.ball.vy = (state.ball.vy * -0.8) + (state.paddleVel[side]?.vy || 0) * 0.2;
           }
         });
 
