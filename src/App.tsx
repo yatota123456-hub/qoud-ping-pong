@@ -41,7 +41,6 @@ function getArenaWorld(playersCount: number, arenaSize: ArenaSize = 'medium') {
   return { w: baseWorld.w * scale, h: baseWorld.h * scale, };
 }
 
-  const [isSocketConnecting, setIsSocketConnecting] = useState(false);
 function App() {
   const { t, i18n } = useTranslation();
   const isAr = i18n.language?.startsWith('ar')?? true;
