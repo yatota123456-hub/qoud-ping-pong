@@ -41,6 +41,7 @@ function getArenaWorld(playersCount: number, arenaSize: ArenaSize = 'medium') {
   return { w: baseWorld.w * scale, h: baseWorld.h * scale, };
 }
 
+  const [isSocketConnecting, setIsSocketConnecting] = useState(false);
 function App() {
   const { t, i18n } = useTranslation();
   const isAr = i18n.language?.startsWith('ar')?? true;
@@ -59,6 +60,7 @@ function App() {
   const [matchPaused, setMatchPaused] = useState(false);
   const [matchKey, setMatchKey] = useState(0);
   const [error, setError] = useState('');
+  const [isSocketConnecting, setIsSocketConnecting] = useState(false);
   const [isHost, setIsHost] = useState(true);
   const [roomsCount, setRoomsCount] = useState(0);
   const [celebrating, setCelebrating] = useState<Player | null>(null);
@@ -145,14 +147,18 @@ useEffect(() => {
     setCurrentRound(data.currentRound);
     setScores(data.scores);
     const w = data.winnerId ? playersRef.current.find(p=>String(p.id)===String(data.winnerId)) : null;
-        if(w) { 
+    if(w) { 
       setRoundWinner(w); 
       setCelebrating(w); 
+      // 5 ثواني للاحتفال بالجولة
+      setTimeout(() => {
+        setCelebrating(null);
+      }, 5000);
     } else {
       setLastGoal(isArRef.current ? 'تعادل في الجولة!' : 'Round Draw!');
       setTimeout(()=>setLastGoal(null), 2000);
       setCelebrating({ id: 'draw', name: isArRef.current ? 'تعادل' : 'Draw', color: '#fff', side: 'bottom', computer: false } as any);
-      setTimeout(()=>{ setCelebrating(null); }, 2500);
+      setTimeout(()=>{ setCelebrating(null); }, 5000);
     }
   };
 
@@ -207,6 +213,22 @@ useEffect(() => {
     socket.off('host-left', onHostLeft);
   };
 }, []);
+  useEffect(() => {
+    // مراقبة حالة الاتصال بالخادم
+    const onConnect = () => setIsSocketConnecting(false);
+    const onDisconnect = () => setIsSocketConnecting(true);
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+
+    // التحقق المبدئي
+    if (!socket.connected) setIsSocketConnecting(true);
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, []);
 
 
   const updateSettings = (patch: Partial<Settings>) => {
@@ -360,6 +382,15 @@ useEffect(() => {
       return updated;
     });
   }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers, settings.players, settings.vsComputer]);
+
+  if (isSocketConnecting) {
+    return (
+      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center text-white z-50">
+        <div className="text-2xl font-black mb-4">جاري الاتصال بالخادم...</div>
+        <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   if (screen === 'waiting') {
     return <WaitingRoom room={room} players={players} isHost={isHost} error={error} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
@@ -666,7 +697,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     }catch{}
   },[]);
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
-  const getInitialSpeed = useCallback(() => 2.8 + settings.ballSpeed * 0.48, [settings.ballSpeed]);
+  const getInitialSpeed = useCallback(() => 1.5 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
     ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
@@ -980,7 +1011,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     <div className="game-actions">
       <button className="game-icon" onClick={() => setSound((value) => !value)}><Volume2 size={18} /></button>
       <button className="game-icon" onClick={onPause}>{paused ? <Play size={18} /> : <Pause size={18} />}</button>
-      <button className="game-icon" onClick={onExit}><X size={18} /></button>
+      {/* --- الغاء الزر --- */}
     </div>
   </header>
 

@@ -3,16 +3,19 @@ FROM node:20-slim AS base
 WORKDIR /app
 RUN npm install -g pnpm
 
-# Install dependencies based on root files
+# Install dependencies
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 RUN pnpm install
 
-# Copy source files
+# Copy all source files
 COPY . .
 
 # Build the project
 RUN pnpm run build
 
-# Start the server
+# Expose the port
 EXPOSE 2567
-CMD ["node", "server/dist/index.js"]
+
+# تحديث المسار ليشير للمكان الذي سيتم بناء الملف فيه
+# غالباً يكون في dist/index.js أو server/dist/index.js
+CMD ["node", "dist/index.js"] 

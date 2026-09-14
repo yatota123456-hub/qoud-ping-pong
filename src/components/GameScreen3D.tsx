@@ -182,7 +182,7 @@ function getArenaWorld(count: number, size: any = 'medium') {
 }
 
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
-  const isMobileNow = isMobile || (typeof window !== 'undefined' && window.innerWidth < 768);
+  const isMobileNow = false; // forced false for all sizes
   const PRESET_BY_SIZE: any = {
     small:  { distance: 1180, height: 820 },
     medium: { distance: 1380, height: 900 },
@@ -352,7 +352,7 @@ export function GameScreen3D({
   const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('bottom');
   const isAr = i18n.language?.startsWith('ar');
 
-  const getInitialSpeed = useCallback(() => 6 + settings.ballSpeed * 0.5, [settings.ballSpeed]);
+  const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
 
   const isOfflineMode =!socket.connected || players.length <= 1;
 
@@ -674,7 +674,14 @@ useEffect(() => {
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2);
       state.last = now;
-      if (!pausedRef.current && !gameEndedRef.current) {
+      
+      // التعديل هنا: منع تحديثات الكرة والمضارب تماماً عند الإيقاف
+      if (pausedRef.current || gameEndedRef.current) {
+        requestAnimationFrame(tick);
+        return;
+      }
+
+      if (!gameEndedRef.current) {
         const mySide = getMySide(); 
         // ============================================
         // فيزياء الحركة الملساء مع منع الاختراق
@@ -850,7 +857,7 @@ useEffect(() => {
               </button>
               <button className="game-icon" onClick={onPause} style={{ background: '#111', color: '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>{paused? <Play size={18} /> : <Pause size={18} />}</button>
               <button className="game-icon" onClick={resetCamera} style={{ background: '#ffcf5a', color: '#000', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none' }}><RotateCcw size={16} /></button>
-              <button className="game-icon" onClick={onExit} style={{ background: '#111', color: '#ff6b8b', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}><X size={18} /></button>
+              {/* --- الغاء الزر --- */}
             </div>
           </header>
           <div style={{ display: 'flex', gap: '8px', padding: '10px 16px', background: '#0a0a0a', borderBottom: '1px solid #1a1a1a', overflowX: 'auto' }}>
@@ -934,6 +941,7 @@ useEffect(() => {
         >
           <ArrowLeft size={18} /> {isAr ? 'خروج' : 'Exit'}
         </button>
+{/* --- تم الغاء زر الخروج بطلب من المستخدم --- */}
 
         {showCamMenu &&!hideUI && (
           <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}>
