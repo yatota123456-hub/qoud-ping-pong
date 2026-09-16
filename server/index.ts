@@ -493,7 +493,7 @@ class QoudRoom extends Room<QoudRoomState> {
     const totalVx = ball.vx * delta;
     const totalVy = ball.vy * delta;
     const dist = Math.hypot(totalVx, totalVy);
-    const maxStep = 8;
+    const maxStep = 4;
     const steps = Math.max(1, Math.ceil(dist / maxStep));
     const stepVx = totalVx / steps;
     const stepVy = totalVy / steps;

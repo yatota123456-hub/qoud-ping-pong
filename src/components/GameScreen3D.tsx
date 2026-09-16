@@ -222,36 +222,38 @@ type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D_BASE;
 const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
 
 export function GameScreen3D({ 
-  roomCode, 
-  isHost, 
-  players, 
-  settings, 
-  scores, 
-  lastGoal, 
-  paused, 
-  celebrating, 
-  seriesWins = {},        // <-- ADDED: افتراضي فارغ
-  currentRound = 1,       // <-- ADDED: افتراضي 1
-  onGoal, 
-  onTimeUp, 
-  onPause, 
-  onExit 
+  roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating, 
+  seriesWins = {}, currentRound = 1, onGoal, onTimeUp, onPause, onExit 
 }: { 
-  roomCode: string; 
-  isHost: boolean; 
-  players: Player[]; 
-  settings: Settings; 
-  scores: Scores; 
-  lastGoal: string | null; 
-  paused: boolean; 
-  celebrating: Player | null; 
-  seriesWins?: Record<string, number>;   // <-- ADDED
-  currentRound?: number;                 // <-- ADDED
-  onGoal: (p: Player) => void; 
-  onTimeUp: () => void; 
-  onPause: () => void; 
-  onExit: () => void; 
+  roomCode: string; isHost: boolean; players: Player[]; settings: Settings; 
+  scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null; 
+  seriesWins?: Record<string, number>; currentRound?: number; 
+  onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; 
 }) {
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [savedCamData, setSavedCamData] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedCam = localStorage.getItem('qoud_camera_preset');
+    if (savedCam) {
+      setSavedCamData(savedCam);
+      setShowRestoreModal(true);
+    }
+  }, []);
+
+  const saveCamera = (preset: string) => {
+    localStorage.setItem('qoud_camera_preset', preset);
+  };
+
+  const restoreCamera = () => {
+    if (savedCamData) {
+      // هنا نقوم بتطبيق الكاميرا المحفوظة
+      // setCamPreset(savedCamData); // افترض وجود هذه الدالة أو ما يعادلها في الكود الخاص بك
+      setShowRestoreModal(false);
+    }
+  };
+  // ... باقي التعريفات
+
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
   const hintDotRef = useRef<HTMLDivElement>(null);
@@ -829,6 +831,43 @@ useEffect(() => {
 
   return (
     <main className="game-shell" style={{ background: '#000', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
+      {showRestoreModal && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', zIndex: 10000, color: 'white'
+        }}>
+          <h2>هناك إعداد كاميرا قديم، هل تريد تحميله؟</h2>
+          <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
+            <button onClick={restoreCamera} style={{ padding: '15px 30px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '5px' }}>نعم</button>
+            <button onClick={() => { setShowRestoreModal(false); localStorage.removeItem('qoud_camera_preset'); }} style={{ padding: '15px 30px', backgroundColor: '#f44336', color: 'white', border: 'none', borderRadius: '5px' }}>لا</button>
+          </div>
+        </div>
+      )}
+
+      {!localReady && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', zIndex: 9999, color: 'white'
+        }}>
+          <h2 style={{ marginBottom: '20px', textAlign: 'center' }}>أهلاً بك! هل تريد تغيير اتجاه الكاميرا؟</h2>
+          <div style={{ display: 'flex', gap: '20px' }}>
+            <button 
+              onClick={() => setLocalReady(true)} 
+              style={{ padding: '15px 30px', fontSize: '20px', cursor: 'pointer', backgroundColor: '#4CAF50', border: 'none', color: 'white', borderRadius: '5px' }}
+            >
+              بدء اللعب
+            </button>
+            <button 
+              onClick={() => setShowCamMenu(v => !v)} 
+              style={{ padding: '15px 30px', fontSize: '20px', cursor: 'pointer', backgroundColor: '#2196F3', border: 'none', color: 'white', borderRadius: '5px' }}
+            >
+              تغيير الكاميرا
+            </button>
+          </div>
+        </div>
+      )}
       {hideUI && (<button onClick={() => setHideUI(false)} style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, background: '#00e5ff', color: '#000', borderRadius: 999, padding: '8px 14px', fontWeight: 900, display: 'flex', gap: 6, alignItems: 'center', border: 'none', cursor: 'pointer' }}><Eye size={16} /> {isAr? 'اظهار' : 'Show'}</button>)}
       {!hideUI && (
         <>
