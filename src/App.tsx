@@ -847,11 +847,12 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               const nx = dx / d, ny = dy / d;
               ball.x = paddle.x + nx * (HIT_DIST + 1);
               ball.y = paddle.y + ny * (HIT_DIST + 1);
-              const baseSpeed = getInitialSpeed() + state.rally * 0.2;
-              if (side === 'bottom') { ball.vy = -Math.abs(baseSpeed); ball.vx = (ball.x - paddle.x) * 0.15; }
-              else if (side === 'top') { ball.vy = Math.abs(baseSpeed); ball.vx = (ball.x - paddle.x) * 0.15; }
-              else if (side === 'left') { ball.vx = Math.abs(baseSpeed); ball.vy = (ball.y - paddle.y) * 0.15; }
-              else { ball.vx = -Math.abs(baseSpeed); ball.vy = (ball.y - paddle.y) * 0.15; }
+              const curSpd = Math.hypot(ball.vx, ball.vy);
+              const targetSpd = Math.max(curSpd, getInitialSpeed()) + 0.6;
+              if (side === 'bottom') { ball.vy = -Math.abs(targetSpd); ball.vx = (ball.x - paddle.x) * 0.15; }
+              else if (side === 'top') { ball.vy = Math.abs(targetSpd); ball.vx = (ball.x - paddle.x) * 0.15; }
+              else if (side === 'left') { ball.vx = Math.abs(targetSpd); ball.vy = (ball.y - paddle.y) * 0.15; }
+              else { ball.vx = -Math.abs(targetSpd); ball.vy = (ball.y - paddle.y) * 0.15; }
               state.rally++; setRally(state.rally);
             }
           });

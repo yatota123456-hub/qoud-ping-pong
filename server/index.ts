@@ -314,16 +314,16 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private launchBall(fromServe = false, side: PlayerSide = 'bottom') {
-    const speed = 6 + Number(this.settings.ballSpeed || 10) * 0.5;
+    const speed = 3.5 + Number(this.settings.ballSpeed || 10) * 0.15;
     if (fromServe) {
       const ang = (Math.random() - 0.5) * 0.8;
       const paddle = this.state.paddles.get(side)!;
       this.state.ball.x = paddle.x;
       this.state.ball.y = paddle.y;
-      if (side === 'bottom') { this.state.ball.vx = Math.sin(ang) * speed; this.state.ball.vy = -Math.abs(Math.cos(ang) * speed) - 1; }
-      else if (side === 'top') { this.state.ball.vx = Math.sin(ang) * speed; this.state.ball.vy = Math.abs(Math.cos(ang) * speed) + 1; }
-      else if (side === 'left') { this.state.ball.vx = Math.abs(Math.cos(ang) * speed) + 1; this.state.ball.vy = Math.sin(ang) * speed; }
-      else { this.state.ball.vx = -Math.abs(Math.cos(ang) * speed) - 1; this.state.ball.vy = Math.sin(ang) * speed; }
+      if (side === 'bottom') { this.state.ball.vx = Math.sin(ang) * speed; this.state.ball.vy = -Math.abs(Math.cos(ang) * speed); }
+      else if (side === 'top') { this.state.ball.vx = Math.sin(ang) * speed; this.state.ball.vy = Math.abs(Math.cos(ang) * speed); }
+      else if (side === 'left') { this.state.ball.vx = Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed; }
+      else { this.state.ball.vx = -Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed; }
     } else {
       const dirY = Math.random() > 0.5 ? 1 : -1;
       const ang = (Math.random() - 0.5) * 0.8;
@@ -554,7 +554,11 @@ class QoudRoom extends Room<QoudRoomState> {
         ball.x = paddle.x + bestHit.nx * (HIT_DIST + 1.5);
         ball.y = paddle.y + bestHit.ny * (HIT_DIST + 1.5);
 
-        const baseSpeed = 7 + Number(this.settings.ballSpeed || 10) * 0.6 + this.state.rally * 0.4;
+        // قياس السرعة الحالية للكرة قبل الضرب
+        const currentSpeed = Math.hypot(ball.vx, ball.vy);
+        const minHitSpeed = 3.5 + Number(this.settings.ballSpeed || 10) * 0.15;
+        const startSpd = Math.max(currentSpeed, minHitSpeed);
+
         const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
 
         let relVx = ball.vx - pVel.vx;
@@ -565,32 +569,33 @@ class QoudRoom extends Room<QoudRoomState> {
           relVy -= 2 * dot * bestHit.ny;
         }
 
-        const paddleKick = Math.min(paddleSpeed, 22) * 1.4;
-        let newVx: number, newVy: number;
+        // زيادة تدريجية سلسة ومحكومة (مثلاً 0.5 إلى 1.2 كحد أقصى للزيادة في الضربة الواحدة)
+        const speedIncrement = Math.min(1.5, 0.5 + Math.min(paddleSpeed, 15) * 0.05);
+        let targetSpeed = startSpd + speedIncrement;
+
+        // الحد الأقصى للسرعة
+        const maxAllowedSpeed = 16 + Number(this.settings.ballSpeed || 10) * 0.5;
+        targetSpeed = Math.min(targetSpeed, maxAllowedSpeed);
+
+        let dirVx: number, dirVy: number;
         if (side === 'bottom') {
-          newVy = -(baseSpeed + paddleKick * 0.5);
-          newVx = relVx * 0.6 + pVel.vx * 1.1;
+          dirVy = -Math.abs(relVy * 0.4 + 4);
+          dirVx = relVx * 0.5 + pVel.vx * 0.8;
         } else if (side === 'top') {
-          newVy = (baseSpeed + paddleKick * 0.5);
-          newVx = relVx * 0.6 + pVel.vx * 1.1;
+          dirVy = Math.abs(relVy * 0.4 + 4);
+          dirVx = relVx * 0.5 + pVel.vx * 0.8;
         } else if (side === 'left') {
-          newVx = (baseSpeed + paddleKick * 0.5);
-          newVy = relVy * 0.6 + pVel.vy * 1.1;
+          dirVx = Math.abs(relVx * 0.4 + 4);
+          dirVy = relVy * 0.5 + pVel.vy * 0.8;
         } else {
-          newVx = -(baseSpeed + paddleKick * 0.5);
-          newVy = relVy * 0.6 + pVel.vy * 1.1;
+          dirVx = -Math.abs(relVx * 0.4 + 4);
+          dirVy = relVy * 0.5 + pVel.vy * 0.8;
         }
 
-        const maxSpeed = 28 + Number(this.settings.ballSpeed || 10) * 1.2 + this.state.rally * 0.5;
-        const curSp = Math.hypot(newVx, newVy);
-        if (curSp > maxSpeed) {
-          const s = maxSpeed / curSp;
-          newVx *= s;
-          newVy *= s;
-        }
+        const dirMag = Math.hypot(dirVx, dirVy) || 1;
+        ball.vx = (dirVx / dirMag) * targetSpeed;
+        ball.vy = (dirVy / dirMag) * targetSpeed;
 
-        ball.vx = newVx;
-        ball.vy = newVy;
         this.state.rally += 1;
         this.lastHitSide = side;
         this.lastHitTime = Date.now();
