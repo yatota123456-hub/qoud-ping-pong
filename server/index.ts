@@ -592,9 +592,11 @@ class QoudRoom extends Room<QoudRoomState> {
           dirVy = relVy * 0.5 + pVel.vy * 0.8;
         }
 
-        const dirMag = Math.hypot(dirVx, dirVy) || 1;
-        ball.vx = (dirVx / dirMag) * targetSpeed;
-        ball.vy = (dirVy / dirMag) * targetSpeed;
+        const dirMag = Math.hypot(dirVx, dirVy);
+        if (dirMag > 0) {
+          ball.vx = (dirVx / dirMag) * targetSpeed;
+          ball.vy = (dirVy / dirMag) * targetSpeed;
+        }
 
         this.state.rally += 1;
         this.lastHitSide = side;
