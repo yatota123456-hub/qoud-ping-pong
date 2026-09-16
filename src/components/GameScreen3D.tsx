@@ -230,6 +230,7 @@ export function GameScreen3D({
   seriesWins?: Record<string, number>; currentRound?: number; 
   onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; 
 }) {
+  const [localReady, setLocalReady] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
 
