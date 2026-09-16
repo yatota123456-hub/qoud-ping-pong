@@ -577,19 +577,16 @@ class QoudRoom extends Room<QoudRoomState> {
         const maxAllowedSpeed = 16 + Number(this.settings.ballSpeed || 10) * 0.5;
         targetSpeed = Math.min(targetSpeed, maxAllowedSpeed);
 
-        let dirVx: number, dirVy: number;
-        if (side === 'bottom') {
-          dirVy = -Math.abs(relVy * 0.4 + 4);
-          dirVx = relVx * 0.5 + pVel.vx * 0.8;
-        } else if (side === 'top') {
-          dirVy = Math.abs(relVy * 0.4 + 4);
-          dirVx = relVx * 0.5 + pVel.vx * 0.8;
-        } else if (side === 'left') {
-          dirVx = Math.abs(relVx * 0.4 + 4);
-          dirVy = relVy * 0.5 + pVel.vy * 0.8;
-        } else {
-          dirVx = -Math.abs(relVx * 0.4 + 4);
-          dirVy = relVy * 0.5 + pVel.vy * 0.8;
+        // تحديد اتجاه الحركة المرتدة بناءً على متجه التصادم الطبيعي وسرعة المضرب
+        // هذا يضمن أن الكرة دائماً ترتد مبتعدة عن مركز المضرب لمنع الاختراق، وتتحرك بالاتجاه الحقيقي للضربة
+        let dirVx = bestHit.nx * 0.75 + pVel.vx * 0.25;
+        let dirVy = bestHit.ny * 0.75 + pVel.vy * 0.25;
+
+        // نضمن أن المتجه يشير دائماً إلى خارج المضرب لتجنب أي فرصة للاختراق
+        const normalDot = dirVx * bestHit.nx + dirVy * bestHit.ny;
+        if (normalDot < 0.1) {
+          dirVx = bestHit.nx * 0.9 + pVel.vx * 0.1;
+          dirVy = bestHit.ny * 0.9 + pVel.vy * 0.1;
         }
 
         const dirMag = Math.hypot(dirVx, dirVy);

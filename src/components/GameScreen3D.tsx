@@ -678,8 +678,8 @@ useEffect(() => {
       const delta = Math.min((now - state.last) / 16.67, 2);
       state.last = now;
       
-      // التعديل هنا: منع تحديثات الكرة والمضارب تماماً عند الإيقاف
-      if (pausedRef.current || gameEndedRef.current) {
+      // التعديل هنا: منع تحديثات الكرة والمضارب والعداد تماماً إذا لم يبدأ اللاعب بعد أو عند الإيقاف
+      if (!localReady || pausedRef.current || gameEndedRef.current) {
         requestAnimationFrame(tick);
         return;
       }
@@ -848,21 +848,27 @@ useEffect(() => {
 
       {!localReady && (
         <div style={{
-          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-          backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', zIndex: 9999, color: 'white'
+          position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+          width: 'calc(100% - 32px)', maxWidth: '480px',
+          backgroundColor: 'rgba(12, 12, 16, 0.92)', backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255,255,255,0.15)', borderRadius: '20px', padding: '16px 20px',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', zIndex: 9999, color: 'white',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.8)'
         }}>
-          <h2 style={{ marginBottom: '20px', textAlign: 'center' }}>أهلاً بك! هل تريد تغيير اتجاه الكاميرا؟</h2>
-          <div style={{ display: 'flex', gap: '20px' }}>
+          <h3 style={{ marginBottom: '14px', textAlign: 'center', fontSize: '16px', fontWeight: 'bold' }}>
+            أهلاً بك! هل تريد تغيير اتجاه الكاميرا؟
+          </h3>
+          <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
             <button 
               onClick={() => setLocalReady(true)} 
-              style={{ padding: '15px 30px', fontSize: '20px', cursor: 'pointer', backgroundColor: '#4CAF50', border: 'none', color: 'white', borderRadius: '5px' }}
+              style={{ flex: 1, padding: '12px 16px', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#4CAF50', border: 'none', color: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(76,175,80,0.4)', transition: 'all 0.2s' }}
             >
               بدء اللعب
             </button>
             <button 
               onClick={() => setShowCamMenu(v => !v)} 
-              style={{ padding: '15px 30px', fontSize: '20px', cursor: 'pointer', backgroundColor: '#2196F3', border: 'none', color: 'white', borderRadius: '5px' }}
+              style={{ flex: 1, padding: '12px 16px', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#2196F3', border: 'none', color: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(33,150,243,0.4)', transition: 'all 0.2s' }}
             >
               تغيير الكاميرا
             </button>
@@ -983,8 +989,8 @@ useEffect(() => {
         </button>
 {/* --- تم الغاء زر الخروج بطلب من المستخدم --- */}
 
-        {showCamMenu &&!hideUI && (
-          <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, background: 'rgba(10,10,10,0.94)', backdropFilter: 'blur(14px)', border: '1px solid #222', borderRadius: 16, padding: 14, width: 300, color: '#fff', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {showCamMenu && !hideUI && (
+          <div style={{ position: 'absolute', bottom: 85, left: '50%', transform: 'translateX(-50%)', zIndex: 9998, background: 'rgba(10,10,12,0.94)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, padding: 14, width: 'calc(100% - 32px)', maxWidth: 360, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', color: '#fff', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b>
               <button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button>
