@@ -59,7 +59,7 @@ function App() {
   const [matchPaused, setMatchPaused] = useState(false);
   const [matchKey, setMatchKey] = useState(0);
   const [error, setError] = useState('');
-  const [isSocketConnecting, setIsSocketConnecting] = useState(false);
+  const [isConnectingRoom, setIsConnectingRoom] = useState(false);
   const [isHost, setIsHost] = useState(true);
   const [roomsCount, setRoomsCount] = useState(0);
   const [celebrating, setCelebrating] = useState<Player | null>(null);
@@ -83,7 +83,11 @@ function App() {
   useEffect(() => { celebratingRef.current = celebrating; }, [celebrating]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { currentRoundRef.current = currentRound; }, [currentRound]);
-  useEffect(() => { void fetch('/api/rooms').then(r => r.ok? r.json() : null).then((d: any) => { if (d?.count!== undefined) setRoomsCount(d.count); }).catch(() => {}); }, []);
+  useEffect(() => {
+    // استيقاظ الخادم مبكراً في الخلفية لتسريع الاتصال عند إنشاء/انضمام غرفة
+    void fetch('/health').catch(() => {});
+    void fetch('/api/rooms').then(r => r.ok? r.json() : null).then((d: any) => { if (d?.count!== undefined) setRoomsCount(d.count); }).catch(() => {});
+  }, []);
 
  // هذا هو الـ useEffect المصحح كامل - انسخ هذا واستبدل الـ useEffect القديم كله في App.tsx
 
@@ -255,11 +259,13 @@ useEffect(() => {
     if (new Set(trimmed).size!== trimmed.length) { setError(isAr? 'الاسماء لازم مختلفة' : 'Names must be unique'); return; }
     localStorage.setItem('qoud-ping-pong-settings', JSON.stringify(settings));
     const allPlayers = makePlayers();
+    setIsConnectingRoom(true);
     try {
       const roomCode = randomRoom();
       const colyseusRoom = await colyseus.create('qoud', { code: roomCode, maxPlayers: allPlayers.length, settings, player: allPlayers[0], computerPlayers: allPlayers.slice(1).filter(p=>p.computer), name: allPlayers[0].name, });
       socket.attach(colyseusRoom); setRoom(roomCode); setIsHost(true); setError(''); setScreen('waiting');
     } catch (cause) { setError(cause instanceof Error? cause.message : (isAr? 'تعذر انشاء الغرفة' : 'Could not create room')); }
+    finally { setIsConnectingRoom(false); }
   };
   const joinByCode = async (customName?: string) => {
     const code = joinCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
@@ -267,6 +273,7 @@ useEffect(() => {
     const finalName = (customName || joinName || localStorage.getItem('qoud_name') || names[0] || 'لاعب').trim().slice(0, 15);
     if (finalName.length < 2) { setError(isAr? 'اكتب اسمك أولاً' : 'Write your name first'); return; }
     localStorage.setItem('qoud_name', finalName);
+    setIsConnectingRoom(true);
     try {
       const lookup = await fetch(`/api/rooms?code=${encodeURIComponent(code)}`);
       if (!lookup.ok) throw new Error(isAr? 'الغرفة غير موجودة' : 'Room not found');
@@ -274,6 +281,7 @@ useEffect(() => {
       const colyseusRoom = await colyseus.joinById(roomId, { name: finalName });
       socket.attach(colyseusRoom); setRoom(code); setIsHost(false); setError(''); setScreen('waiting');
     } catch (cause) { setError(cause instanceof Error? cause.message : 'تعذر الانضمام'); }
+    finally { setIsConnectingRoom(false); }
   };
   const leaveWaiting = () => { void socket.leave(); setPlayers([]); setError(''); setScreen('setup'); };
   const leaveMatch = useCallback(() => { void socket.leave(); setPlayers([]); setScreen('setup'); setMatchPaused(false); setCelebrating(null); }, []);
@@ -382,15 +390,6 @@ useEffect(() => {
     });
   }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers, settings.players, settings.vsComputer]);
 
-  if (isSocketConnecting) {
-    return (
-      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center text-white z-50">
-        <div className="text-2xl font-black mb-4">جاري الاتصال بالخادم...</div>
-        <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
   if (screen === 'waiting') {
     return <WaitingRoom room={room} players={players} isHost={isHost} error={error} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
   }
@@ -403,7 +402,7 @@ useEffect(() => {
   if (screen === 'results') {
     return <ResultsScreen players={players} scores={scores} winner={winner} wins={wins} seriesWins={seriesWins} currentRound={currentRound} settings={settings} onAgain={startMatch} onHome={() => { void socket.leave(); setPlayers([]); setScreen('setup'); setSeriesWins({}); setCurrentRound(1); }} />;
   }
-  return <SetupScreen settings={settings} names={names} roomsCount={roomsCount} joinCode={joinCode} joinName={joinName} setJoinName={setJoinName} computers={computers} error={error} onChangeName={(index: number, value: string) => setNames((current) => current.map((name, item) => item === index? value : name))} onChangeSettings={updateSettings} onToggleComputer={(idx: number) => { if (idx === 0) return; setComputers(prev => prev.map((c, i) => i === idx?!c : c)); }} onJoinCodeChange={setJoinCode} onJoin={joinByCode} onCreate={enterWaiting} />;
+  return <SetupScreen settings={settings} names={names} roomsCount={roomsCount} joinCode={joinCode} joinName={joinName} setJoinName={setJoinName} computers={computers} error={error} isConnectingRoom={isConnectingRoom} onChangeName={(index: number, value: string) => setNames((current) => current.map((name, item) => item === index? value : name))} onChangeSettings={updateSettings} onToggleComputer={(idx: number) => { if (idx === 0) return; setComputers(prev => prev.map((c, i) => i === idx?!c : c)); }} onJoinCodeChange={setJoinCode} onJoin={joinByCode} onCreate={enterWaiting} />;
 }
 
 function Brand() {
