@@ -218,14 +218,11 @@ useEffect(() => {
 }, []);
   useEffect(() => {
     // مراقبة حالة الاتصال بالخادم
-    const onConnect = () => setIsSocketConnecting(false);
-    const onDisconnect = () => setIsSocketConnecting(true);
+    const onConnect = () => setIsConnectingRoom(false);
+    const onDisconnect = () => {};
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
-
-    // التحقق المبدئي
-    if (!socket.connected) setIsSocketConnecting(true);
 
     return () => {
       socket.off('connect', onConnect);
