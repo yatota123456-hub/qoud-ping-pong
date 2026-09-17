@@ -35,27 +35,62 @@ function createAirHockeySurface(worldW: number, worldH: number) {
       ctx.fill();
     }
   }
-  ctx.strokeStyle = 'rgba(255, 45, 45, 0.9)';
-  ctx.lineWidth = 8;
-  ctx.setLineDash([40, 30]);
+  // خط المنتصف - مثل الصورة - أحمر متقطع رفيع
+  ctx.strokeStyle = 'rgba(255, 60, 60, 0.85)';
+  ctx.lineWidth = 4;
+  ctx.setLineDash([30, 20]);
   ctx.beginPath();
   ctx.moveTo(0, canvas.height/2);
   ctx.lineTo(canvas.width, canvas.height/2);
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.strokeStyle = 'rgba(255, 45, 45, 0.95)';
-  ctx.lineWidth = 10;
-  const goalRadius = 280;
+
+  // الأهداف - تكبير كبير مثل الصورة المرفقة - أقواس حمراء كبيرة
+  ctx.strokeStyle = 'rgba(255, 30, 30, 0.95)';
+  ctx.lineWidth = 6;
+  const goalRadius = 420; // تكبير كبير مثل الصورة - كان 280
+  const goalLineWidth = 420 * 0.9; // عرض منطقة الهدف
+  // هدف علوي - قوس كبير أحمر
   ctx.beginPath();
   ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
   ctx.stroke();
+  // هدف سفلي
   ctx.beginPath();
   ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
   ctx.stroke();
-  ctx.strokeStyle = 'rgba(255, 45, 45, 0.4)';
-  ctx.lineWidth = 4;
+  
+  // إضافة تعبئة شفافة داخل الأهداف لإبرازها مثل الصورة
+  ctx.fillStyle = 'rgba(255, 50, 50, 0.06)';
   ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height/2, 80, 0, Math.PI*2);
+  ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
+  ctx.lineTo(canvas.width/2 + goalRadius, 0);
+  ctx.lineTo(canvas.width/2 - goalRadius, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
+  ctx.lineTo(canvas.width/2 - goalRadius, canvas.height);
+  ctx.lineTo(canvas.width/2 + goalRadius, canvas.height);
+  ctx.closePath();
+  ctx.fill();
+
+  // أهداف جانبية للـ 4 لاعبين - مربعة
+  if (worldW >= 900 || true) {
+    const sideGoalRadius = 360;
+    ctx.strokeStyle = 'rgba(255, 30, 30, 0.9)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(0, canvas.height/2, sideGoalRadius, -Math.PI/2, Math.PI/2, false);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(canvas.width, canvas.height/2, sideGoalRadius, Math.PI/2, -Math.PI/2, false);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(255, 45, 45, 0.35)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, canvas.height/2, 70, 0, Math.PI*2);
   ctx.stroke();
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.ClampToEdgeWrapping;
@@ -179,9 +214,9 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   const outerTube = new THREE.Mesh(outerGeo, outerMat);
   outerTube.position.y = 26;
   group.add(outerTube);
-  // الأهداف - مهمة جداً
-  const goalW = 260;
-  const goalH = 32;
+  // الأهداف - تكبير كبير مثل الصورة المرفقة - مهمة جداً
+  const goalW = Math.max(380, worldW * 0.48); // تكبير كبير - كان 260
+  const goalH = 36;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
   goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2);
@@ -189,11 +224,19 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
   goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2);
   group.add(goalBottom);
+  // إضافة إضاءة حمراء داخل الأهداف مثل الصورة
+  const goalLightTop = new THREE.PointLight(0xff1a1a, 0.8, 250);
+  goalLightTop.position.set(worldW/2, bezelY, -bezelThickness/2);
+  group.add(goalLightTop);
+  const goalLightBottom = new THREE.PointLight(0xff1a1a, 0.8, 250);
+  goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
+  group.add(goalLightBottom);
   if (worldW >= 900) {
-    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
+    const sideGoalW = Math.max(320, worldH * 0.42);
+    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, sideGoalW), goalMat);
     goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
     group.add(goalLeft);
-    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
+    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, sideGoalW), goalMat);
     goalRight.position.set(worldW + bezelThickness/2, bezelY+2, worldH/2);
     group.add(goalRight);
   }
@@ -254,32 +297,40 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     glowMesh.position.set(p.x, bezelY + bezelHeight/2 + 2, p.z);
     group.add(glowMesh);
   });
-  // الأهداف - تمت إضافتها الآن
-  const goalW = 280;
-  const goalH = 28;
-  const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.2, metalness: 0.1, emissive: '#111111', emissiveIntensity: 0.1 });
-  // هدف علوي
-  const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 4), goalMat);
-  goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2 - 2);
+  // الأهداف - تكبير كبير مثل الصورة المرفقة - تمت إضافتها الآن
+  const goalW = Math.max(420, worldW * 0.52); // تكبير كبير مثل الصورة - كان 280
+  const goalH = 32;
+  const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.2, metalness: 0.1, emissive: '#111111', emissiveIntensity: 0.15 });
+  // هدف علوي - كبير مثل الصورة
+  const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 6), goalMat);
+  goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2 - 3);
   group.add(goalTop);
-  // هدف سفلي
-  const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 4), goalMat);
-  goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2 + 2);
+  // هدف سفلي - كبير مثل الصورة
+  const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 6), goalMat);
+  goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2 + 3);
   group.add(goalBottom);
-  // إضاءة خافتة داخل الهدف
-  const goalLightTop = new THREE.PointLight(0xff0000, 0.5, 200);
+  // إضاءة حمراء قوية داخل الهدف مثل الصورة
+  const goalLightTop = new THREE.PointLight(0xff1a1a, 0.9, 300);
   goalLightTop.position.set(worldW/2, bezelY, -bezelThickness/2);
   group.add(goalLightTop);
-  const goalLightBottom = new THREE.PointLight(0xff0000, 0.5, 200);
+  const goalLightBottom = new THREE.PointLight(0xff1a1a, 0.9, 300);
   goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
   group.add(goalLightBottom);
-  if (worldW >= 900) {
-    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 4, goalH, goalW), goalMat);
-    goalLeft.position.set(-bezelThickness/2 - 2, bezelY+2, worldH/2);
+  if (worldW >= 800) {
+    const sideGoalW = Math.max(380, worldH * 0.48);
+    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 6, goalH, sideGoalW), goalMat);
+    goalLeft.position.set(-bezelThickness/2 - 3, bezelY+2, worldH/2);
     group.add(goalLeft);
-    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 4, goalH, goalW), goalMat);
-    goalRight.position.set(worldW + bezelThickness/2 + 2, bezelY+2, worldH/2);
+    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 6, goalH, sideGoalW), goalMat);
+    goalRight.position.set(worldW + bezelThickness/2 + 3, bezelY+2, worldH/2);
     group.add(goalRight);
+    // إضاءة جانبية
+    const leftLight = new THREE.PointLight(0xff1a1a, 0.7, 250);
+    leftLight.position.set(-bezelThickness/2, bezelY, worldH/2);
+    group.add(leftLight);
+    const rightLight = new THREE.PointLight(0xff1a1a, 0.7, 250);
+    rightLight.position.set(worldW + bezelThickness/2, bezelY, worldH/2);
+    group.add(rightLight);
   }
   const innerLineMat = new THREE.MeshBasicMaterial({ color: '#ff0000', transparent: true, opacity: 0.9 });
   const lineThickness = 3;
@@ -653,26 +704,35 @@ export function GameScreen3D({
       if (raycaster.ray.intersectPlane(plane, target)) {
         let tx = target.x;
         let tz = target.z;
+        // تحديد عدد اللاعبين لتحديد مدى التقدم - 4 لاعبين مربعة يتقدم قليلاً فقط
+        const needCount = Math.max(2, players.length, settings.players || 2);
+        const isFourPlayers = needCount >= 3; // مربعة 4 لاعبين
+        // للـ 4 لاعبين: تقدم قليل جداً (22% و 78%)، للـ 2 لاعبين: تقدم أكبر (38% و 62%)
+        const topLimit = isFourPlayers ? world.h * 0.22 : world.h * 0.38;
+        const bottomLimit = isFourPlayers ? world.h * 0.78 : world.h * 0.62;
+        const leftLimit = isFourPlayers ? world.w * 0.22 : world.w * 0.38;
+        const rightLimit = isFourPlayers ? world.w * 0.78 : world.w * 0.62;
+
         if (mySide === 'top') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz + OFFSET, 45, world.h * 0.38);
+          const clampedZ = clamp(tz + OFFSET, 45, topLimit);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'bottom') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, world.h * 0.62, world.h - 45);
+          const clampedZ = clamp(tz - OFFSET, bottomLimit, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'left') {
-          const clampedX = clamp(tx + OFFSET, 45, world.w * 0.38);
+          const clampedX = clamp(tx + OFFSET, 45, leftLimit);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'right') {
-          const clampedX = clamp(tx - OFFSET, world.w * 0.62, world.w - 45);
+          const clampedX = clamp(tx - OFFSET, rightLimit, world.w - 45);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
@@ -886,16 +946,17 @@ export function GameScreen3D({
               if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
             }
 
-            // اصطدام بالجدران (ليس الأهداف)
-            const goalHalfW = 140;
+            // اصطدام بالجدران (ليس الأهداف) - الأهداف كبيرة الآن مثل الصورة
+            const goalHalfW = Math.max(210, world.w * 0.26); // تكبير مثل الصورة - كان 140
+            const sideGoalHalfW = Math.max(190, world.h * 0.24);
             const leftBound = BALL_RADIUS;
             const rightBound = world.w - BALL_RADIUS;
             const topBound = BALL_RADIUS;
             const bottomBound = world.h - BALL_RADIUS;
             
-            // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين
+            // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين - الأهداف كبيرة الآن
             if (state.ball.x < leftBound) {
-              if (needPlayers < 3 || Math.abs(state.ball.y - world.h/2) > goalHalfW) {
+              if (needPlayers < 3 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
                 state.ball.x = leftBound;
                 state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
                 // تغيير مسار عشوائي بسيط لمنع التعلق
@@ -903,13 +964,13 @@ export function GameScreen3D({
               }
             }
             if (state.ball.x > rightBound) {
-              if (needPlayers < 3 || Math.abs(state.ball.y - world.h/2) > goalHalfW) {
+              if (needPlayers < 3 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
                 state.ball.x = rightBound;
                 state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
                 state.ball.vy += (Math.random() - 0.5) * 1.5;
               }
             }
-            // جدران فوق وتحت - مع استثناء الأهداف
+            // جدران فوق وتحت - مع استثناء الأهداف - الأهداف كبيرة الآن مثل الصورة
             if (state.ball.y < topBound) {
               if (Math.abs(state.ball.x - world.w/2) > goalHalfW) {
                 state.ball.y = topBound;
