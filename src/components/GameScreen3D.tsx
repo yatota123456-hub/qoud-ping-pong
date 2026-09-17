@@ -852,30 +852,35 @@ useEffect(() => {
 
       {!localReady && (
         <div style={{
-          position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-          width: 'calc(100% - 32px)', maxWidth: '480px',
-          backgroundColor: 'rgba(12, 12, 16, 0.92)', backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255,255,255,0.15)', borderRadius: '20px', padding: '16px 20px',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', zIndex: 9999, color: 'white',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.8)'
+          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9997, backdropFilter: 'blur(2px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          <h3 style={{ marginBottom: '14px', textAlign: 'center', fontSize: '16px', fontWeight: 'bold' }}>
-            أهلاً بك! هل تريد تغيير اتجاه الكاميرا؟
-          </h3>
-          <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
-            <button 
-              onClick={() => setLocalReady(true)} 
-              style={{ flex: 1, padding: '12px 16px', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#4CAF50', border: 'none', color: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(76,175,80,0.4)', transition: 'all 0.2s' }}
-            >
-              بدء اللعب
-            </button>
-            <button 
-              onClick={() => setShowCamMenu(v => !v)} 
-              style={{ flex: 1, padding: '12px 16px', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#2196F3', border: 'none', color: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(33,150,243,0.4)', transition: 'all 0.2s' }}
-            >
-              تغيير الكاميرا
-            </button>
+          <div style={{
+            width: 'calc(100% - 32px)', maxWidth: '480px',
+            backgroundColor: 'rgba(12, 12, 16, 0.95)', backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.15)', borderRadius: '20px', padding: '24px',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', zIndex: 9999, color: 'white',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.8)'
+          }}>
+            <h3 style={{ marginBottom: '20px', textAlign: 'center', fontSize: '18px', fontWeight: 'bold' }}>
+              اضبط الكاميرا ثم ابدأ اللعب
+            </h3>
+            <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+              <button 
+                onClick={() => setLocalReady(true)} 
+                style={{ flex: 1, padding: '12px 16px', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#4CAF50', border: 'none', color: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(76,175,80,0.4)', transition: 'all 0.2s' }}
+              >
+                بدء اللعب
+              </button>
+              <button 
+                onClick={() => setShowCamMenu(true)} 
+                style={{ flex: 1, padding: '12px 16px', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#2196F3', border: 'none', color: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(33,150,243,0.4)', transition: 'all 0.2s' }}
+              >
+                تغيير الكاميرا
+              </button>
+            </div>
           </div>
         </div>
       )}
