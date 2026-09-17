@@ -546,7 +546,10 @@ export function GameScreen3D({
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
   const isOfflineMode =!socket.connected || players.length <= 1;
-  const isFriendsMode = !!roomCode && socket.connected && players.length > 1; // فقط عند اختيار مع الأصدقاء
+  // لا انتظار نهائياً في طور ضد الكمبيوتر - فقط في طور مع الأصدقاء
+  // نكشف ضد الكمبيوتر: إذا أحد اللاعبين بوت أو بدون socketId أو اسمه يحتوي كمبيوتر
+  const isVsComputer = players.some((p:any) => p.isBot || p.isComputer || p.type === 'bot' || !p.socketId || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot'))));
+  const isFriendsMode = !!roomCode && socket.connected && players.length > 1 && !isVsComputer; // فقط مع الأصدقاء - ضد الكمبيوتر لا يوجد انتظار نهائياً
 
   const createHatPaddle = useCallback((color: string, style: 'classic' | 'modern' = arenaStyle) => {
     const group = new THREE.Group();
