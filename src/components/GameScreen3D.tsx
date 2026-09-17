@@ -908,85 +908,19 @@ export function GameScreen3D({
         </div>
       )}
 
+      {/* لا نغطي الساحة - شريط صغير للبدء في الأسفل فقط + شكل الساحة على اليمين صغير فوق الأيقونات */}
       {!localReady && (
         <div style={{
-          position: 'absolute', inset: 0, zIndex: 9997,
-          background: showCamMenu ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.35)',
-          backdropFilter: showCamMenu ? 'blur(2px)' : 'blur(12px)',
-          WebkitBackdropFilter: showCamMenu ? 'blur(2px)' : 'blur(12px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'all 0.3s ease',
-          pointerEvents: showCamMenu ? 'none' : 'auto'
+          position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9997, display: 'flex', gap: '12px', alignItems: 'center',
+          background: 'rgba(15,15,20,0.88)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255,255,255,0.15)', borderRadius: '999px', padding: '10px 18px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.6)', pointerEvents: 'auto'
         }}>
-          <div style={{
-            width: showCamMenu ? 'auto' : 'calc(100% - 32px)',
-            maxWidth: showCamMenu ? 'none' : '420px',
-            background: 'rgba(15,15,20,0.75)',
-            backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: showCamMenu ? '999px' : '20px',
-            padding: showCamMenu ? '10px 16px' : '24px',
-            display: 'flex', flexDirection: showCamMenu ? 'row' : 'column', gap: '12px',
-            alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            pointerEvents: 'auto',
-            position: showCamMenu ? 'absolute' : 'relative',
-            bottom: showCamMenu ? '20px' : 'auto',
-            transition: 'all 0.3s ease'
-          }}>
-            {!showCamMenu ? (
-              <>
-                <div style={{textAlign:'center', width:'100%'}}>
-                  <h3 style={{color:'#fff', fontSize:'18px', fontWeight:900, marginBottom:'6px', textAlign:'center'}}>اضبط الكاميرا وشكل الساحة</h3>
-                  <p style={{color:'rgba(255,255,255,0.6)', fontSize:'13px', lineHeight:1.4, textAlign:'center'}}>اختر شكل الساحة وجرب الكاميرا قبل البدء</p>
-                </div>
-                
-                {/* اختيار شكل الساحة - طلب رقم 3 */}
-                <div style={{width:'100%', display:'flex', flexDirection:'column', gap:'8px'}}>
-                  <span style={{color:'rgba(255,255,255,0.8)', fontSize:'12px', fontWeight:800, textAlign:'center'}}>شكل الساحة:</span>
-                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
-                    <button onClick={()=>setArenaStyle('classic')} style={{
-                      padding:'12px 8px', borderRadius:'12px', border: arenaStyle==='classic' ? '2px solid #00e5ff' : '1px solid rgba(255,255,255,0.2)',
-                      background: arenaStyle==='classic' ? 'rgba(0,229,255,0.15)' : 'rgba(255,255,255,0.06)',
-                      color: arenaStyle==='classic' ? '#00e5ff' : '#aaa', cursor:'pointer',
-                      display:'flex', flexDirection:'column', alignItems:'center', gap:'6px'
-                    }}>
-                      <div style={{width:'60px', height:'40px', background:'#080808', border:'2px solid #00e5ff', borderRadius:'6px', position:'relative'}}>
-                        <div style={{position:'absolute', inset:'2px', background:'#fff', opacity:0.9}}/>
-                        <div style={{position:'absolute', top:'50%', left:'0', right:'0', height:'1px', background:'#ff0000'}}/>
-                      </div>
-                      <span style={{fontSize:'11px', fontWeight:900}}>الشكل القديم</span>
-                      <span style={{fontSize:'9px', opacity:0.6}}>إطار أسود + نيون</span>
-                    </button>
-                    <button onClick={()=>setArenaStyle('modern')} style={{
-                      padding:'12px 8px', borderRadius:'12px', border: arenaStyle==='modern' ? '2px solid #00e5ff' : '1px solid rgba(255,255,255,0.2)',
-                      background: arenaStyle==='modern' ? 'rgba(0,229,255,0.15)' : 'rgba(255,255,255,0.06)',
-                      color: arenaStyle==='modern' ? '#00e5ff' : '#aaa', cursor:'pointer',
-                      display:'flex', flexDirection:'column', alignItems:'center', gap:'6px'
-                    }}>
-                      <div style={{width:'60px', height:'40px', background:'#ff1a1a', borderRadius:'6px', position:'relative', boxShadow:'0 2px 4px rgba(0,0,0,0.3)'}}>
-                        <div style={{position:'absolute', inset:'4px', background:'#fefefe', borderRadius:'2px'}}/>
-                        <div style={{position:'absolute', top:'50%', left:'4px', right:'4px', height:'1px', background:'#ff0000', borderStyle:'dashed'}}/>
-                      </div>
-                      <span style={{fontSize:'11px', fontWeight:900}}>الشكل الجديد</span>
-                      <span style={{fontSize:'9px', opacity:0.6}}>إطار أحمر + HD</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{display:'flex', gap:'12px', width:'100%', marginTop:'8px'}}>
-                  <button onClick={()=>setLocalReady(true)} style={{flex:1, padding:'12px 16px', fontSize:'15px', fontWeight:900, cursor:'pointer', background:'#4CAF50', border:'none', color:'white', borderRadius:'12px', boxShadow:'0 4px 12px rgba(76,175,80,0.4)'}}>▶ بدء اللعب بـ {arenaStyle==='classic' ? 'القديم' : 'الجديد'}</button>
-                  <button onClick={()=>setShowCamMenu(true)} style={{flex:1, padding:'12px 16px', fontSize:'15px', fontWeight:900, cursor:'pointer', background:'#2196F3', border:'none', color:'white', borderRadius:'12px', boxShadow:'0 4px 12px rgba(33,150,243,0.4)'}}>📷 الكاميرا</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <span style={{color:'rgba(255,255,255,0.7)', fontSize:'12px', fontWeight:700}}>وضع الضبط - {arenaStyle==='classic' ? 'القديم' : 'الجديد'}</span>
-                <button onClick={()=>setLocalReady(true)} style={{padding:'8px 18px', borderRadius:'999px', background:'#4CAF50', color:'#fff', fontWeight:900, border:'none', cursor:'pointer', boxShadow:'0 4px 12px rgba(76,175,80,0.4)'}}>▶ بدء اللعب</button>
-                <button onClick={()=>setShowCamMenu(false)} style={{padding:'8px 12px', borderRadius:'999px', background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.2)', cursor:'pointer'}}>✕ إغلاق</button>
-              </>
-            )}
-          </div>
+          <button onClick={()=>setLocalReady(true)} style={{padding:'10px 22px', borderRadius:'999px', background:'#4CAF50', color:'#fff', fontWeight:900, border:'none', cursor:'pointer', boxShadow:'0 4px 12px rgba(76,175,80,0.4)', fontSize:'14px'}}>▶ ابدأ بـ {arenaStyle==='classic' ? 'أ' : 'ب'}</button>
+          <div style={{width:'1px', height:'22px', background:'rgba(255,255,255,0.15)'}}/>
+          <span style={{color:'rgba(255,255,255,0.6)', fontSize:'11px', whiteSpace:'nowrap'}}>اختر الشكل من اليمين ←</span>
+          <button onClick={()=>setShowCamMenu(v=>!v)} style={{padding:'8px 14px', borderRadius:'999px', background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.12)', color: showCamMenu ? '#000' : '#fff', border:'none', cursor:'pointer', fontSize:'11px', fontWeight:800}}>{showCamMenu ? 'إخفاء' : '📷 كاميرا'}</button>
         </div>
       )}
 
@@ -1142,12 +1076,58 @@ export function GameScreen3D({
           <ArrowLeft size={14} /> EXIT
         </button>
 
+        {/* شكل الساحة - على اليمين فوق الأيقونات صغير مع رسم الساحة عليه - شكل أ / ب */}
+        {!hideUI && (
+          <div style={{
+            position: 'absolute', right: 12, top: 12, zIndex: 10004,
+            background: 'rgba(10,10,12,0.92)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
+            border: '1px solid rgba(255,255,255,0.15)', borderRadius: 14, padding: '8px', display: 'flex',
+            flexDirection: 'column', gap: '6px', alignItems: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.7)', width: 88
+          }}>
+            <span style={{fontSize:9, fontWeight:900, color:'rgba(255,255,255,0.5)', letterSpacing:1}}>SHAPE</span>
+            <div style={{display:'flex', gap:'6px'}}>
+              {/* شكل أ - القديم */}
+              <button onClick={()=>setArenaStyle('classic')} title="الشكل القديم - إطار أسود + نيون" style={{
+                width:36, height:52, borderRadius:8,
+                background: arenaStyle==='classic' ? '#00e5ff' : '#1e1e1e',
+                border: arenaStyle==='classic' ? '2px solid #00e5ff' : '1px solid #333',
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer',
+                position:'relative', overflow:'hidden', boxShadow: arenaStyle==='classic' ? '0 0 12px rgba(0,229,255,0.5)' : 'none'
+              }}>
+                <div style={{width:22, height:32, background:'#000', border:'1.5px solid #00e5ff', borderRadius:2, position:'relative'}}>
+                  <div style={{position:'absolute', inset:'2px', background:'#fff', opacity:0.9}}/>
+                  <div style={{position:'absolute', top:'50%', left:0, right:0, height:'1px', background:'#ff0000'}}/>
+                  <div style={{position:'absolute', top:-2, left:'50%', transform:'translateX(-50%)', width:10, height:3, background:'#000'}}/>
+                  <div style={{position:'absolute', bottom:-2, left:'50%', transform:'translateX(-50%)', width:10, height:3, background:'#000'}}/>
+                </div>
+                <span style={{fontSize:11, fontWeight:900, color: arenaStyle==='classic' ? '#000' : '#fff', marginTop:2}}>أ</span>
+              </button>
+              {/* شكل ب - الجديد */}
+              <button onClick={()=>setArenaStyle('modern')} title="الشكل الجديد - إطار أحمر + HD" style={{
+                width:36, height:52, borderRadius:8,
+                background: arenaStyle==='modern' ? '#00e5ff' : '#1e1e1e',
+                border: arenaStyle==='modern' ? '2px solid #00e5ff' : '1px solid #333',
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer',
+                position:'relative', overflow:'hidden', boxShadow: arenaStyle==='modern' ? '0 0 12px rgba(0,229,255,0.5)' : 'none'
+              }}>
+                <div style={{width:22, height:32, background:'#ff1a1a', borderRadius:2, position:'relative', boxShadow:'0 1px 2px rgba(0,0,0,0.3)'}}>
+                  <div style={{position:'absolute', inset:'3px', background:'#fefefe', borderRadius:1}}/>
+                  <div style={{position:'absolute', top:'50%', left:'3px', right:'3px', height:'1px', background:'#ff0000', opacity:0.8}}/>
+                  <div style={{position:'absolute', top:-1, left:'50%', transform:'translateX(-50%)', width:8, height:2, background:'#000', borderRadius:1}}/>
+                  <div style={{position:'absolute', bottom:-1, left:'50%', transform:'translateX(-50%)', width:8, height:2, background:'#000', borderRadius:1}}/>
+                </div>
+                <span style={{fontSize:11, fontWeight:900, color: arenaStyle==='modern' ? '#000' : '#fff', marginTop:2}}>ب</span>
+              </button>
+            </div>
+            <span style={{fontSize:7, color:'rgba(255,255,255,0.35)', textAlign:'center', lineHeight:1.1}}>أ=قديم<br/>ب=جديد</span>
+          </div>
+        )}
+
         {showCamMenu && !hideUI && (
           <div style={{ 
             position: 'absolute', 
             right: 12, 
-            top: '50%', 
-            transform: 'translateY(-50%)',
+            top: '110px',
             zIndex: 10005, 
             background: 'rgba(10,10,12,0.94)', 
             backdropFilter: 'blur(20px)', 
@@ -1156,8 +1136,8 @@ export function GameScreen3D({
             borderRadius: 20, 
             padding: '10px 8px',
             width: 88,
-            height: '78vh',
-            maxHeight: '620px',
+            height: '58vh',
+            maxHeight: '520px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
