@@ -9,34 +9,78 @@ type Settings = any;
 type Scores = Record<string | number, number>;
 
 function createAirHockeySurface(worldW: number, worldH: number) {
+  // جودة عالية مثل الصورة: سطح أبيض نقي مع نقاط سوداء دقيقة + خطوط حمراء
   const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 2048;
+  canvas.width = 2048;
+  canvas.height = 4096;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.fillStyle = '#ffffff';
+  
+  // خلفية بيضاء نقية عالية الجودة
+  ctx.fillStyle = '#fefefe';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#0a0a0a';
-  const cols = 28;
-  const rows = 56;
-  const spacingX = canvas.width / cols;
-  const spacingY = canvas.height / rows;
-  for (let y = spacingY / 2; y < canvas.height; y += spacingY) {
-    for (let x = spacingX / 2; x < canvas.width; x += spacingX) {
-      const offset = (Math.floor(y / spacingY) % 2 === 0)? 0 : spacingX/2;
+  
+  // طبقة تدرج خفيف للواقعية
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, 'rgba(0,0,0,0.02)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.03)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // نقاط سوداء دقيقة جداً مثل الصورة الأصلية - كثافة عالية
+  ctx.fillStyle = 'rgba(10,10,10,0.85)';
+  const dotSize = 2.2;
+  const spacing = 32;
+  for (let y = spacing/2; y < canvas.height; y += spacing) {
+    const isEvenRow = Math.floor(y / spacing) % 2 === 0;
+    for (let x = spacing/2; x < canvas.width; x += spacing) {
+      const offset = isEvenRow ? 0 : spacing/2;
+      if (x + offset >= canvas.width - spacing/2) continue;
       ctx.beginPath();
-      ctx.arc(x + offset, y, 3.5, 0, Math.PI * 2);
+      ctx.arc(x + offset, y, dotSize, 0, Math.PI * 2);
       ctx.fill();
     }
   }
+  
+  // خط المنتصف المتقطع أحمر - مثل الصورة
+  ctx.strokeStyle = 'rgba(255, 45, 45, 0.9)';
+  ctx.lineWidth = 8;
+  ctx.setLineDash([40, 30]);
+  ctx.beginPath();
+  ctx.moveTo(0, canvas.height/2);
+  ctx.lineTo(canvas.width, canvas.height/2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  
+  // دوائر الأهداف الحمراء - نصف دائرة في كل طرف
+  ctx.strokeStyle = 'rgba(255, 45, 45, 0.95)';
+  ctx.lineWidth = 10;
+  const goalRadius = 280;
+  // هدف علوي
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
+  ctx.stroke();
+  // هدف سفلي
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
+  ctx.stroke();
+  
+  // دوائر صغيرة في المنتصف للزينة
+  ctx.strokeStyle = 'rgba(255, 45, 45, 0.4)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, canvas.height/2, 80, 0, Math.PI*2);
+  ctx.stroke();
+  
   const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(worldW / 380, worldH / 380);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.anisotropy = 16;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
   tex.generateMipmaps = true;
+  tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
@@ -78,97 +122,124 @@ function buildRoundedRectPoints(w: number, h: number, r: number, segmentsPerCorn
 }
 
 function setup3DArenaLighting(scene: THREE.Scene, worldWidth: number, worldHeight: number) {
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.72);
+  // إضاءة عالية الجودة مثل الصورة - واقعية ونظيفة
+  scene.background = new THREE.Color('#0a0a0a');
+  scene.fog = new THREE.Fog('#0a0a0a', worldWidth*1.8, worldWidth*4);
+  
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
   scene.add(ambientLight);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.55);
-  dir.position.set(worldWidth*0.3, 800, worldHeight*0.2);
-  scene.add(dir);
-  const neonColors = [0x00e5ff, 0xff7a28, 0xbf5af2, 0xff2d78];
-  const cornerPositions = [
-    { x: worldWidth*0.15, z: worldHeight*0.15 },
-    { x: worldWidth*0.85, z: worldHeight*0.85 },
-    { x: worldWidth*0.15, z: worldHeight*0.85 },
-    { x: worldWidth*0.85, z: worldHeight*0.15 },
-  ];
-  cornerPositions.forEach((pos, idx) => {
-    const pointLight = new THREE.PointLight(neonColors[idx % 4], 1.4, Math.max(worldWidth, worldHeight) * 1.1);
-    pointLight.position.set(pos.x, 65, pos.z);
-    scene.add(pointLight);
-  });
-  const centerLight = new THREE.PointLight(0xffffff, 0.45, worldWidth*1.5);
-  centerLight.position.set(worldWidth/2, 400, worldHeight/2);
+  
+  // إضاءة علوية رئيسية قوية - مثل الصورة
+  const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  mainLight.position.set(worldWidth/2, 1200, worldHeight/2);
+  mainLight.castShadow = false;
+  scene.add(mainLight);
+  
+  // إضاءة ثانوية لتخفيف الظلال
+  const fillLight = new THREE.DirectionalLight(0xffffff, 0.45);
+  fillLight.position.set(-worldWidth*0.3, 800, -worldHeight*0.2);
+  scene.add(fillLight);
+  
+  // إضاءات حمراء خفيفة على الحواف - مثل توهج الإطار الأحمر في الصورة
+  const edgeLight1 = new THREE.PointLight(0xff2d2d, 0.6, worldWidth*1.5);
+  edgeLight1.position.set(worldWidth*0.5, 80, -40);
+  scene.add(edgeLight1);
+  
+  const edgeLight2 = new THREE.PointLight(0xff2d2d, 0.6, worldWidth*1.5);
+  edgeLight2.position.set(worldWidth*0.5, 80, worldHeight+40);
+  scene.add(edgeLight2);
+  
+  // إضاءة مركزية ناعمة
+  const centerLight = new THREE.PointLight(0xffffff, 0.35, worldWidth*2);
+  centerLight.position.set(worldWidth/2, 600, worldHeight/2);
   scene.add(centerLight);
 }
 
 function createArenaFrame(worldW: number, worldH: number) {
   const group = new THREE.Group();
-  const bezelThickness = Math.max(32, Math.min(worldW, worldH) * 0.055);
-  const bezelHeight = 28;
-  const bezelY = 13;
+  // إطار أحمر عالي الجودة مثل الصورة - لامع ومائل
+  const bezelThickness = Math.max(38, Math.min(worldW, worldH) * 0.065);
+  const bezelHeight = 36;
+  const bezelY = 18;
+  
+  // مادة حمراء لامعة عالية الجودة مثل الصورة
   const bezelMat = new THREE.MeshStandardMaterial({
-    color: '#080808',
-    roughness: 0.18,
-    metalness: 0.85,
-    envMapIntensity: 1.2
+    color: '#ff1a1a',
+    roughness: 0.22,
+    metalness: 0.15,
+    emissive: '#ff0000',
+    emissiveIntensity: 0.08,
   });
+  
+  // إطار سفلي مع ميل (bevel) مثل الصورة
+  const createBeveledSide = (w: number, h: number, d: number, x: number, z: number) => {
+    const shape = new THREE.Shape();
+    shape.moveTo(-w/2, -d/2);
+    shape.lineTo(w/2, -d/2);
+    shape.lineTo(w/2 - 8, d/2);
+    shape.lineTo(-w/2 + 8, d/2);
+    shape.lineTo(-w/2, -d/2);
+    
+    const extrudeSettings = {
+      steps: 1,
+      depth: bezelHeight,
+      bevelEnabled: true,
+      bevelThickness: 6,
+      bevelSize: 4,
+      bevelSegments: 4
+    };
+    const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    geo.rotateX(-Math.PI/2);
+    const mesh = new THREE.Mesh(geo, bezelMat);
+    mesh.position.set(x, bezelY, z);
+    return mesh;
+  };
+  
   const bezelPieces = [
     { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: -bezelThickness / 2 },
     { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: worldH + bezelThickness / 2 },
     { w: bezelThickness, d: worldH, x: -bezelThickness / 2, z: worldH / 2 },
     { w: bezelThickness, d: worldH, x: worldW + bezelThickness / 2, z: worldH / 2 },
   ];
+  
   bezelPieces.forEach((p) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, bezelHeight, p.d), bezelMat);
-    mesh.position.set(p.x, bezelY, p.z);
+    const mesh = createBeveledSide(p.w, bezelHeight, p.d, p.x, p.z);
     group.add(mesh);
+    
+    // طبقة توهج حمراء داخلية
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: '#ff4444',
+      transparent: true,
+      opacity: 0.15
+    });
+    const glowMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(p.w * 0.98, 4, p.d * 0.98),
+      glowMat
+    );
+    glowMesh.position.set(p.x, bezelY + bezelHeight/2 + 2, p.z);
+    group.add(glowMesh);
   });
-  const neonRadius = Math.min(42, Math.min(worldW, worldH) * 0.065);
-  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, 16);
-  const neonCurve = new THREE.CatmullRomCurve3(neonPts, true, 'catmullrom', 0.15);
-  const neonGeo = new THREE.TubeGeometry(neonCurve, 220, 6.5, 16, true);
-  const neonTex = createNeonGradientTexture();
-  const neonMat = new THREE.MeshStandardMaterial({
-    map: neonTex || undefined,
-    emissive: new THREE.Color(0xffffff),
-    emissiveMap: neonTex || undefined,
-    emissiveIntensity: 1.8,
-    roughness: 0.2,
-    metalness: 0.1
-  });
-  const neonTube = new THREE.Mesh(neonGeo, neonMat);
-  neonTube.position.y = 22.5;
-  group.add(neonTube);
-  const outerRadius = neonRadius + bezelThickness * 0.6;
-  const outerW = worldW + bezelThickness * 0.8;
-  const outerH = worldH + bezelThickness * 0.8;
-  const outerPts = buildRoundedRectPoints(outerW, outerH, outerRadius, 16);
-  const outerCurve = new THREE.CatmullRomCurve3(outerPts.map(p => new THREE.Vector3(p.x - bezelThickness*0.4, 0, p.z - bezelThickness*0.4)), true, 'catmullrom', 0.15);
-  const outerGeo = new THREE.TubeGeometry(outerCurve, 220, 1.8, 12, true);
-  const outerMat = new THREE.MeshBasicMaterial({
-    map: neonTex || undefined,
-    transparent: true,
-    opacity: 0.85
-  });
-  const outerTube = new THREE.Mesh(outerGeo, outerMat);
-  outerTube.position.y = 26;
-  group.add(outerTube);
-  const goalW = 260;
-  const goalH = 32;
-  const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
-  const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2);
-  group.add(goalTop);
-  const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2);
-  group.add(goalBottom);
-  if (worldW >= 900) {
-    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
-    group.add(goalLeft);
-    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
-    goalRight.position.set(worldW + bezelThickness/2, bezelY+2, worldH/2);
-    group.add(goalRight);
-  }
+  
+  // خطوط حمراء دقيقة على الحواف الداخلية - مثل الصورة
+  const innerLineMat = new THREE.MeshBasicMaterial({ color: '#ff0000', transparent: true, opacity: 0.9 });
+  const lineThickness = 3;
+  
+  // خط علوي
+  const topLine = new THREE.Mesh(
+    new THREE.BoxGeometry(worldW, lineThickness, lineThickness),
+    innerLineMat
+  );
+  topLine.position.set(worldW/2, 22, 1);
+  group.add(topLine);
+  
+  // خط سفلي
+  const bottomLine = new THREE.Mesh(
+    new THREE.BoxGeometry(worldW, lineThickness, lineThickness),
+    innerLineMat
+  );
+  bottomLine.position.set(worldW/2, 22, worldH - 1);
+  group.add(bottomLine);
+  
   return group;
 }
 
@@ -353,20 +424,71 @@ export function GameScreen3D({
 
   const createHatPaddle = useCallback((color: string) => {
     const group = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({
-      color,
-      roughness: 0.15,
-      metalness: 0.25,
-      emissive: new THREE.Color(color),
-      emissiveIntensity: 0.45
+    
+    // لون المضرب - أزرق وأحمر مثل الصورة عالية الجودة
+    const isBlue = color.toLowerCase().includes('61e7c2') || color.toLowerCase().includes('00e5ff') || color.toLowerCase().includes('blue') || color === '#61e7c2';
+    const baseColor = isBlue ? '#0a84ff' : (color === '#ffcf5a' ? '#0a84ff' : color); // الأزرق افتراضي للاعب السفلي
+    
+    // قاعدة المضرب السفلية - كبيرة ولامعة
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: baseColor,
+      roughness: 0.12,
+      metalness: 0.1,
+      emissive: new THREE.Color(baseColor),
+      emissiveIntensity: 0.15
     });
-    const base = new THREE.Mesh(new THREE.TorusGeometry(24, 7, 24, 32), mat);
-    base.rotation.x = Math.PI / 2;
+    
+    // القاعدة الرئيسية - أسطوانة منخفضة
+    const baseGeo = new THREE.CylinderGeometry(32, 34, 14, 48);
+    const base = new THREE.Mesh(baseGeo, baseMat);
     base.position.y = 7;
     group.add(base);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(18, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), mat);
-    dome.position.y = 14;
-    group.add(dome);
+    
+    // حلقة خارجية لامعة
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: '#ffffff',
+      roughness: 0.08,
+      metalness: 0.2,
+      transparent: true,
+      opacity: 0.3
+    });
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(30, 1.5, 16, 48),
+      ringMat
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 10;
+    group.add(ring);
+    
+    // المقبض العلوي - كرة صغيرة
+    const handleMat = new THREE.MeshStandardMaterial({
+      color: baseColor,
+      roughness: 0.15,
+      metalness: 0.05,
+      emissive: new THREE.Color(baseColor),
+      emissiveIntensity: 0.2
+    });
+    const handle = new THREE.Mesh(
+      new THREE.SphereGeometry(16, 32, 24),
+      handleMat
+    );
+    handle.position.y = 22;
+    handle.scale.y = 0.8;
+    group.add(handle);
+    
+    // توهج داخلي
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: baseColor,
+      transparent: true,
+      opacity: 0.25
+    });
+    const glow = new THREE.Mesh(
+      new THREE.CylinderGeometry(36, 36, 2, 32),
+      glowMat
+    );
+    glow.position.y = 2;
+    group.add(glow);
+    
     return group;
   }, []);
 
@@ -533,16 +655,69 @@ export function GameScreen3D({
     mount.appendChild(renderer.domElement);
     const tableGroup = new THREE.Group();
     const surfaceTexture = createAirHockeySurface(world.w, world.h);
-    const tableMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', map: surfaceTexture || undefined, metalness: 0.08, roughness: 0.12, envMapIntensity: 0.8 });
-    const table = new THREE.Mesh(new THREE.BoxGeometry(world.w, 18, world.h), tableMaterial);
-    table.position.set(world.w / 2, 9, world.h / 2);
+    const tableMaterial = new THREE.MeshStandardMaterial({ 
+      color: '#ffffff', 
+      map: surfaceTexture || undefined, 
+      metalness: 0.02, 
+      roughness: 0.08,
+      envMapIntensity: 0.2
+    });
+    const table = new THREE.Mesh(new THREE.BoxGeometry(world.w, 12, world.h), tableMaterial);
+    table.position.set(world.w / 2, 6, world.h / 2);
+    table.receiveShadow = false;
     tableGroup.add(table);
     scene.add(tableGroup);
     const frame = createArenaFrame(world.w, world.h);
     scene.add(frame);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(12, 32, 32), new THREE.MeshStandardMaterial({ color: '#ff1a2e', emissive: '#ff0011', emissiveIntensity: 0.85 }));
-    ball.position.y = 23;
-    scene.add(ball);
+    
+    // قرص هوكي عالي الجودة - أسود مع حلقة زرقاء مثل الصورة
+    const puckGroup = new THREE.Group();
+    
+    // الجسم الأساسي - أسود
+    const puckMat = new THREE.MeshStandardMaterial({
+      color: '#0a0a0a',
+      roughness: 0.25,
+      metalness: 0.3,
+    });
+    const puckBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(14, 14, 10, 48),
+      puckMat
+    );
+    puckBase.position.y = 5;
+    puckGroup.add(puckBase);
+    
+    // حلقة زرقاء علوية - مثل الصورة
+    const blueRingMat = new THREE.MeshStandardMaterial({
+      color: '#0a84ff',
+      roughness: 0.15,
+      metalness: 0.2,
+      emissive: '#0a84ff',
+      emissiveIntensity: 0.6
+    });
+    const blueRing = new THREE.Mesh(
+      new THREE.TorusGeometry(8, 1.8, 16, 32),
+      blueRingMat
+    );
+    blueRing.rotation.x = Math.PI / 2;
+    blueRing.position.y = 10.5;
+    puckGroup.add(blueRing);
+    
+    // توهج أسود
+    const puckGlowMat = new THREE.MeshBasicMaterial({
+      color: '#000000',
+      transparent: true,
+      opacity: 0.4
+    });
+    const puckGlow = new THREE.Mesh(
+      new THREE.CylinderGeometry(18, 18, 1, 32),
+      puckGlowMat
+    );
+    puckGlow.position.y = 0.5;
+    puckGroup.add(puckGlow);
+    
+    puckGroup.position.y = 18;
+    scene.add(puckGroup);
+    const ball = puckGroup; // للتوافق مع الكود القديم
     const paddles: Record<string, THREE.Group> = {};
     const COLORS_FALLBACK = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
     const ensureCount = Math.max(2, players.length, settings.players || 2);
@@ -846,45 +1021,104 @@ export function GameScreen3D({
           <ArrowLeft size={18} /> {isAr ? 'خروج' : 'Exit'}
         </button>
 
+        {/* --- قائمة الكاميرا الجديدة: سلم عمودي على اليمين مثل الصورة --- */}
         {showCamMenu && !hideUI && (
-          <div style={{ position: 'absolute', bottom: 85, left: '50%', transform: 'translateX(-50%)', zIndex: 10005, background: 'rgba(10,10,12,0.94)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, padding: 14, width: 'calc(100% - 32px)', maxWidth: 360, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', color: '#fff', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b>
-              <button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button>
+          <div style={{ 
+            position: 'absolute', 
+            right: 12, 
+            top: '50%', 
+            transform: 'translateY(-50%)',
+            zIndex: 10005, 
+            background: 'rgba(10,10,12,0.92)', 
+            backdropFilter: 'blur(18px)', 
+            WebkitBackdropFilter: 'blur(18px)', 
+            border: '1px solid rgba(255,255,255,0.15)', 
+            borderRadius: 18, 
+            padding: '12px 10px',
+            width: 82,
+            maxHeight: '88vh',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 0,
+            boxShadow: '0 12px 40px rgba(0,0,0,0.8)',
+          }}>
+            {/* رأس السلم */}
+            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:8, width:'100%'}}>
+              <button onClick={()=>setShowCamMenu(false)} style={{width:28, height:28, borderRadius:'50%', background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.2)', color:'#fff', display:'grid', placeItems:'center', cursor:'pointer'}}><X size={12}/></button>
+              <span style={{fontSize:10, fontWeight:900, color:'rgba(255,255,255,0.5)', letterSpacing:1}}>CAM</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map(k => (
-                <button key={k} onClick={() => applyPreset(k)} style={{ padding: '10px 8px', borderRadius: 10, fontWeight: 800, fontSize: 12, border: currentPreset === k? '2px solid #00e5ff' : '1px solid #333', background: currentPreset === k? '#111' : '#0a0a0a', color: currentPreset === k? '#00e5ff' : '#aaa', cursor: 'pointer' }}>
-                  {isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}
+
+            {/* جسم السلم - مثل الصورة */}
+            <div style={{position:'relative', width:'100%', display:'flex', flexDirection:'column', alignItems:'center', gap:0, padding:'0 6px'}}>
+              {/* العمودين الجانبيين للسلم */}
+              <div style={{position:'absolute', left:8, top:0, bottom:0, width:4, background:'#2a2a2a', borderRadius:2, border:'1px solid #3a3a3a'}} />
+              <div style={{position:'absolute', right:8, top:0, bottom:0, width:4, background:'#2a2a2a', borderRadius:2, border:'1px solid #3a3a3a'}} />
+
+              {/* زر Up في الأعلى مثل الصورة */}
+              <div style={{zIndex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2, marginBottom:6, width:'100%'}}>
+                <button onClick={() => rotateCam('up')} style={{width:'100%', height:36, background: '#ffcf5a', border:'2px solid #000', borderRadius:8, display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'}}>
+                  <ArrowUp size={18} strokeWidth={3} color="#000"/>
                 </button>
+                <span style={{fontSize:14, fontWeight:900, color:'#fff', textShadow:'0 1px 2px #000'}}>Up</span>
+              </div>
+
+              {/* درجات السلم - كل درجة هي preset */}
+              {(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map((k, idx) => (
+                <div key={k} style={{zIndex:1, width:'100%', display:'flex', flexDirection:'column', alignItems:'center', gap:2, marginBottom:6}}>
+                  <button 
+                    onClick={() => applyPreset(k)} 
+                    title={isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}
+                    style={{ 
+                      width:'100%', 
+                      height: idx===1 || idx===3 ? 28 : 34,
+                      background: currentPreset === k ? '#00e5ff' : (idx%2===0 ? '#1e1e1e' : '#151515'),
+                      border: currentPreset === k ? '2px solid #00e5ff' : '1.5px solid #333',
+                      borderRadius:6,
+                      display:'grid', 
+                      placeItems:'center',
+                      cursor:'pointer',
+                      boxShadow: currentPreset===k ? '0 0 12px rgba(0,229,255,0.6)' : '0 2px 0 #000',
+                      transition:'all 0.2s'
+                    }}
+                  >
+                    <span style={{fontSize: idx===1 ? 9 : 10, fontWeight:900, color: currentPreset===k ? '#000' : '#aaa', lineHeight:1}}>
+                      {k==='top' ? 'TOP' : k==='bottom' ? 'BOT' : k==='iso' ? 'ISO' : k==='topPlayer' ? 'ENM' : k==='sideLeft' ? 'L' : 'R'}
+                    </span>
+                  </button>
+                  {/* خط أفقي يربط العمودين - درجة السلم */}
+                  <div style={{width:'100%', height:3, background: idx%2===0 ? '#3a3a3a' : '#2a2a2a', borderRadius:2, margin:'2px 0'}} />
+                </div>
               ))}
+
+              {/* أسفل السلم - تحكم إضافي */}
+              <div style={{zIndex:1, display:'flex', flexDirection:'column', gap:6, width:'100%', marginTop:8}}>
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:4}}>
+                  <button onClick={() => zoomCam(1)} style={{...btnStyle, height:32, padding:0, background:'#222'}}><ZoomIn size={14}/></button>
+                  <button onClick={() => zoomCam(-1)} style={{...btnStyle, height:32, padding:0, background:'#222'}}><ZoomOut size={14}/></button>
+                </div>
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:4}}>
+                  <button onClick={() => rotateCam('left')} style={{...btnStyle, height:32, padding:0}}><ArrowLeft size={14}/></button>
+                  <button onClick={() => rotateCam('right')} style={{...btnStyle, height:32, padding:0}}><ArrowRight size={14}/></button>
+                </div>
+                <button onClick={resetCamera} style={{width:'100%', height:32, borderRadius:8, background:'#ff4081', border:'none', color:'#fff', fontWeight:900, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4}}>
+                  <Maximize2 size={12}/> RESET
+                </button>
+                <div style={{display:'flex', gap:4}}>
+                  <button onClick={saveCameraSettings} style={{flex:1, height:28, borderRadius:6, background:'#00e5ff', border:'none', color:'#000', fontWeight:900, fontSize:9, cursor:'pointer'}}><Save size={10}/> SAVE</button>
+                  <button onClick={resetCameraToDefault} style={{flex:1, height:28, borderRadius:6, background:'#ff6b8b', border:'none', color:'#fff', fontWeight:900, fontSize:9, cursor:'pointer'}}>CLR</button>
+                </div>
+                <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{width:'100%', height:26, borderRadius:6, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.5)', fontSize:9, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4}}>
+                  <EyeOff size={10}/> HIDE
+                </button>
+              </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, justifyItems: 'center' }}>
-              <div /><button onClick={() => rotateCam('up')} style={{...btnStyle, padding: '4px 8px'}}><ArrowUp size={14} /></button><div />
-              <button onClick={() => rotateCam('left')} style={{...btnStyle, padding: '4px 8px'}}><ArrowLeft size={14} /></button>
-              <button onClick={resetCamera} style={{...btnStyle, padding: '4px 8px', background: '#ff4081', color: '#fff' }}><Maximize2 size={14} /></button>
-              <button onClick={() => rotateCam('right')} style={{...btnStyle, padding: '4px 8px'}}><ArrowRight size={14} /></button>
-              <div /><button onClick={() => rotateCam('down')} style={{...btnStyle, padding: '4px 8px'}}><ArrowDown size={14} /></button><div />
+
+            {/* تمثيل للساحة مثل الصورة - شكل شبه منحرف صغير */}
+            <div style={{marginTop:10, width:'100%', display:'flex', justifyContent:'center', opacity:0.3}}>
+              <div style={{width:48, height:32, borderTop:'2px solid #fff', borderBottom:'2px solid #ff6b5a', borderLeft:'3px solid #ff3b30', borderRight:'3px solid #ff3b30', transform:'perspective(30px) rotateX(15deg)', opacity:0.6}} />
             </div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle, padding: '6px' }}><ZoomIn size={14} /> {isAr? 'قرب' : 'In'}</button>
-              <button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle, padding: '6px' }}><ZoomOut size={14} /> {isAr? 'بعد' : 'Out'}</button>
-            </div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle, padding: '6px' }}><RotateCcw size={14} /> {isAr? 'يسار' : 'Left'}</button>
-              <button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle, padding: '6px' }}><RotateCw size={14} /> {isAr? 'يمين' : 'Right'}</button>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={saveCameraSettings} style={{ flex: 1, ...btnStyle, background: '#00e5ff', color: '#000', padding: '6px' }}>
-                <Save size={14} /> {isAr? 'حفظ' : 'Save'}
-              </button>
-              <button onClick={resetCameraToDefault} style={{ flex: 1, ...btnStyle, background: '#ff6b8b', color: '#fff', padding: '6px' }}>
-                <RotateCcw size={14} /> {isAr? 'إعادة تعيين' : 'Reset'}
-              </button>
-            </div>
-            <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}>
-              <EyeOff size={16} /> {isAr? 'اخفاء كل الازرار' : 'Hide All UI'}
-            </button>
           </div>
         )}
       </div>
