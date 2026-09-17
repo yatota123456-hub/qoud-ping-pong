@@ -9,26 +9,19 @@ type Settings = any;
 type Scores = Record<string | number, number>;
 
 function createAirHockeySurface(worldW: number, worldH: number) {
-  // جودة عالية مثل الصورة: سطح أبيض نقي مع نقاط سوداء دقيقة + خطوط حمراء
   const canvas = document.createElement('canvas');
   canvas.width = 2048;
   canvas.height = 4096;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  
-  // خلفية بيضاء نقية عالية الجودة
   ctx.fillStyle = '#fefefe';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  // طبقة تدرج خفيف للواقعية
   const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
   grad.addColorStop(0, 'rgba(0,0,0,0.02)');
   grad.addColorStop(0.5, 'rgba(255,255,255,0)');
   grad.addColorStop(1, 'rgba(0,0,0,0.03)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  // نقاط سوداء دقيقة جداً مثل الصورة الأصلية - كثافة عالية
   ctx.fillStyle = 'rgba(10,10,10,0.85)';
   const dotSize = 2.2;
   const spacing = 32;
@@ -42,8 +35,6 @@ function createAirHockeySurface(worldW: number, worldH: number) {
       ctx.fill();
     }
   }
-  
-  // خط المنتصف المتقطع أحمر - مثل الصورة
   ctx.strokeStyle = 'rgba(255, 45, 45, 0.9)';
   ctx.lineWidth = 8;
   ctx.setLineDash([40, 30]);
@@ -52,27 +43,20 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   ctx.lineTo(canvas.width, canvas.height/2);
   ctx.stroke();
   ctx.setLineDash([]);
-  
-  // دوائر الأهداف الحمراء - نصف دائرة في كل طرف
   ctx.strokeStyle = 'rgba(255, 45, 45, 0.95)';
   ctx.lineWidth = 10;
   const goalRadius = 280;
-  // هدف علوي
   ctx.beginPath();
   ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
   ctx.stroke();
-  // هدف سفلي
   ctx.beginPath();
   ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
   ctx.stroke();
-  
-  // دوائر صغيرة في المنتصف للزينة
   ctx.strokeStyle = 'rgba(255, 45, 45, 0.4)';
   ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.arc(canvas.width/2, canvas.height/2, 80, 0, Math.PI*2);
   ctx.stroke();
-  
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.ClampToEdgeWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -122,47 +106,105 @@ function buildRoundedRectPoints(w: number, h: number, r: number, segmentsPerCorn
 }
 
 function setup3DArenaLighting(scene: THREE.Scene, worldWidth: number, worldHeight: number) {
-  // إضاءة عالية الجودة مثل الصورة - واقعية ونظيفة
   scene.background = new THREE.Color('#0a0a0a');
   scene.fog = new THREE.Fog('#0a0a0a', worldWidth*1.8, worldWidth*4);
-  
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
   scene.add(ambientLight);
-  
-  // إضاءة علوية رئيسية قوية - مثل الصورة
   const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
   mainLight.position.set(worldWidth/2, 1200, worldHeight/2);
-  mainLight.castShadow = false;
   scene.add(mainLight);
-  
-  // إضاءة ثانوية لتخفيف الظلال
   const fillLight = new THREE.DirectionalLight(0xffffff, 0.45);
   fillLight.position.set(-worldWidth*0.3, 800, -worldHeight*0.2);
   scene.add(fillLight);
-  
-  // إضاءات حمراء خفيفة على الحواف - مثل توهج الإطار الأحمر في الصورة
   const edgeLight1 = new THREE.PointLight(0xff2d2d, 0.6, worldWidth*1.5);
   edgeLight1.position.set(worldWidth*0.5, 80, -40);
   scene.add(edgeLight1);
-  
   const edgeLight2 = new THREE.PointLight(0xff2d2d, 0.6, worldWidth*1.5);
   edgeLight2.position.set(worldWidth*0.5, 80, worldHeight+40);
   scene.add(edgeLight2);
-  
-  // إضاءة مركزية ناعمة
   const centerLight = new THREE.PointLight(0xffffff, 0.35, worldWidth*2);
   centerLight.position.set(worldWidth/2, 600, worldHeight/2);
   scene.add(centerLight);
 }
 
-function createArenaFrame(worldW: number, worldH: number) {
+function createArenaFrameClassic(worldW: number, worldH: number) {
   const group = new THREE.Group();
-  // إطار أحمر عالي الجودة مثل الصورة - لامع ومائل
+  const bezelThickness = Math.max(32, Math.min(worldW, worldH) * 0.055);
+  const bezelHeight = 28;
+  const bezelY = 13;
+  const bezelMat = new THREE.MeshStandardMaterial({
+    color: '#080808',
+    roughness: 0.18,
+    metalness: 0.85,
+    envMapIntensity: 1.2
+  });
+  const bezelPieces = [
+    { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: -bezelThickness / 2 },
+    { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: worldH + bezelThickness / 2 },
+    { w: bezelThickness, d: worldH, x: -bezelThickness / 2, z: worldH / 2 },
+    { w: bezelThickness, d: worldH, x: worldW + bezelThickness / 2, z: worldH / 2 },
+  ];
+  bezelPieces.forEach((p) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, bezelHeight, p.d), bezelMat);
+    mesh.position.set(p.x, bezelY, p.z);
+    group.add(mesh);
+  });
+  const neonRadius = Math.min(42, Math.min(worldW, worldH) * 0.065);
+  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, 16);
+  const neonCurve = new THREE.CatmullRomCurve3(neonPts, true, 'catmullrom', 0.15);
+  const neonGeo = new THREE.TubeGeometry(neonCurve, 220, 6.5, 16, true);
+  const neonTex = createNeonGradientTexture();
+  const neonMat = new THREE.MeshStandardMaterial({
+    map: neonTex || undefined,
+    emissive: new THREE.Color(0xffffff),
+    emissiveMap: neonTex || undefined,
+    emissiveIntensity: 1.8,
+    roughness: 0.2,
+    metalness: 0.1
+  });
+  const neonTube = new THREE.Mesh(neonGeo, neonMat);
+  neonTube.position.y = 22.5;
+  group.add(neonTube);
+  const outerRadius = neonRadius + bezelThickness * 0.6;
+  const outerW = worldW + bezelThickness * 0.8;
+  const outerH = worldH + bezelThickness * 0.8;
+  const outerPts = buildRoundedRectPoints(outerW, outerH, outerRadius, 16);
+  const outerCurve = new THREE.CatmullRomCurve3(outerPts.map(p => new THREE.Vector3(p.x - bezelThickness*0.4, 0, p.z - bezelThickness*0.4)), true, 'catmullrom', 0.15);
+  const outerGeo = new THREE.TubeGeometry(outerCurve, 220, 1.8, 12, true);
+  const outerMat = new THREE.MeshBasicMaterial({
+    map: neonTex || undefined,
+    transparent: true,
+    opacity: 0.85
+  });
+  const outerTube = new THREE.Mesh(outerGeo, outerMat);
+  outerTube.position.y = 26;
+  group.add(outerTube);
+  // الأهداف - مهمة جداً
+  const goalW = 260;
+  const goalH = 32;
+  const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
+  const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
+  goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2);
+  group.add(goalTop);
+  const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
+  goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2);
+  group.add(goalBottom);
+  if (worldW >= 900) {
+    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
+    goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
+    group.add(goalLeft);
+    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, goalW), goalMat);
+    goalRight.position.set(worldW + bezelThickness/2, bezelY+2, worldH/2);
+    group.add(goalRight);
+  }
+  return group;
+}
+
+function createArenaFrameModern(worldW: number, worldH: number) {
+  const group = new THREE.Group();
   const bezelThickness = Math.max(38, Math.min(worldW, worldH) * 0.065);
   const bezelHeight = 36;
   const bezelY = 18;
-  
-  // مادة حمراء لامعة عالية الجودة مثل الصورة
   const bezelMat = new THREE.MeshStandardMaterial({
     color: '#ff1a1a',
     roughness: 0.22,
@@ -170,8 +212,6 @@ function createArenaFrame(worldW: number, worldH: number) {
     emissive: '#ff0000',
     emissiveIntensity: 0.08,
   });
-  
-  // إطار سفلي مع ميل (bevel) مثل الصورة
   const createBeveledSide = (w: number, h: number, d: number, x: number, z: number) => {
     const shape = new THREE.Shape();
     shape.moveTo(-w/2, -d/2);
@@ -179,7 +219,6 @@ function createArenaFrame(worldW: number, worldH: number) {
     shape.lineTo(w/2 - 8, d/2);
     shape.lineTo(-w/2 + 8, d/2);
     shape.lineTo(-w/2, -d/2);
-    
     const extrudeSettings = {
       steps: 1,
       depth: bezelHeight,
@@ -194,19 +233,15 @@ function createArenaFrame(worldW: number, worldH: number) {
     mesh.position.set(x, bezelY, z);
     return mesh;
   };
-  
   const bezelPieces = [
     { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: -bezelThickness / 2 },
     { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: worldH + bezelThickness / 2 },
     { w: bezelThickness, d: worldH, x: -bezelThickness / 2, z: worldH / 2 },
     { w: bezelThickness, d: worldH, x: worldW + bezelThickness / 2, z: worldH / 2 },
   ];
-  
   bezelPieces.forEach((p) => {
     const mesh = createBeveledSide(p.w, bezelHeight, p.d, p.x, p.z);
     group.add(mesh);
-    
-    // طبقة توهج حمراء داخلية
     const glowMat = new THREE.MeshBasicMaterial({
       color: '#ff4444',
       transparent: true,
@@ -219,28 +254,46 @@ function createArenaFrame(worldW: number, worldH: number) {
     glowMesh.position.set(p.x, bezelY + bezelHeight/2 + 2, p.z);
     group.add(glowMesh);
   });
-  
-  // خطوط حمراء دقيقة على الحواف الداخلية - مثل الصورة
+  // الأهداف - تمت إضافتها الآن
+  const goalW = 280;
+  const goalH = 28;
+  const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.2, metalness: 0.1, emissive: '#111111', emissiveIntensity: 0.1 });
+  // هدف علوي
+  const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 4), goalMat);
+  goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2 - 2);
+  group.add(goalTop);
+  // هدف سفلي
+  const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 4), goalMat);
+  goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2 + 2);
+  group.add(goalBottom);
+  // إضاءة خافتة داخل الهدف
+  const goalLightTop = new THREE.PointLight(0xff0000, 0.5, 200);
+  goalLightTop.position.set(worldW/2, bezelY, -bezelThickness/2);
+  group.add(goalLightTop);
+  const goalLightBottom = new THREE.PointLight(0xff0000, 0.5, 200);
+  goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
+  group.add(goalLightBottom);
+  if (worldW >= 900) {
+    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 4, goalH, goalW), goalMat);
+    goalLeft.position.set(-bezelThickness/2 - 2, bezelY+2, worldH/2);
+    group.add(goalLeft);
+    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 4, goalH, goalW), goalMat);
+    goalRight.position.set(worldW + bezelThickness/2 + 2, bezelY+2, worldH/2);
+    group.add(goalRight);
+  }
   const innerLineMat = new THREE.MeshBasicMaterial({ color: '#ff0000', transparent: true, opacity: 0.9 });
   const lineThickness = 3;
-  
-  // خط علوي
-  const topLine = new THREE.Mesh(
-    new THREE.BoxGeometry(worldW, lineThickness, lineThickness),
-    innerLineMat
-  );
+  const topLine = new THREE.Mesh(new THREE.BoxGeometry(worldW, lineThickness, lineThickness), innerLineMat);
   topLine.position.set(worldW/2, 22, 1);
   group.add(topLine);
-  
-  // خط سفلي
-  const bottomLine = new THREE.Mesh(
-    new THREE.BoxGeometry(worldW, lineThickness, lineThickness),
-    innerLineMat
-  );
+  const bottomLine = new THREE.Mesh(new THREE.BoxGeometry(worldW, lineThickness, lineThickness), innerLineMat);
   bottomLine.position.set(worldW/2, 22, worldH - 1);
   group.add(bottomLine);
-  
   return group;
+}
+
+function createArenaFrame(worldW: number, worldH: number, style: 'classic' | 'modern' = 'modern') {
+  return style === 'classic' ? createArenaFrameClassic(worldW, worldH) : createArenaFrameModern(worldW, worldH);
 }
 
 function getArenaWorld(count: number, size: any = 'medium') {
@@ -302,6 +355,7 @@ export function GameScreen3D({
   onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; 
 }) {
   const [localReady, setLocalReady] = useState(false);
+  const [arenaStyle, setArenaStyle] = useState<'classic' | 'modern'>('modern');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
 
@@ -424,12 +478,8 @@ export function GameScreen3D({
 
   const createHatPaddle = useCallback((color: string) => {
     const group = new THREE.Group();
-    
-    // لون المضرب - أزرق وأحمر مثل الصورة عالية الجودة
     const isBlue = color.toLowerCase().includes('61e7c2') || color.toLowerCase().includes('00e5ff') || color.toLowerCase().includes('blue') || color === '#61e7c2';
-    const baseColor = isBlue ? '#0a84ff' : (color === '#ffcf5a' ? '#0a84ff' : color); // الأزرق افتراضي للاعب السفلي
-    
-    // قاعدة المضرب السفلية - كبيرة ولامعة
+    const baseColor = isBlue ? '#0a84ff' : (color === '#ffcf5a' ? '#0a84ff' : color);
     const baseMat = new THREE.MeshStandardMaterial({
       color: baseColor,
       roughness: 0.12,
@@ -437,14 +487,10 @@ export function GameScreen3D({
       emissive: new THREE.Color(baseColor),
       emissiveIntensity: 0.15
     });
-    
-    // القاعدة الرئيسية - أسطوانة منخفضة
     const baseGeo = new THREE.CylinderGeometry(32, 34, 14, 48);
     const base = new THREE.Mesh(baseGeo, baseMat);
     base.position.y = 7;
     group.add(base);
-    
-    // حلقة خارجية لامعة
     const ringMat = new THREE.MeshStandardMaterial({
       color: '#ffffff',
       roughness: 0.08,
@@ -452,15 +498,10 @@ export function GameScreen3D({
       transparent: true,
       opacity: 0.3
     });
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(30, 1.5, 16, 48),
-      ringMat
-    );
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(30, 1.5, 16, 48), ringMat);
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 10;
     group.add(ring);
-    
-    // المقبض العلوي - كرة صغيرة
     const handleMat = new THREE.MeshStandardMaterial({
       color: baseColor,
       roughness: 0.15,
@@ -468,27 +509,18 @@ export function GameScreen3D({
       emissive: new THREE.Color(baseColor),
       emissiveIntensity: 0.2
     });
-    const handle = new THREE.Mesh(
-      new THREE.SphereGeometry(16, 32, 24),
-      handleMat
-    );
+    const handle = new THREE.Mesh(new THREE.SphereGeometry(16, 32, 24), handleMat);
     handle.position.y = 22;
     handle.scale.y = 0.8;
     group.add(handle);
-    
-    // توهج داخلي
     const glowMat = new THREE.MeshBasicMaterial({
       color: baseColor,
       transparent: true,
       opacity: 0.25
     });
-    const glow = new THREE.Mesh(
-      new THREE.CylinderGeometry(36, 36, 2, 32),
-      glowMat
-    );
+    const glow = new THREE.Mesh(new THREE.CylinderGeometry(36, 36, 2, 32), glowMat);
     glow.position.y = 2;
     group.add(glow);
-    
     return group;
   }, []);
 
@@ -563,6 +595,9 @@ export function GameScreen3D({
       }
       if (data.rally !== undefined) {
         setRally(data.rally);
+      }
+      if (data.timeLeft !== undefined) {
+        setTimeLeft(data.timeLeft);
       }
     };
     socket.on('game-state', handleGameState);
@@ -639,7 +674,6 @@ export function GameScreen3D({
       } catch {}
     }
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#000000');
     setup3DArenaLighting(scene, world.w, world.h);
     const dir = new THREE.DirectionalLight(0xffffff, 0.9);
     dir.position.set(200, 900, 300);
@@ -652,6 +686,8 @@ export function GameScreen3D({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = false;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
     mount.appendChild(renderer.domElement);
     const tableGroup = new THREE.Group();
     const surfaceTexture = createAirHockeySurface(world.w, world.h);
@@ -667,26 +703,18 @@ export function GameScreen3D({
     table.receiveShadow = false;
     tableGroup.add(table);
     scene.add(tableGroup);
-    const frame = createArenaFrame(world.w, world.h);
+    const frame = createArenaFrame(world.w, world.h, arenaStyle);
     scene.add(frame);
     
-    // قرص هوكي عالي الجودة - أسود مع حلقة زرقاء مثل الصورة
     const puckGroup = new THREE.Group();
-    
-    // الجسم الأساسي - أسود
     const puckMat = new THREE.MeshStandardMaterial({
       color: '#0a0a0a',
       roughness: 0.25,
       metalness: 0.3,
     });
-    const puckBase = new THREE.Mesh(
-      new THREE.CylinderGeometry(14, 14, 10, 48),
-      puckMat
-    );
+    const puckBase = new THREE.Mesh(new THREE.CylinderGeometry(14, 14, 10, 48), puckMat);
     puckBase.position.y = 5;
     puckGroup.add(puckBase);
-    
-    // حلقة زرقاء علوية - مثل الصورة
     const blueRingMat = new THREE.MeshStandardMaterial({
       color: '#0a84ff',
       roughness: 0.15,
@@ -694,30 +722,21 @@ export function GameScreen3D({
       emissive: '#0a84ff',
       emissiveIntensity: 0.6
     });
-    const blueRing = new THREE.Mesh(
-      new THREE.TorusGeometry(8, 1.8, 16, 32),
-      blueRingMat
-    );
+    const blueRing = new THREE.Mesh(new THREE.TorusGeometry(8, 1.8, 16, 32), blueRingMat);
     blueRing.rotation.x = Math.PI / 2;
     blueRing.position.y = 10.5;
     puckGroup.add(blueRing);
-    
-    // توهج أسود
     const puckGlowMat = new THREE.MeshBasicMaterial({
       color: '#000000',
       transparent: true,
       opacity: 0.4
     });
-    const puckGlow = new THREE.Mesh(
-      new THREE.CylinderGeometry(18, 18, 1, 32),
-      puckGlowMat
-    );
+    const puckGlow = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 1, 32), puckGlowMat);
     puckGlow.position.y = 0.5;
     puckGroup.add(puckGlow);
-    
     puckGroup.position.y = 18;
     scene.add(puckGroup);
-    const ball = puckGroup; // للتوافق مع الكود القديم
+    const ball = puckGroup;
     const paddles: Record<string, THREE.Group> = {};
     const COLORS_FALLBACK = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
     const ensureCount = Math.max(2, players.length, settings.players || 2);
@@ -751,7 +770,7 @@ export function GameScreen3D({
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
       threeRef.current = null;
     };
-  }, [world.w, world.h, playersKey]);
+  }, [world.w, world.h, playersKey, arenaStyle]);
 
   useEffect(() => {
     const state = stateRef.current;
@@ -763,7 +782,6 @@ export function GameScreen3D({
       const delta = Math.min((now - state.last) / 16.67, 2);
       state.last = now;
 
-      // --- إذا اللعبة لم تبدأ بعد: نرسم فقط الساحة ليراها اللاعب بوضوح ---
       if (threeRef.current) {
         const { ball, paddles, camera, renderer } = threeRef.current;
         const c = cam.current as any;
@@ -870,8 +888,12 @@ export function GameScreen3D({
     return 'نورا';
   };
 
+  const totalScore = Object.values(scores as any).reduce((a:any,b:any)=>a+b,0) as number;
+  const myScore = scores[players.find(p=>p.side===mySideForCam)?.id || players[0]?.id] ?? 0;
+  const opponentScore = totalScore - myScore;
+
   return (
-    <main className="game-shell" style={{ background: '#000', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
+    <main className="game-shell" style={{ background: '#0a0a0a', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
       {showRestoreModal && (
         <div style={{
           position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
@@ -886,7 +908,6 @@ export function GameScreen3D({
         </div>
       )}
 
-      {/* --- Overlay الجديد 3D: يغطي كامل الشاشة وشبه شفاف مع backdrop-filter --- */}
       {!localReady && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 9997,
@@ -915,18 +936,52 @@ export function GameScreen3D({
           }}>
             {!showCamMenu ? (
               <>
-                <div style={{textAlign:'center'}}>
-                  <h3 style={{color:'#fff', fontSize:'18px', fontWeight:900, marginBottom:'6px', textAlign:'center'}}>اضبط الكاميرا ثم ابدأ اللعب</h3>
-                  <p style={{color:'rgba(255,255,255,0.6)', fontSize:'13px', lineHeight:1.4, textAlign:'center'}}>الساحة ظاهرة بوضوح خلف النافذة - جرب تحريك الكاميرا قبل البدء</p>
+                <div style={{textAlign:'center', width:'100%'}}>
+                  <h3 style={{color:'#fff', fontSize:'18px', fontWeight:900, marginBottom:'6px', textAlign:'center'}}>اضبط الكاميرا وشكل الساحة</h3>
+                  <p style={{color:'rgba(255,255,255,0.6)', fontSize:'13px', lineHeight:1.4, textAlign:'center'}}>اختر شكل الساحة وجرب الكاميرا قبل البدء</p>
                 </div>
-                <div style={{display:'flex', gap:'12px', width:'100%'}}>
-                  <button onClick={()=>setLocalReady(true)} style={{flex:1, padding:'12px 16px', fontSize:'15px', fontWeight:900, cursor:'pointer', background:'#4CAF50', border:'none', color:'white', borderRadius:'12px', boxShadow:'0 4px 12px rgba(76,175,80,0.4)'}}>▶ بدء اللعب</button>
-                  <button onClick={()=>setShowCamMenu(true)} style={{flex:1, padding:'12px 16px', fontSize:'15px', fontWeight:900, cursor:'pointer', background:'#2196F3', border:'none', color:'white', borderRadius:'12px', boxShadow:'0 4px 12px rgba(33,150,243,0.4)'}}>📷 تغيير الكاميرا</button>
+                
+                {/* اختيار شكل الساحة - طلب رقم 3 */}
+                <div style={{width:'100%', display:'flex', flexDirection:'column', gap:'8px'}}>
+                  <span style={{color:'rgba(255,255,255,0.8)', fontSize:'12px', fontWeight:800, textAlign:'center'}}>شكل الساحة:</span>
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
+                    <button onClick={()=>setArenaStyle('classic')} style={{
+                      padding:'12px 8px', borderRadius:'12px', border: arenaStyle==='classic' ? '2px solid #00e5ff' : '1px solid rgba(255,255,255,0.2)',
+                      background: arenaStyle==='classic' ? 'rgba(0,229,255,0.15)' : 'rgba(255,255,255,0.06)',
+                      color: arenaStyle==='classic' ? '#00e5ff' : '#aaa', cursor:'pointer',
+                      display:'flex', flexDirection:'column', alignItems:'center', gap:'6px'
+                    }}>
+                      <div style={{width:'60px', height:'40px', background:'#080808', border:'2px solid #00e5ff', borderRadius:'6px', position:'relative'}}>
+                        <div style={{position:'absolute', inset:'2px', background:'#fff', opacity:0.9}}/>
+                        <div style={{position:'absolute', top:'50%', left:'0', right:'0', height:'1px', background:'#ff0000'}}/>
+                      </div>
+                      <span style={{fontSize:'11px', fontWeight:900}}>الشكل القديم</span>
+                      <span style={{fontSize:'9px', opacity:0.6}}>إطار أسود + نيون</span>
+                    </button>
+                    <button onClick={()=>setArenaStyle('modern')} style={{
+                      padding:'12px 8px', borderRadius:'12px', border: arenaStyle==='modern' ? '2px solid #00e5ff' : '1px solid rgba(255,255,255,0.2)',
+                      background: arenaStyle==='modern' ? 'rgba(0,229,255,0.15)' : 'rgba(255,255,255,0.06)',
+                      color: arenaStyle==='modern' ? '#00e5ff' : '#aaa', cursor:'pointer',
+                      display:'flex', flexDirection:'column', alignItems:'center', gap:'6px'
+                    }}>
+                      <div style={{width:'60px', height:'40px', background:'#ff1a1a', borderRadius:'6px', position:'relative', boxShadow:'0 2px 4px rgba(0,0,0,0.3)'}}>
+                        <div style={{position:'absolute', inset:'4px', background:'#fefefe', borderRadius:'2px'}}/>
+                        <div style={{position:'absolute', top:'50%', left:'4px', right:'4px', height:'1px', background:'#ff0000', borderStyle:'dashed'}}/>
+                      </div>
+                      <span style={{fontSize:'11px', fontWeight:900}}>الشكل الجديد</span>
+                      <span style={{fontSize:'9px', opacity:0.6}}>إطار أحمر + HD</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{display:'flex', gap:'12px', width:'100%', marginTop:'8px'}}>
+                  <button onClick={()=>setLocalReady(true)} style={{flex:1, padding:'12px 16px', fontSize:'15px', fontWeight:900, cursor:'pointer', background:'#4CAF50', border:'none', color:'white', borderRadius:'12px', boxShadow:'0 4px 12px rgba(76,175,80,0.4)'}}>▶ بدء اللعب بـ {arenaStyle==='classic' ? 'القديم' : 'الجديد'}</button>
+                  <button onClick={()=>setShowCamMenu(true)} style={{flex:1, padding:'12px 16px', fontSize:'15px', fontWeight:900, cursor:'pointer', background:'#2196F3', border:'none', color:'white', borderRadius:'12px', boxShadow:'0 4px 12px rgba(33,150,243,0.4)'}}>📷 الكاميرا</button>
                 </div>
               </>
             ) : (
               <>
-                <span style={{color:'rgba(255,255,255,0.7)', fontSize:'12px', fontWeight:700}}>وضع الضبط</span>
+                <span style={{color:'rgba(255,255,255,0.7)', fontSize:'12px', fontWeight:700}}>وضع الضبط - {arenaStyle==='classic' ? 'القديم' : 'الجديد'}</span>
                 <button onClick={()=>setLocalReady(true)} style={{padding:'8px 18px', borderRadius:'999px', background:'#4CAF50', color:'#fff', fontWeight:900, border:'none', cursor:'pointer', boxShadow:'0 4px 12px rgba(76,175,80,0.4)'}}>▶ بدء اللعب</button>
                 <button onClick={()=>setShowCamMenu(false)} style={{padding:'8px 12px', borderRadius:'999px', background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.2)', cursor:'pointer'}}>✕ إغلاق</button>
               </>
@@ -938,33 +993,99 @@ export function GameScreen3D({
       {hideUI && (<button onClick={() => setHideUI(false)} style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, background: '#00e5ff', color: '#000', borderRadius: 999, padding: '8px 14px', fontWeight: 900, display: 'flex', gap: 6, alignItems: 'center', border: 'none', cursor: 'pointer' }}><Eye size={16} /> {isAr? 'اظهار' : 'Show'}</button>)}
       {!hideUI && (
         <>
-          <header className="game-topbar" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 24px', alignItems: 'center', zIndex: 10, background: '#0a0a0a', borderBottom: '1px solid #1a1a1a' }}>
-            <div className="brand" style={{ color: '#fff', fontWeight: 'bold' }}>QOUD 3D • {mySideForCam.toUpperCase()} • HD</div>
-            <div className="match-meta" style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b>
-              <span>| Rally: {rally}</span>
+          {/* شريط علوي احترافي مثل الصورة - 3D AIR HOCKEY / SCORE / TIME / PAUSE / RESET */}
+          <header style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0',
+            margin: '10px 12px',
+            height: '48px',
+            background: 'linear-gradient(90deg, #3a3a3a 0%, #3a3a3a 35%, #1a1a1a 35%, #1a1a1a 100%)',
+            borderRadius: '10px',
+            border: '1px solid #2a2a2a',
+            overflow: 'hidden',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            zIndex: 20,
+            position: 'relative'
+          }}>
+            {/* قسم الشعار - مثل الصورة */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '0 18px',
+              height: '100%',
+              background: '#5a5a5a',
+              clipPath: 'polygon(0 0, 88% 0, 78% 100%, 0 100%)',
+              minWidth: '220px'
+            }}>
+              <div style={{
+                width: '32px', height: '22px', background: '#0a0a0a', borderRadius: '50% / 50%',
+                border: '2px solid #888', display:'grid', placeItems:'center',
+                boxShadow: 'inset 0 2px 0 rgba(255,255,255,0.3)'
+              }}>
+                <div style={{width:'20px', height:'4px', background:'#0a84ff', borderRadius:'2px'}}/>
+              </div>
+              <span style={{color:'#000', fontWeight:900, fontSize:'17px', letterSpacing:0.5, fontFamily:'system-ui'}}>3D AIR HOCKEY</span>
+            </div>
+
+            {/* قسم النقاط والوقت */}
+            <div style={{display:'flex', alignItems:'center', gap:'18px', padding:'0 12px', flex:1, justifyContent:'center'}}>
+              <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
+                <span style={{color:'rgba(255,255,255,0.5)', fontSize:'10px', fontWeight:700, letterSpacing:1}}>SCORE</span>
+                <span style={{color:'#fff', fontWeight:900, fontSize:'18px', fontVariantNumeric:'tabular-nums'}}>
+                  {myScore} — {opponentScore}
+                </span>
+              </div>
+              <div style={{width:'1px', height:'24px', background:'rgba(255,255,255,0.1)'}}/>
+              <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
+                <span style={{color:'rgba(255,255,255,0.5)', fontSize:'10px', fontWeight:700, letterSpacing:1}}>TIME</span>
+                <span style={{color:'#fff', fontWeight:900, fontSize:'18px', fontVariantNumeric:'tabular-nums'}}>
+                  {settings.mode === 'time'? formatTime(timeLeft) : '∞'} 
+                </span>
+              </div>
+              <div style={{display:'flex', alignItems:'center', gap:'2px', marginLeft:'8px'}}>
+                <span style={{color:'#ff2d2d', fontSize:'12px'}}>•</span>
+                <span style={{color:'rgba(255,255,255,0.6)', fontSize:'11px'}}>Rally {rally}</span>
+              </div>
               {settings.seriesType === 'series' && (
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: '#1a1a1a', padding: '4px 12px', borderRadius: '20px' }}>
-                  <span style={{ fontWeight: 'bold', color: '#ffcf5a' }}>جولة {currentRound}/{settings.seriesRounds}</span>
-                  {players.map(p => (
-                    <span key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.color }} />
-                      <span>{p.name}</span>
-                      <strong style={{ color: p.color }}>{(seriesWins[p.id] ?? 0)}</strong>
-                    </span>
-                  ))}
+                <div style={{display:'flex', alignItems:'center', gap:'6px', background:'rgba(255,207,90,0.1)', border:'1px solid rgba(255,207,90,0.2)', padding:'2px 8px', borderRadius:'12px'}}>
+                  <span style={{color:'#ffcf5a', fontSize:'10px', fontWeight:900}}>R{currentRound}/{settings.seriesRounds}</span>
                 </div>
               )}
             </div>
-            <div className="game-actions" style={{ display: 'flex', gap: '6px' }}>
-              <button className="game-icon" onClick={() => setShowCamMenu(v =>!v)} title={isAr? 'الكاميرا' : 'Camera'} style={{ background: showCamMenu? '#00e5ff' : '#111', color: showCamMenu? '#000' : '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>
-                <Camera size={18} />
+
+            {/* أزرار التحكم */}
+            <div style={{display:'flex', alignItems:'center', gap:'6px', padding:'0 8px 0 0'}}>
+              <button onClick={() => setShowCamMenu(v =>!v)} style={{
+                background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.08)',
+                color: showCamMenu ? '#000' : 'rgba(255,255,255,0.7)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius:'6px', padding:'6px 12px', fontSize:'11px', fontWeight:800,
+                cursor:'pointer', display:'flex', alignItems:'center', gap:'4px'
+              }}>
+                <Camera size={12}/> CAM
               </button>
-              <button className="game-icon" onClick={onPause} style={{ background: '#111', color: '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>{paused? <Play size={18} /> : <Pause size={18} />}</button>
-              <button className="game-icon" onClick={resetCamera} style={{ background: '#ffcf5a', color: '#000', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none' }}><RotateCcw size={16} /></button>
+              <button onClick={onPause} style={{
+                background:'rgba(255,255,255,0.08)', color:'rgba(255,255,255,0.7)',
+                border:'1px solid rgba(255,255,255,0.1)', borderRadius:'6px',
+                padding:'6px 12px', fontSize:'11px', fontWeight:800, cursor:'pointer',
+                display:'flex', alignItems:'center', gap:'4px'
+              }}>
+                {paused? <><Play size={12}/> RESUME</> : <><Pause size={12}/> PAUSE</>}
+              </button>
+              <button onClick={resetCamera} style={{
+                background:'rgba(255,207,90,0.15)', color:'#ffcf5a',
+                border:'1px solid rgba(255,207,90,0.2)', borderRadius:'6px',
+                padding:'6px 10px', fontSize:'11px', fontWeight:800, cursor:'pointer'
+              }}>
+                RESET
+              </button>
             </div>
           </header>
-          <div style={{ display: 'flex', gap: '8px', padding: '10px 16px', background: '#0a0a0a', borderBottom: '1px solid #1a1a1a', overflowX: 'auto' }}>
+
+          <div style={{ display: 'flex', gap: '8px', padding: '0 12px 8px 12px', overflowX: 'auto' }}>
             {(() => {
               const COLORS_FB = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
               const SIDES_FB: Player['side'][] = ['bottom','top','right','left'];
@@ -987,7 +1108,7 @@ export function GameScreen3D({
           </div>
         </>
       )}
-      <div ref={mountRef} style={{ width: '100%', flex: 1, borderRadius: '22px', overflow: 'hidden', position: 'relative', touchAction: 'none' }}>
+      <div ref={mountRef} style={{ width: '100%', flex: 1, borderRadius: '16px', overflow: 'hidden', position: 'relative', touchAction: 'none', margin: '0 8px 8px 8px', border: '2px solid #1a1a1a' }}>
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
@@ -1017,11 +1138,10 @@ export function GameScreen3D({
             </div>
           </div>
         )}
-        <button onClick={() => window.location.reload()} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: '#ff2d2d', color: 'white', border: 'none', padding: '10px 14px', borderRadius: 12, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
-          <ArrowLeft size={18} /> {isAr ? 'خروج' : 'Exit'}
+        <button onClick={() => window.location.reload()} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: '#ff2d2d', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize:'11px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+          <ArrowLeft size={14} /> EXIT
         </button>
 
-        {/* --- قائمة الكاميرا الجديدة: سلم عمودي على اليمين مثل الصورة --- */}
         {showCamMenu && !hideUI && (
           <div style={{ 
             position: 'absolute', 
@@ -1029,98 +1149,133 @@ export function GameScreen3D({
             top: '50%', 
             transform: 'translateY(-50%)',
             zIndex: 10005, 
-            background: 'rgba(10,10,12,0.92)', 
-            backdropFilter: 'blur(18px)', 
-            WebkitBackdropFilter: 'blur(18px)', 
+            background: 'rgba(10,10,12,0.94)', 
+            backdropFilter: 'blur(20px)', 
+            WebkitBackdropFilter: 'blur(20px)', 
             border: '1px solid rgba(255,255,255,0.15)', 
-            borderRadius: 18, 
-            padding: '12px 10px',
-            width: 82,
-            maxHeight: '88vh',
-            overflowY: 'auto',
+            borderRadius: 20, 
+            padding: '10px 8px',
+            width: 88,
+            height: '78vh',
+            maxHeight: '620px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             gap: 0,
-            boxShadow: '0 12px 40px rgba(0,0,0,0.8)',
+            boxShadow: '0 16px 48px rgba(0,0,0,0.85)',
           }}>
-            {/* رأس السلم */}
-            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:8, width:'100%'}}>
-              <button onClick={()=>setShowCamMenu(false)} style={{width:28, height:28, borderRadius:'50%', background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.2)', color:'#fff', display:'grid', placeItems:'center', cursor:'pointer'}}><X size={12}/></button>
-              <span style={{fontSize:10, fontWeight:900, color:'rgba(255,255,255,0.5)', letterSpacing:1}}>CAM</span>
+            {/* رأس */}
+            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:8, width:'100%', flexShrink:0}}>
+              <button onClick={()=>setShowCamMenu(false)} style={{width:32, height:32, borderRadius:'50%', background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.2)', color:'#fff', display:'grid', placeItems:'center', cursor:'pointer'}}><X size={14}/></button>
+              <span style={{fontSize:10, fontWeight:900, color:'rgba(255,255,255,0.6)', letterSpacing:1.2}}>CAMERA</span>
+              <div style={{width:'100%', height:'1px', background:'rgba(255,255,255,0.1)', margin:'4px 0'}}/>
             </div>
 
-            {/* جسم السلم - مثل الصورة */}
-            <div style={{position:'relative', width:'100%', display:'flex', flexDirection:'column', alignItems:'center', gap:0, padding:'0 6px'}}>
-              {/* العمودين الجانبيين للسلم */}
-              <div style={{position:'absolute', left:8, top:0, bottom:0, width:4, background:'#2a2a2a', borderRadius:2, border:'1px solid #3a3a3a'}} />
-              <div style={{position:'absolute', right:8, top:0, bottom:0, width:4, background:'#2a2a2a', borderRadius:2, border:'1px solid #3a3a3a'}} />
+            {/* Up - بنفس الحجم */}
+            <button onClick={() => rotateCam('up')} style={{
+              width: 64, height: 48, minHeight:48, flexShrink:0,
+              background: '#ffcf5a', border:'2px solid #000', borderRadius:12,
+              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+              cursor:'pointer', boxShadow:'0 3px 0 #000, 0 4px 12px rgba(255,207,90,0.4)',
+              gap:2, marginBottom:8
+            }}>
+              <ArrowUp size={20} strokeWidth={3} color="#000"/>
+              <span style={{fontSize:10, fontWeight:900, color:'#000'}}>Up</span>
+            </button>
 
-              {/* زر Up في الأعلى مثل الصورة */}
-              <div style={{zIndex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2, marginBottom:6, width:'100%'}}>
-                <button onClick={() => rotateCam('up')} style={{width:'100%', height:36, background: '#ffcf5a', border:'2px solid #000', borderRadius:8, display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'}}>
-                  <ArrowUp size={18} strokeWidth={3} color="#000"/>
+            {/* منطقة Scroll للكاميرات - كلها نفس الحجم */}
+            <div style={{
+              flex:1, width:'100%', overflowY:'auto', overflowX:'hidden',
+              display:'flex', flexDirection:'column', alignItems:'center', gap:6,
+              padding:'4px 2px', 
+              scrollbarWidth:'thin',
+              scrollbarColor:'#333 #111',
+              borderTop:'1px solid rgba(255,255,255,0.06)',
+              borderBottom:'1px solid rgba(255,255,255,0.06)',
+              background:'rgba(0,0,0,0.2)', borderRadius:'8px'
+            }}>
+              <style>{`
+                div::-webkit-scrollbar { width: 4px; }
+                div::-webkit-scrollbar-track { background: #111; border-radius: 2px; }
+                div::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+                div::-webkit-scrollbar-thumb:hover { background: #444; }
+              `}</style>
+              {(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map((k) => (
+                <button 
+                  key={k}
+                  onClick={() => applyPreset(k)} 
+                  title={isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}
+                  style={{ 
+                    width: 64, height: 48, minHeight:48, flexShrink:0,
+                    background: currentPreset === k ? '#00e5ff' : '#1e1e1e',
+                    border: currentPreset === k ? '2px solid #00e5ff' : '1.5px solid #333',
+                    borderRadius:12,
+                    display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                    cursor:'pointer',
+                    boxShadow: currentPreset===k ? '0 0 16px rgba(0,229,255,0.6), 0 3px 0 #000' : '0 3px 0 #000',
+                    transition:'all 0.2s',
+                    gap:2
+                  }}
+                >
+                  <span style={{fontSize: 11, fontWeight:900, color: currentPreset===k ? '#000' : '#fff', lineHeight:1}}>
+                    {k==='top' ? 'TOP' : k==='bottom' ? 'BOT' : k==='iso' ? 'ISO' : k==='topPlayer' ? 'ENM' : k==='sideLeft' ? 'LEFT' : 'RIGHT'}
+                  </span>
+                  <span style={{fontSize:8, fontWeight:700, color: currentPreset===k ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.4)'}}>
+                    {k==='top' ? '⬆' : k==='bottom' ? '⬇' : k==='iso' ? '◫' : '◧'}
+                  </span>
                 </button>
-                <span style={{fontSize:14, fontWeight:900, color:'#fff', textShadow:'0 1px 2px #000'}}>Up</span>
-              </div>
-
-              {/* درجات السلم - كل درجة هي preset */}
-              {(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map((k, idx) => (
-                <div key={k} style={{zIndex:1, width:'100%', display:'flex', flexDirection:'column', alignItems:'center', gap:2, marginBottom:6}}>
-                  <button 
-                    onClick={() => applyPreset(k)} 
-                    title={isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}
-                    style={{ 
-                      width:'100%', 
-                      height: idx===1 || idx===3 ? 28 : 34,
-                      background: currentPreset === k ? '#00e5ff' : (idx%2===0 ? '#1e1e1e' : '#151515'),
-                      border: currentPreset === k ? '2px solid #00e5ff' : '1.5px solid #333',
-                      borderRadius:6,
-                      display:'grid', 
-                      placeItems:'center',
-                      cursor:'pointer',
-                      boxShadow: currentPreset===k ? '0 0 12px rgba(0,229,255,0.6)' : '0 2px 0 #000',
-                      transition:'all 0.2s'
-                    }}
-                  >
-                    <span style={{fontSize: idx===1 ? 9 : 10, fontWeight:900, color: currentPreset===k ? '#000' : '#aaa', lineHeight:1}}>
-                      {k==='top' ? 'TOP' : k==='bottom' ? 'BOT' : k==='iso' ? 'ISO' : k==='topPlayer' ? 'ENM' : k==='sideLeft' ? 'L' : 'R'}
-                    </span>
-                  </button>
-                  {/* خط أفقي يربط العمودين - درجة السلم */}
-                  <div style={{width:'100%', height:3, background: idx%2===0 ? '#3a3a3a' : '#2a2a2a', borderRadius:2, margin:'2px 0'}} />
-                </div>
               ))}
-
-              {/* أسفل السلم - تحكم إضافي */}
-              <div style={{zIndex:1, display:'flex', flexDirection:'column', gap:6, width:'100%', marginTop:8}}>
-                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:4}}>
-                  <button onClick={() => zoomCam(1)} style={{...btnStyle, height:32, padding:0, background:'#222'}}><ZoomIn size={14}/></button>
-                  <button onClick={() => zoomCam(-1)} style={{...btnStyle, height:32, padding:0, background:'#222'}}><ZoomOut size={14}/></button>
-                </div>
-                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:4}}>
-                  <button onClick={() => rotateCam('left')} style={{...btnStyle, height:32, padding:0}}><ArrowLeft size={14}/></button>
-                  <button onClick={() => rotateCam('right')} style={{...btnStyle, height:32, padding:0}}><ArrowRight size={14}/></button>
-                </div>
-                <button onClick={resetCamera} style={{width:'100%', height:32, borderRadius:8, background:'#ff4081', border:'none', color:'#fff', fontWeight:900, fontSize:11, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4}}>
-                  <Maximize2 size={12}/> RESET
-                </button>
-                <div style={{display:'flex', gap:4}}>
-                  <button onClick={saveCameraSettings} style={{flex:1, height:28, borderRadius:6, background:'#00e5ff', border:'none', color:'#000', fontWeight:900, fontSize:9, cursor:'pointer'}}><Save size={10}/> SAVE</button>
-                  <button onClick={resetCameraToDefault} style={{flex:1, height:28, borderRadius:6, background:'#ff6b8b', border:'none', color:'#fff', fontWeight:900, fontSize:9, cursor:'pointer'}}>CLR</button>
-                </div>
-                <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{width:'100%', height:26, borderRadius:6, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.5)', fontSize:9, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4}}>
-                  <EyeOff size={10}/> HIDE
-                </button>
-              </div>
+              {/* أزرار إضافية بنفس الحجم */}
+              <button onClick={() => zoomCam(1)} style={{width:64, height:48, minHeight:48, flexShrink:0, background:'#222', border:'1.5px solid #333', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 3px 0 #000', gap:2}}>
+                <ZoomIn size={16} color="#fff"/><span style={{fontSize:8, fontWeight:800, color:'#aaa'}}>ZOOM+</span>
+              </button>
+              <button onClick={() => zoomCam(-1)} style={{width:64, height:48, minHeight:48, flexShrink:0, background:'#222', border:'1.5px solid #333', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 3px 0 #000', gap:2}}>
+                <ZoomOut size={16} color="#fff"/><span style={{fontSize:8, fontWeight:800, color:'#aaa'}}>ZOOM-</span>
+              </button>
+              <button onClick={() => rotateCam('left')} style={{width:64, height:48, minHeight:48, flexShrink:0, background:'#1a1a1a', border:'1.5px solid #333', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 3px 0 #000', gap:2}}>
+                <ArrowLeft size={16} color="#fff"/><span style={{fontSize:8, fontWeight:800, color:'#aaa'}}>LEFT</span>
+              </button>
+              <button onClick={() => rotateCam('right')} style={{width:64, height:48, minHeight:48, flexShrink:0, background:'#1a1a1a', border:'1.5px solid #333', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 3px 0 #000', gap:2}}>
+                <ArrowRight size={16} color="#fff"/><span style={{fontSize:8, fontWeight:800, color:'#aaa'}}>RIGHT</span>
+              </button>
             </div>
 
-            {/* تمثيل للساحة مثل الصورة - شكل شبه منحرف صغير */}
-            <div style={{marginTop:10, width:'100%', display:'flex', justifyContent:'center', opacity:0.3}}>
-              <div style={{width:48, height:32, borderTop:'2px solid #fff', borderBottom:'2px solid #ff6b5a', borderLeft:'3px solid #ff3b30', borderRight:'3px solid #ff3b30', transform:'perspective(30px) rotateX(15deg)', opacity:0.6}} />
+            {/* Down - بنفس الحجم */}
+            <button onClick={() => rotateCam('down')} style={{
+              width: 64, height: 48, minHeight:48, flexShrink:0,
+              background: '#ff6b8b', border:'2px solid #000', borderRadius:12,
+              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+              cursor:'pointer', boxShadow:'0 3px 0 #000, 0 4px 12px rgba(255,107,139,0.4)',
+              gap:2, marginTop:8, marginBottom:8
+            }}>
+              <span style={{fontSize:10, fontWeight:900, color:'#fff'}}>Down</span>
+              <ArrowDown size={20} strokeWidth={3} color="#fff"/>
+            </button>
+
+            {/* أزرار التحكم السفلية */}
+            <div style={{display:'flex', flexDirection:'column', gap:6, width:'100%', flexShrink:0}}>
+              <button onClick={resetCamera} style={{width:'100%', height:36, borderRadius:10, background:'#ff4081', border:'none', color:'#fff', fontWeight:900, fontSize:10, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4, boxShadow:'0 2px 0 #000'}}>
+                <Maximize2 size={12}/> RESET
+              </button>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:4}}>
+                <button onClick={saveCameraSettings} style={{height:32, borderRadius:8, background:'#00e5ff', border:'none', color:'#000', fontWeight:900, fontSize:9, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:3}}><Save size={10}/> SAVE</button>
+                <button onClick={resetCameraToDefault} style={{height:32, borderRadius:8, background:'#333', border:'1px solid #444', color:'#fff', fontWeight:900, fontSize:9, cursor:'pointer'}}>CLR</button>
+              </div>
+              <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{width:'100%', height:30, borderRadius:8, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.5)', fontSize:9, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4}}>
+                <EyeOff size={10}/> HIDE UI
+              </button>
             </div>
           </div>
         )}
+      </div>
+
+      <div style={{
+        display:'flex', justifyContent:'space-between', alignItems:'center',
+        padding:'6px 12px', background:'#0a0a0a', borderTop:'1px solid #1a1a1a',
+        fontSize:'10px', color:'rgba(255,255,255,0.4)'
+      }}>
+        <span>CAMERA: PERSPECTIVE • MODE: {currentPreset.toUpperCase()}</span>
+        <span>CONTROLS: USE LADDER TO ADJUST CAMERA</span>
       </div>
     </main>
   );
