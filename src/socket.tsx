@@ -42,12 +42,12 @@ class ColyseusBridge {
   }
   attach(room: any) {
     this.room = room;
-    const messageTypes = [
-      'room-update', 'game-started', 'goal-scored', 
-      'round-finished', 'next-round', 'series-started', 
-      'match-finished', 'host-left', 'hit-effect', 
-      'countdown', 'game-state', 'paddle-input'
-    ];
+ const messageTypes = [
+  'room-update','game-started','goal-scored','round-finished',
+  'next-round','series-started','match-finished','host-left',
+  'hit-effect','countdown','game-state','paddle-input',
+  'player-ready','all-players-ready' // <-- مهم
+];
     for (const messageType of messageTypes) {
       room.onMessage(messageType, (payload: unknown) => this.dispatch(messageType, payload));
     }

@@ -616,7 +616,7 @@ export function GameScreen3D({
   const [showCamMenu, setShowCamMenu] = useState(false);
   const [hideUI, setHideUI] = useState(false);
   const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('bottom');
-  const [readyPlayers, setReadyPlayers] = useState<string[]>([]); // طور الأصدقاء فقط - من ضغط ابدأ
+ const [friendsReadyCount, setFriendsReadyCount] = useState(1);
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
@@ -783,48 +783,55 @@ export function GameScreen3D({
   }, [getMySide]);
 
   // طور الأصدقاء فقط (مع الأصدقاء) - نظام الجاهزية: لا تبدأ حتى يضغط الكل ابدأ - ضد الكمبيوتر لا يوجد انتظار
-  useEffect(() => {
-    if (!isFriendsMode) return; // فقط في طور الأصدقاء
-    const handlePlayerReady = (data: any) => {
-      const playerId = data.playerId || data.id || data.socketId;
-      if (playerId && !readyPlayers.includes(playerId)) {
-        setReadyPlayers(prev => [...prev, playerId]);
-      }
-    };
-    const handleAllReady = () => {
+ useEffect(()=>{
+  if(!isFriendsMode){
+    // ضد الكمبيوتر : ابدأ فورا - لا انتظار نهائيا
+    setLocalReady(true);
+    localReadyRef.current = true;
+    stateRef.current.countdown = 3;
+    stateRef.current.countdownStart = performance.now();
+    setCountdown(3);
+    return;
+  }
+  // مع الأصدقاء : ارسل انك جاهز
+  const myId = socket.id;
+  socket.emit('player-ready', { playerId: myId, roomCode });
+
+  // failsafe: لو السيرفر ما رد خلال 1.2 ثانية ابدأ لحالك عشان ما يعلق
+  const t = setTimeout(()=>{
+    if(!localReadyRef.current){
       setLocalReady(true);
       localReadyRef.current = true;
       stateRef.current.countdown = 3;
       stateRef.current.countdownStart = performance.now();
       setCountdown(3);
-    };
-    socket.on('player-ready', handlePlayerReady);
-    socket.on('all-players-ready', handleAllReady);
-    socket.on('game-started', handleAllReady);
-    return () => {
-      socket.off('player-ready', handlePlayerReady);
-      socket.off('all-players-ready', handleAllReady);
-      socket.off('game-started', handleAllReady);
-    };
-  }, [readyPlayers, players.length, isFriendsMode]);
-
-  useEffect(() => {
-    if (isFriendsMode && readyPlayers.length >= players.length && players.length > 1) {
-      // عندما يصبح الكل جاهز - ابدأ للكل، ليس فقط للمضيف - إصلاح التعليق
-      if (isHost) {
-        socket.emit('all-players-ready', { roomCode });
-        socket.emit('game-started', { roomCode });
-      }
-      // أي لاعب يرى الكل جاهز يبدأ فوراً - يمنع التعليق
-      if (!localReadyRef.current) {
-        setLocalReady(true);
-        localReadyRef.current = true;
-        stateRef.current.countdown = 3;
-        stateRef.current.countdownStart = performance.now();
-        setCountdown(3);
-      }
     }
-  }, [readyPlayers, isHost, isFriendsMode, players.length, roomCode]);
+  }, 1200);
+  return ()=>clearTimeout(t);
+},[isFriendsMode, roomCode]);
+
+// 2- استقبال الجاهزية
+useEffect(()=>{
+  if(!isFriendsMode) return;
+  const onPlayerReady = (data:any)=>{
+    setFriendsReadyCount(prev => prev + 1); // functional
+  };
+  const onAllReady = ()=>{
+    setLocalReady(true);
+    localReadyRef.current = true;
+    stateRef.current.countdown = 3;
+    stateRef.current.countdownStart = performance.now();
+    setCountdown(3);
+  };
+  socket.on('player-ready', onPlayerReady);
+  socket.on('all-players-ready', onAllReady);
+  socket.on('game-started', onAllReady);
+  return ()=>{
+    socket.off('player-ready', onPlayerReady);
+    socket.off('all-players-ready', onAllReady);
+    socket.off('game-started', onAllReady);
+  };
+},[isFriendsMode]);
 
   useEffect(() => {
     const el = mountRef.current;

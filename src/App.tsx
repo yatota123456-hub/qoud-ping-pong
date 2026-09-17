@@ -230,7 +230,7 @@ useEffect(() => {
     }));
   }, [names, settings.players, computers]);
 
-  const enterWaiting = async () => {
+ const enterWaiting = async () => {
     const trimmed = names.slice(0, settings.players).map(n => n.trim());
     if (trimmed.some(n => n.length < 2)) { setError(isAr? 'اكتب اسم كل اللاعبين حرفين على الأقل' : 'Names must be at least 2 chars'); return; }
     if (new Set(trimmed).size!== trimmed.length) { setError(isAr? 'الاسماء لازم مختلفة' : 'Names must be unique'); return; }
@@ -238,9 +238,20 @@ useEffect(() => {
     const allPlayers = makePlayers();
     setIsConnectingRoom(true);
     try {
-      const roomCode = randomRoom();
-      const colyseusRoom = await colyseus.create('qoud', { code: roomCode, maxPlayers: allPlayers.length, settings, player: allPlayers[0], computerPlayers: allPlayers.slice(1).filter(p=>p.computer), name: allPlayers[0].name, });
-      socket.attach(colyseusRoom); setRoom(roomCode); setIsHost(true); setError(''); setScreen('waiting');
+      // التعديل هنا: لا نولد كود في الكلاينت
+      const colyseusRoom = await colyseus.create('qoud', {
+        maxPlayers: allPlayers.length,
+        settings,
+        player: allPlayers[0],
+        computerPlayers: allPlayers.slice(1).filter(p=>p.computer),
+        name: allPlayers[0].name
+      });
+      socket.attach(colyseusRoom);
+      // الكود راح يجي من السيرفر عبر room-update
+      // نحط كود مؤقت لين يوصل الحقيقي
+      const tempCode = (colyseusRoom.state as any)?.code || colyseusRoom.roomId.slice(0,4).toUpperCase();
+      setRoom(tempCode);
+      setIsHost(true); setError(''); setScreen('waiting');
     } catch (cause) { setError(cause instanceof Error? cause.message : (isAr? 'تعذر انشاء الغرفة' : 'Could not create room')); }
     finally { setIsConnectingRoom(false); }
   };

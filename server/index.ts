@@ -24,9 +24,19 @@ const RECT = { w: 700, h: 1050 };
 const SQUARE = { w: 1000, h: 1000 };
 
 function getArenaWorld(count: number, size: string = 'medium') {
-  const base = count >= 3 ? SQUARE : RECT;
+  const base = count >= 3? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc };
+}
+
+// --- إضافات جديدة بدون حذف القديم - لدعم آلاف اللاعبين ---
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateUniqueCode(len = 6): string {
+  let code: string;
+  do {
+    code = Array.from({ length: len }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+  } while (roomsByCode.has(code));
+  return code;
 }
 
 class QoudRoom extends Room<QoudRoomState> {
@@ -55,17 +65,31 @@ class QoudRoom extends Room<QoudRoomState> {
   private seriesWinsMap = new Map<string, number>();
   private roundHistory: Array<{ round: number; scores: Record<string, number>; winnerId: string | null; isDraw: boolean }> = [];
 
+  // --- إضافة جديدة لحل مشكلة التعليق ---
+  private readyPlayers = new Set<string>();
+
   onCreate(options: CreateOptions) {
-    const code = String(options.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
-    if (code.length !== 4) throw new Error('Invalid room code');
+    // --- تعديل: كان 4 حروف من العميل ويسبب تصادم، الآن 6 حروف فريد من السيرفر ---
+    let rawCode = String(options.code?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    let code: string;
+    if (!rawCode || rawCode.length < 4 || roomsByCode.has(rawCode)) {
+      code = generateUniqueCode(6);
+    } else {
+      // لو العميل ارسل 4 قديمة نحتفظ بها لو غير مستخدمة، والا نولد 6 جديدة
+      code = rawCode;
+      if (roomsByCode.has(code)) {
+        code = generateUniqueCode(6);
+      }
+    }
+
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
-    this.settings = { 
-      mode: 'time', duration: 180, goal: 7, ballSpeed: 10, difficulty: 'normal', 
-      arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3, 
-      ...options.settings 
+    this.settings = {
+      mode: 'time', duration: 180, goal: 7, ballSpeed: 10, difficulty: 'normal',
+      arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3,
+     ...options.settings
     };
     this.maxClients = maxPlayers;
-    this.seriesType = this.settings.seriesType === 'series' ? 'series' : 'single';
+    this.seriesType = this.settings.seriesType === 'series'? 'series' : 'single';
     this.totalRounds = Math.max(2, Math.min(10, Number(this.settings.seriesRounds) || 3));
     this.currentRound = 1;
     this.seriesWinsMap.clear();
@@ -78,19 +102,19 @@ class QoudRoom extends Room<QoudRoomState> {
     state.hostSessionId = '';
     state.settingsJson = JSON.stringify(this.settings);
     state.ball = new BallState();
-    
+
     try {
       (state as any).currentRound = 1;
       (state as any).totalRounds = this.totalRounds;
       (state as any).seriesType = this.seriesType;
     } catch {}
-    
+
     this.setState(state);
     this.setMetadata({ code });
     roomsByCode.set(code, this);
 
     this.initWorldAndPaddles();
-    
+
     if (options.computerPlayers?.length) {
       options.computerPlayers.forEach((bot, i) => {
         const ps = new PlayerState();
@@ -113,7 +137,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
   private initWorldAndPaddles() {
     const needed = Math.max(2, this.state.players.size || this.state.maxPlayers, this.state.maxPlayers);
-    this.activeSides = needed >= 3 ? ['bottom', 'top', 'right', 'left'] : ['bottom', 'top'];
+    this.activeSides = needed >= 3? ['bottom', 'top', 'right', 'left'] : ['bottom', 'top'];
     const world = getArenaWorld(needed, this.settings.arenaSize);
     this.state.worldW = world.w;
     this.state.worldH = world.h;
@@ -145,13 +169,13 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.ball.vx = 0;
     this.state.ball.vy = 0;
     this.state.ball.visible = false;
-    this.state.timeLeft = this.settings.mode === 'time' ? Number(this.settings.duration || 180) : 0;
+    this.state.timeLeft = this.settings.mode === 'time'? Number(this.settings.duration || 180) : 0;
     this.lastHitSide = null;
   }
 
   onJoin(client: { sessionId: string }, options: { name?: string; player?: Partial<PlayerState> } = {}) {
-    if (this.state.status !== 'waiting') throw new Error('الجولة بدأت بالفعل');
-    let name = String(options.name ?? options.player?.name ?? '').trim();
+    if (this.state.status!== 'waiting') throw new Error('الجولة بدأت بالفعل');
+    let name = String(options.name?? options.player?.name?? '').trim();
     if (name.length < 2) name = `لاعب ${this.state.players.size + 1}`;
     const existingNames = [...this.state.players.values()].map((p) => p.name.toLowerCase());
     if (existingNames.includes(name.toLowerCase())) {
@@ -159,11 +183,11 @@ class QoudRoom extends Room<QoudRoomState> {
       while (existingNames.includes(`${name} ${i}`.toLowerCase())) i++;
       name = `${name} ${i}`;
     }
-    const side = (options.player?.side as PlayerSide) ?? this.nextSide();
+    const side = (options.player?.side as PlayerSide)?? this.nextSide();
     const player = new PlayerState();
     player.id = client.sessionId;
     player.name = name;
-    player.color = String(options.player?.color ?? COLORS[this.humanCount() % COLORS.length]);
+    player.color = String(options.player?.color?? COLORS[this.humanCount() % COLORS.length]);
     player.side = side;
     player.computer = false;
     this.state.players.set(client.sessionId, player);
@@ -176,6 +200,7 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   onLeave(client: { sessionId: string }) {
+    this.readyPlayers.delete(client.sessionId);
     const wasHost = this.state.hostSessionId === client.sessionId;
     this.state.players.delete(client.sessionId);
     this.state.scores.delete(client.sessionId);
@@ -192,16 +217,34 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   onDispose() {
+    this.readyPlayers.clear();
     if (roomsByCode.get(this.state.code) === this) roomsByCode.delete(this.state.code);
   }
 
   private handleMessage(type: string, client: { sessionId: string }, payload: any) {
+    // --- إضافات جديدة لحل التعليق - بدون حذف القديم ---
+    if (type === 'player-ready') {
+      this.readyPlayers.add(client.sessionId);
+      this.broadcast('player-ready', { playerId: client.sessionId, count: this.readyPlayers.size, total: this.humanCount() });
+      if (this.state.status === 'playing' && this.readyPlayers.size >= this.humanCount()) {
+        this.broadcast('all-players-ready', { count: this.readyPlayers.size });
+      }
+      return;
+    }
+    if (type === 'all-players-ready') {
+      if (client.sessionId === this.state.hostSessionId) {
+        this.broadcast('all-players-ready', { count: this.readyPlayers.size });
+        this.broadcast('game-started', { settings: this.state.settingsJson });
+      }
+      return;
+    }
+
     if (type === 'update-name') {
       const player = this.state.players.get(client.sessionId);
-      if (!player || this.state.status !== 'waiting') return;
-      let newName = String(payload?.name ?? '').trim().slice(0, 15);
+      if (!player || this.state.status!== 'waiting') return;
+      let newName = String(payload?.name?? '').trim().slice(0, 15);
       if (newName.length < 2) return;
-      const others = [...this.state.players.values()].filter((p) => p.id !== client.sessionId).map((p) => p.name.toLowerCase());
+      const others = [...this.state.players.values()].filter((p) => p.id!== client.sessionId).map((p) => p.name.toLowerCase());
       if (others.includes(newName.toLowerCase())) {
         let i = 2;
         while (others.includes(`${newName} ${i}`.toLowerCase())) i++;
@@ -214,6 +257,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
     if (type === 'start-game') {
       this.assertHost(client);
+      this.readyPlayers.clear();
       this.currentRound = 1;
       this.seriesWinsMap.clear();
       this.roundHistory = [];
@@ -236,13 +280,13 @@ class QoudRoom extends Room<QoudRoomState> {
     }
 
     if (type === 'paddle-target') {
-      if (this.state.status !== 'playing') return;
+      if (this.state.status!== 'playing') return;
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
       const side = player.side as PlayerSide;
       const x = Number(payload?.x);
-      const y = Number(payload?.y ?? payload?.z);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const y = Number(payload?.y?? payload?.z);
+      if (!Number.isFinite(x) ||!Number.isFinite(y)) return;
       const clamped = this.clampPaddle(side, x, y);
       this.paddleTargets.set(side, clamped);
       if (this.servingActive && this.servingSide === side) this.servingRequested = true;
@@ -266,16 +310,16 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private humanCount() {
-    return [...this.state.players.values()].filter((p) => !p.computer).length;
+    return [...this.state.players.values()].filter((p) =>!p.computer).length;
   }
 
   private nextSide(): PlayerSide {
     const occupied = new Set([...this.state.players.values()].map((p) => p.side));
-    return SIDES.find((s) => !occupied.has(s)) ?? 'bottom';
+    return SIDES.find((s) =>!occupied.has(s))?? 'bottom';
   }
 
   private assertHost(client: { sessionId: string }) {
-    if (this.state.hostSessionId !== client.sessionId) throw new Error('المنشئ فقط يستطيع تنفيذ هذا الإجراء');
+    if (this.state.hostSessionId!== client.sessionId) throw new Error('المنشئ فقط يستطيع تنفيذ هذا الإجراء');
   }
 
   private broadcastRoom() {
@@ -300,7 +344,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
   private startCountdown(scorerSide: PlayerSide | null) {
     this.state.countdown = 3;
-    this.state.countdownSide = scorerSide ?? '';
+    this.state.countdownSide = scorerSide?? '';
     this.countdownStartedAt = Date.now();
     this.state.rally = 0;
     this.state.ball.vx = 0;
@@ -325,7 +369,7 @@ class QoudRoom extends Room<QoudRoomState> {
       else if (side === 'left') { this.state.ball.vx = Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed; }
       else { this.state.ball.vx = -Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed; }
     } else {
-      const dirY = Math.random() > 0.5 ? 1 : -1;
+      const dirY = Math.random() > 0.5? 1 : -1;
       const ang = (Math.random() - 0.5) * 0.8;
       this.state.ball.vx = Math.sin(ang) * speed;
       this.state.ball.vy = Math.cos(ang) * speed * dirY;
@@ -334,7 +378,7 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private tick(deltaMs: number) {
-    if (this.state.status !== 'playing') return;
+    if (this.state.status!== 'playing') return;
     const delta = Math.min(deltaMs / 16.67, 2);
 
     if (this.state.countdown > 0) {
@@ -461,7 +505,7 @@ class QoudRoom extends Room<QoudRoomState> {
     const h = this.state.worldH;
     const predX = this.state.ball.x + this.state.ball.vx * 14;
     const predY = this.state.ball.y + this.state.ball.vy * 14;
-    const diffMax = this.settings.difficulty === 'easy' ? 0.85 : this.settings.difficulty === 'hard' ? 2.4 : 1.6;
+    const diffMax = this.settings.difficulty === 'easy'? 0.85 : this.settings.difficulty === 'hard'? 2.4 : 1.6;
     const chase = (cur: number, target: number) => {
       const diff = target - cur;
       if (Math.abs(diff) < 2) return cur;
@@ -470,7 +514,7 @@ class QoudRoom extends Room<QoudRoomState> {
     };
     for (const side of this.activeSides) {
       const player = [...this.state.players.values()].find((p) => p.side === side);
-      const isComputer = !player || player.computer;
+      const isComputer =!player || player.computer;
       if (!isComputer) continue;
       const paddle = this.state.paddles.get(side)!;
       if (side === 'top' || side === 'bottom') {
@@ -500,7 +544,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
     let missedSide: PlayerSide | null = null;
 
-    for (let i = 0; i < steps && !missedSide; i++) {
+    for (let i = 0; i < steps &&!missedSide; i++) {
       const prevX = ball.x;
       const prevY = ball.y;
       ball.x += stepVx;
@@ -538,8 +582,8 @@ class QoudRoom extends Room<QoudRoomState> {
             bestHit = {
               side,
               t,
-              nx: d > 0.001 ? dx / d : 0,
-              ny: d > 0.001 ? dy / d : (side === 'bottom' ? -1 : side === 'top' ? 1 : 0),
+              nx: d > 0.001? dx / d : 0,
+              ny: d > 0.001? dy / d : (side === 'bottom'? -1 : side === 'top'? 1 : 0),
               dist: d,
             };
           }
@@ -554,7 +598,6 @@ class QoudRoom extends Room<QoudRoomState> {
         ball.x = paddle.x + bestHit.nx * (HIT_DIST + 1.5);
         ball.y = paddle.y + bestHit.ny * (HIT_DIST + 1.5);
 
-        // قياس السرعة الحالية للكرة قبل الضرب
         const currentSpeed = Math.hypot(ball.vx, ball.vy);
         const minHitSpeed = 3.5 + Number(this.settings.ballSpeed || 10) * 0.15;
         const startSpd = Math.max(currentSpeed, minHitSpeed);
@@ -569,20 +612,15 @@ class QoudRoom extends Room<QoudRoomState> {
           relVy -= 2 * dot * bestHit.ny;
         }
 
-        // زيادة تدريجية سلسة ومحكومة (مثلاً 0.5 إلى 1.2 كحد أقصى للزيادة في الضربة الواحدة)
         const speedIncrement = Math.min(1.5, 0.5 + Math.min(paddleSpeed, 15) * 0.05);
         let targetSpeed = startSpd + speedIncrement;
 
-        // الحد الأقصى للسرعة
         const maxAllowedSpeed = 16 + Number(this.settings.ballSpeed || 10) * 0.5;
         targetSpeed = Math.min(targetSpeed, maxAllowedSpeed);
 
-        // تحديد اتجاه الحركة المرتدة بناءً على متجه التصادم الطبيعي وسرعة المضرب
-        // هذا يضمن أن الكرة دائماً ترتد مبتعدة عن مركز المضرب لمنع الاختراق، وتتحرك بالاتجاه الحقيقي للضربة
         let dirVx = bestHit.nx * 0.75 + pVel.vx * 0.25;
         let dirVy = bestHit.ny * 0.75 + pVel.vy * 0.25;
 
-        // نضمن أن المتجه يشير دائماً إلى خارج المضرب لتجنب أي فرصة للاختراق
         const normalDot = dirVx * bestHit.nx + dirVy * bestHit.ny;
         if (normalDot < 0.1) {
           dirVx = bestHit.nx * 0.9 + pVel.vx * 0.1;
@@ -601,7 +639,7 @@ class QoudRoom extends Room<QoudRoomState> {
         this.broadcast('hit-effect', { x: ball.x, y: ball.y, side, power: Math.min(1, this.state.rally / 12), paddleVx: pVel.vx, paddleVy: pVel.vy });
       }
 
-      const goalW = w >= 900 ? 300 : 260;
+      const goalW = w >= 900? 300 : 260;
       const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
       const gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
       const inGX = (x: number) => x >= gx1 && x <= gx2;
@@ -643,7 +681,7 @@ class QoudRoom extends Room<QoudRoomState> {
     const scorerSide = OPPOSITE[missedSide];
     const scorer = [...this.state.players.values()].find((p) => p.side === scorerSide);
     if (scorer) {
-      const newScore = (this.state.scores.get(scorer.id) ?? 0) + 1;
+      const newScore = (this.state.scores.get(scorer.id)?? 0) + 1;
       this.state.scores.set(scorer.id, newScore);
       this.broadcast('goal-scored', {
         missedSide,
@@ -668,7 +706,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
   private onTimeUpRound() {
     const sorted = [...this.state.scores.entries()].sort((a, b) => b[1] - a[1]);
-    const maxScore = sorted[0]?.[1] ?? 0;
+    const maxScore = sorted[0]?.[1]?? 0;
     const topPlayers = sorted.filter(([_, s]) => s === maxScore);
     if (topPlayers.length === 1) {
       this.finishRound(topPlayers[0][0], false);
@@ -683,7 +721,7 @@ class QoudRoom extends Room<QoudRoomState> {
     this.roundHistory.push(record);
 
     if (!isDraw && winnerId) {
-      const cur = this.seriesWinsMap.get(winnerId) ?? 0;
+      const cur = this.seriesWinsMap.get(winnerId)?? 0;
       this.seriesWinsMap.set(winnerId, cur + 1);
       try { (this.state as any).seriesWins?.set(winnerId, cur + 1); } catch {}
     }
@@ -724,7 +762,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
   private finishMatchSeries() {
     const entries = [...this.seriesWinsMap.entries()].sort((a, b) => b[1] - a[1]);
-    const maxWins = entries[0]?.[1] ?? 0;
+    const maxWins = entries[0]?.[1]?? 0;
     const top = entries.filter(([_, w]) => w === maxWins);
     let finalWinnerId: string | null = null;
     let isOverallDraw = false;
@@ -741,6 +779,7 @@ class QoudRoom extends Room<QoudRoomState> {
       seriesType: 'series',
     });
     this.state.status = 'waiting';
+    this.readyPlayers.clear();
   }
 
   private finishMatch(winnerId?: string) {
@@ -757,17 +796,18 @@ class QoudRoom extends Room<QoudRoomState> {
       seriesType: this.seriesType,
     });
     this.state.status = 'waiting';
+    this.readyPlayers.clear();
   }
 }
 
-const port = Number(process.env.PORT ?? 2567);
+const port = Number(process.env.PORT?? 2567);
 const isProduction = process.env.NODE_ENV === 'production';
 const httpServer = createServer();
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
   express: async (app) => {
     app.get('/api/rooms', (req, res) => {
-      const code = String(req.query.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const code = String(req.query.code?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (code) {
         const room = roomsByCode.get(code);
         if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
