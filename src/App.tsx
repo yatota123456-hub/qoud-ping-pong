@@ -602,7 +602,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const arenaRef = useRef<HTMLDivElement>(null);
   const hintDotRef = useRef<HTMLDivElement>(null);
   const hintTextRef = useRef<HTMLDivElement>(null);
-  const celebrationCanvasRef = useRef<HTMLCanvasElement>(null);
   const hasDraggedRef = useRef(false);
   const noDragStartRef = useRef(performance.now());
   const touchControls = useRef({ left: false, right: false, up: false, down: false, bottomLeft: false, bottomRight: false, leftUp: false, leftDown: false });
@@ -631,60 +630,9 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const myAngle = angleMap[mySide]?? 0;
   soundRef.current = sound; onTimeUpRef.current = onTimeUp; onGoalRef.current = onGoal; pausedRef.current = paused;
   useEffect(()=>{ celebratingRef.current = celebrating; },[celebrating]);
-  // Confetti original preserved
-  useEffect(() => {
-    if (!celebrating || !celebrationCanvasRef.current) return;
-    const canvas = celebrationCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const rect = canvas.parentElement?.getBoundingClientRect();
-    if (!rect) return;
-    canvas.width = rect.width * (window.devicePixelRatio || 1);
-    canvas.height = rect.height * (window.devicePixelRatio || 1);
-    const particles = Array.from({length: 100}, () => ({
-      x: Math.random()*canvas.width,
-      y: Math.random()*-canvas.height,
-      vx: (Math.random()-0.5)*6,
-      vy: Math.random()*4+2,
-      color: ['#ffcf5a','#ff6b8b','#61e7c2','#00e5ff'][Math.floor(Math.random()*4)],
-      size: Math.random()*3+2
-    }));
-    let raf=0;
-    const loop = () => {
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      particles.forEach((p:any)=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=0.05; ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill(); if(p.y>canvas.height){ p.y=-20; p.x=Math.random()*canvas.width; } });
-      raf=requestAnimationFrame(loop);
-    };
-    raf=requestAnimationFrame(loop);
-    return ()=>cancelAnimationFrame(raf);
-  }, [celebrating]);
   const audioCtxRef = useRef<AudioContext|null>(null);
-  const playHit = useCallback((power:number, xPos:number = world.w/2)=>{
-    if(!soundRef.current) return;
-    try{
-      if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
-      const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
-      const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(90+power*800,t); o.frequency.exponentialRampToValueAtTime(35,t+0.25); g.gain.setValueAtTime(0.15+power*0.85,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.45); o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+0.45);
-      if(settings.graphics==='3d') return;
-      const p=ctx.createPanner(); p.panningModel='equalpower'; p.positionX.setValueAtTime((xPos/world.w-0.5)*2,t); g.connect(p).connect(ctx.destination);
-    }catch{}
-  },[world.w, settings.graphics]);
-  const playGoalSound = useCallback(()=>{
-    if(!soundRef.current) return;
-    try{
-      if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
-      const ctx=audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
-      [0,0.15,0.3].forEach((d,i)=>{ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(220+i*110,t+d); g.gain.setValueAtTime(0.3,t+d); g.gain.exponentialRampToValueAtTime(0.001,t+d+0.4); o.connect(g).connect(ctx.destination); o.start(t+d); o.stop(t+d+0.4); });
-    }catch{}
-  },[]);
-  const playCelebrationSound = useCallback(()=>{
-    if(!soundRef.current) return;
-    try{
-      if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
-      const ctx=audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
-      [0,0.2,0.4,0.6].forEach((d,i)=>{ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='triangle'; o.frequency.setValueAtTime(440+i*80,t+d); g.gain.setValueAtTime(0.4,t+d); g.gain.exponentialRampToValueAtTime(0.001,t+d+0.5); o.connect(g).connect(ctx.destination); o.start(t+d); o.stop(t+d+0.5); });
-    }catch{}
-  },[]);
+  const playHit = useCallback((power:number, xPos:number = world.w/2)=>{ if(!soundRef.current) return; },[world.w]);
+  const playGoalSound = useCallback(()=>{},[]);
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
   const getInitialSpeed = useCallback(() => 1.5 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
   const stateRef = useRef({
@@ -696,7 +644,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 0, countdownStart: performance.now(), countdownSide: null as Player['side'] | null, effects: [] as any[]
   });
   const ballBuffer = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
-  const isOfflineMode = players.length <= 1;
+  const isOfflineMode = players.length <= 1 || settings.vsComputer || players.some((p:any)=>p.computer);
   const getWorldFromClient = useCallback((clientX:number, clientY:number)=>{
     const arena = arenaRef.current; if(!arena) return {x:world.w/2,y:world.h/2};
     const rect = arena.getBoundingClientRect();
@@ -968,7 +916,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       <div ref={hintDotRef} style={{ position: 'absolute', width: '14px', height: '14px', borderRadius: '50%', background: '#00e5ff', border: '2px solid #fff', display: 'none', zIndex: 20, pointerEvents: 'none', animation: 'hintPulse 1.2s infinite' }} />
       <div ref={hintTextRef} style={{ position: 'absolute', background: '#00e5ff', color: '#000', padding: '6px 12px', borderRadius: 999, fontSize: '12px', fontWeight: 900, display: 'none', zIndex: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>👆 حرك المضرب من هنا</div>
       <button onClick={() => window.location.reload()} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: 'rgba(255, 45, 45, 0.9)', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>خروج</button>
-      {celebrating && <canvas ref={celebrationCanvasRef} style={{position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none', zIndex:15}} />}
 
       {/* --- Overlay الجديد 2D: يغطي كامل الساحة وشبه شفاف --- */}
       {!localReady && (
@@ -1000,14 +947,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       )}
     </div>
   </section>
-  <div className="touch-controls" style={{display:'flex', gap:'8px', justifyContent:'center', padding:'12px'}}>
-    <button {...bindTouch('left')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#111', color:'#fff', border:'2px solid #333'}}><ChevronLeft size={24} /></button>
-    <button {...bindTouch('right')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#111', color:'#fff', border:'2px solid #333'}}><ChevronRight size={24} /></button>
-    <button {...bindTouch('up')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#111', color:'#fff', border:'2px solid #333'}}>↑</button>
-    <button {...bindTouch('down')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#111', color:'#fff', border:'2px solid #333'}}>↓</button>
-    <button {...bindTouch('bottomLeft')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#222', color:'#fff'}}><ChevronLeft size={20} /></button>
-    <button {...bindTouch('bottomRight')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#222', color:'#fff'}}><ChevronRight size={20} /></button>
-  </div>
 </main>
   );
 }

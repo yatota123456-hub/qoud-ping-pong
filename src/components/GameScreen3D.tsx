@@ -620,7 +620,7 @@ export function GameScreen3D({
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
-  const isOfflineMode =!socket.connected || players.length <= 1;
+  const isOfflineMode =!socket.connected || players.length <= 1 || settings.vsComputer || players.some((p:any)=>p.computer);
   // لا انتظار نهائياً في طور ضد الكمبيوتر - فقط في طور مع الأصدقاء (2 أو 4 لاعبين أصدقاء)
   // نعتمد على زر القائمة نفسه: settings.vsComputer + حقل computer في اللاعبين
   const isVsComputer = settings.vsComputer || players.some((p:any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
@@ -809,14 +809,20 @@ export function GameScreen3D({
   }, [readyPlayers, players.length, isFriendsMode]);
 
   useEffect(() => {
-    if (isFriendsMode && isHost && readyPlayers.length >= players.length && players.length > 1) {
-      socket.emit('all-players-ready', { roomCode });
-      socket.emit('game-started', { roomCode });
-      setLocalReady(true);
-      localReadyRef.current = true;
-      stateRef.current.countdown = 3;
-      stateRef.current.countdownStart = performance.now();
-      setCountdown(3);
+    if (isFriendsMode && readyPlayers.length >= players.length && players.length > 1) {
+      // عندما يصبح الكل جاهز - ابدأ للكل، ليس فقط للمضيف - إصلاح التعليق
+      if (isHost) {
+        socket.emit('all-players-ready', { roomCode });
+        socket.emit('game-started', { roomCode });
+      }
+      // أي لاعب يرى الكل جاهز يبدأ فوراً - يمنع التعليق
+      if (!localReadyRef.current) {
+        setLocalReady(true);
+        localReadyRef.current = true;
+        stateRef.current.countdown = 3;
+        stateRef.current.countdownStart = performance.now();
+        setCountdown(3);
+      }
     }
   }, [readyPlayers, isHost, isFriendsMode, players.length, roomCode]);
 
@@ -1456,10 +1462,23 @@ export function GameScreen3D({
               stateRef.current.countdownStart = performance.now();
               setCountdown(3);
             } else {
-              // مع الأصدقاء: أرسل جاهزيتي وانتظر البقية
-              const myId = socket.id || 'local';
+              // مع الأصدقاء: أرسل جاهزيتي وانتظر البقية - إصلاح التعليق
+              const myId = socket.id || 'local_' + Math.random().toString(36).slice(2,7);
               if (!readyPlayers.includes(myId)) {
-                setReadyPlayers(prev => [...prev, myId]);
+                const newReady = [...readyPlayers, myId];
+                setReadyPlayers(newReady);
+                // إذا أصبح الكل جاهز (أنا آخر واحد) - ابدأ فوراً بدون انتظار السوكت
+                if (newReady.length >= players.length) {
+                  setLocalReady(true);
+                  localReadyRef.current = true;
+                  stateRef.current.countdown = 3;
+                  stateRef.current.countdownStart = performance.now();
+                  setCountdown(3);
+                  if (isHost) {
+                    socket.emit('all-players-ready', { roomCode });
+                    socket.emit('game-started', { roomCode });
+                  }
+                }
               }
               socket.emit('player-ready', { playerId: myId, roomCode, side: getMySide() });
             }
@@ -1558,15 +1577,7 @@ export function GameScreen3D({
 
             {/* أزرار التحكم */}
             <div style={{display:'flex', alignItems:'center', gap:'6px', padding:'0 8px 0 0'}}>
-              <button onClick={() => setShowCamMenu(v =>!v)} style={{
-                background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.08)',
-                color: showCamMenu ? '#000' : 'rgba(255,255,255,0.7)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius:'6px', padding:'6px 12px', fontSize:'11px', fontWeight:800,
-                cursor:'pointer', display:'flex', alignItems:'center', gap:'4px'
-              }}>
-                <Camera size={12}/> CAM
-              </button>
+              
               <button onClick={onPause} style={{
                 background:'rgba(255,255,255,0.08)', color:'rgba(255,255,255,0.7)',
                 border:'1px solid rgba(255,255,255,0.1)', borderRadius:'6px',
