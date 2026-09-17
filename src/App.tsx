@@ -34,7 +34,6 @@ function randomRoom(existing: string[] = []) {
 }
 function loadWins(): Record<string, number> { try { return JSON.parse(localStorage.getItem('qoud-ping-pong-wins')?? '{}') as Record<string, number>; } catch { return {}; } }
 
-
 function getArenaWorld(playersCount: number, arenaSize: ArenaSize = 'medium') {
   const baseWorld = playersCount >= 3? SQUARE_WORLD : RECTANGULAR_WORLD;
   const scale = ARENA_SCALES[arenaSize] || 1.0;
@@ -84,12 +83,9 @@ function App() {
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { currentRoundRef.current = currentRound; }, [currentRound]);
   useEffect(() => {
-    // استيقاظ الخادم مبكراً في الخلفية لتسريع الاتصال عند إنشاء/انضمام غرفة
     void fetch('/health').catch(() => {});
     void fetch('/api/rooms').then(r => r.ok? r.json() : null).then((d: any) => { if (d?.count!== undefined) setRoomsCount(d.count); }).catch(() => {});
   }, []);
-
- // هذا هو الـ useEffect المصحح كامل - انسخ هذا واستبدل الـ useEffect القديم كله في App.tsx
 
 useEffect(() => {
   const onRoomUpdate = (roomData: RoomData) => {
@@ -104,7 +100,6 @@ useEffect(() => {
       if (s.currentRound) setCurrentRound(s.currentRound);
     }
   };
-
   const onGameStarted = () => { 
     setWinner(null); 
     setLastGoal(null); 
@@ -113,7 +108,6 @@ useEffect(() => {
     setMatchKey((k) => k + 1); 
     setScreen('game'); 
   };
-  
   const onMatchFinished = ({ winnerId, scores: serverScores, seriesWins: sWins }: any) => {
     setScores(serverScores);
     if (sWins) setSeriesWins(sWins);
@@ -134,7 +128,6 @@ useEffect(() => {
       setScreen('results');
     }
   };
-
   const onGoalScored = ({ scores: serverScores, missedSide }: any) => {
     if (!socket.connected) return;
     setScores(serverScores);
@@ -144,7 +137,6 @@ useEffect(() => {
       window.setTimeout(() => setLastGoal(null), 1300); 
     }
   };
-
   const onRoundFinished = (data:any) => {
     setSeriesWins(data.seriesWins);
     setCurrentRound(data.currentRound);
@@ -153,10 +145,7 @@ useEffect(() => {
     if(w) { 
       setRoundWinner(w); 
       setCelebrating(w); 
-      // 5 ثواني للاحتفال بالجولة
-      setTimeout(() => {
-        setCelebrating(null);
-      }, 5000);
+      setTimeout(() => { setCelebrating(null); }, 5000);
     } else {
       setLastGoal(isArRef.current ? 'تعادل في الجولة!' : 'Round Draw!');
       setTimeout(()=>setLastGoal(null), 2000);
@@ -164,7 +153,6 @@ useEffect(() => {
       setTimeout(()=>{ setCelebrating(null); }, 5000);
     }
   };
-
   const onNextRound = (data:any) => {
     setCurrentRound(data.currentRound);
     setSeriesWins(data.seriesWins);
@@ -175,12 +163,10 @@ useEffect(() => {
     setLastGoal(null);
     setMatchKey(k=>k+1);
   };
-
   const onSeriesStarted = (data:any) => {
     setCurrentRound(data.currentRound);
     setSeriesWins({});
   };
-
   const onError = (msg: string) => setError(msg);
   const onLost = () => { 
     setError(isArRef.current? 'انقطع الاتصال بالخادم' : 'Connection lost'); 
@@ -191,7 +177,6 @@ useEffect(() => {
     setError(isArRef.current? 'منشئ الغرفة غادر' : 'Host left'); 
     setScreen('setup'); 
   };
-
   socket.on('room-update', onRoomUpdate);
   socket.on('game-started', onGameStarted);
   socket.on('match-finished', onMatchFinished);
@@ -202,7 +187,6 @@ useEffect(() => {
   socket.on('error', onError);
   socket.on('connection-lost', onLost);
   socket.on('host-left', onHostLeft);
-
   return () => {
     socket.off('room-update', onRoomUpdate);
     socket.off('game-started', onGameStarted);
@@ -217,19 +201,15 @@ useEffect(() => {
   };
 }, []);
   useEffect(() => {
-    // مراقبة حالة الاتصال بالخادم
     const onConnect = () => setIsConnectingRoom(false);
     const onDisconnect = () => {};
-
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
-
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
     };
   }, []);
-
 
   const updateSettings = (patch: Partial<Settings>) => {
     setSettings((current) => {
@@ -355,12 +335,9 @@ useEffect(() => {
   const startMatch = useCallback(() => {
     const canStart = isHost || playersRef.current.length <= 1 || !socket.connected;
     if (!canStart) { setError(isArRef.current ? 'المنشئ هو من يبدأ الجولة' : 'Only the host can start'); return; }
-    
-    const isOffline = !socket.connected; // ✅ فقط انقطاع الاتصال الحقيقي
+    const isOffline = !socket.connected;
     const currentPlayers = isOffline ? makePlayers() : (playersRef.current.length > 0 ? playersRef.current : makePlayers());
-    
-    if (socket.connected) socket.emit('start-game', { code: roomRef.current }); // ✅ أرسل دائمًا عند الاتصال
-    
+    if (socket.connected) socket.emit('start-game', { code: roomRef.current });
     setPlayers(currentPlayers); 
     setScores(Object.fromEntries(currentPlayers.map(p => [p.id, 0]))); 
     setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); 
@@ -628,7 +605,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const celebrationCanvasRef = useRef<HTMLCanvasElement>(null);
   const hasDraggedRef = useRef(false);
   const noDragStartRef = useRef(performance.now());
-  const controls = useRef({ x: 0, y: 0 });
   const touchControls = useRef({ left: false, right: false, up: false, down: false, bottomLeft: false, bottomRight: false, leftUp: false, leftDown: false });
   const drag = useRef<{ side: Player['side'] | null; x: number; y: number }>({ side: null, x: 500, y: 300 });
   const servingRef = useRef<{ active: boolean; side: Player['side']; startTime: number; requested: boolean }>({ active: settings.start === 'paddle', side: 'bottom', startTime: performance.now(), requested: false });
@@ -645,12 +621,43 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const pausedRef = useRef(paused);
   const celebratingRef = useRef(celebrating);
   const gameEndedRef = useRef(false);
+  // --- جديد: إيقاف اللعبة في البداية ---
+  const [localReady, setLocalReady] = useState(false);
+  const localReadyRef = useRef(false);
+  useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   const world = useMemo(() => getArenaWorld(players.length, settings.arenaSize), [players.length, settings.arenaSize]);
   const mySide = useMemo(() => (players.find((p:any)=>p.socketId===socket.id)?.side || players[0]?.side || 'bottom') as Player['side'], [players]);
   const angleMap: any = { bottom: 0, top: Math.PI, right: Math.PI/2, left: -Math.PI/2 };
   const myAngle = angleMap[mySide]?? 0;
   soundRef.current = sound; onTimeUpRef.current = onTimeUp; onGoalRef.current = onGoal; pausedRef.current = paused;
   useEffect(()=>{ celebratingRef.current = celebrating; },[celebrating]);
+  // Confetti original preserved
+  useEffect(() => {
+    if (!celebrating || !celebrationCanvasRef.current) return;
+    const canvas = celebrationCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const rect = canvas.parentElement?.getBoundingClientRect();
+    if (!rect) return;
+    canvas.width = rect.width * (window.devicePixelRatio || 1);
+    canvas.height = rect.height * (window.devicePixelRatio || 1);
+    const particles = Array.from({length: 100}, () => ({
+      x: Math.random()*canvas.width,
+      y: Math.random()*-canvas.height,
+      vx: (Math.random()-0.5)*6,
+      vy: Math.random()*4+2,
+      color: ['#ffcf5a','#ff6b8b','#61e7c2','#00e5ff'][Math.floor(Math.random()*4)],
+      size: Math.random()*3+2
+    }));
+    let raf=0;
+    const loop = () => {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      particles.forEach((p:any)=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=0.05; ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill(); if(p.y>canvas.height){ p.y=-20; p.x=Math.random()*canvas.width; } });
+      raf=requestAnimationFrame(loop);
+    };
+    raf=requestAnimationFrame(loop);
+    return ()=>cancelAnimationFrame(raf);
+  }, [celebrating]);
   const audioCtxRef = useRef<AudioContext|null>(null);
   const playHit = useCallback((power:number, xPos:number = world.w/2)=>{
     if(!soundRef.current) return;
@@ -658,37 +665,24 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
       const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
       const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(90+power*800,t); o.frequency.exponentialRampToValueAtTime(35,t+0.25); g.gain.setValueAtTime(0.15+power*0.85,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.45); o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+0.45);
+      if(settings.graphics==='3d') return;
+      const p=ctx.createPanner(); p.panningModel='equalpower'; p.positionX.setValueAtTime((xPos/world.w-0.5)*2,t); g.connect(p).connect(ctx.destination);
     }catch{}
-  },[world.w]);
+  },[world.w, settings.graphics]);
   const playGoalSound = useCallback(()=>{
     if(!soundRef.current) return;
     try{
       if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
-      const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t = ctx.currentTime;
-      const master = ctx.createGain(); master.gain.value = 1.3; master.connect(ctx.destination);
-      [261,329,392,523,659].forEach((freq,i)=>{ const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='square'; o.frequency.setValueAtTime(freq,t+i*0.07); g.gain.setValueAtTime(0,t+i*0.07); g.gain.linearRampToValueAtTime(0.9,t+i*0.07+0.01); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.07+0.6); o.connect(g).connect(master); o.start(t+i*0.07); o.stop(t+i*0.07+0.7); });
+      const ctx=audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
+      [0,0.15,0.3].forEach((d,i)=>{ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.setValueAtTime(220+i*110,t+d); g.gain.setValueAtTime(0.3,t+d); g.gain.exponentialRampToValueAtTime(0.001,t+d+0.4); o.connect(g).connect(ctx.destination); o.start(t+d); o.stop(t+d+0.4); });
     }catch{}
   },[]);
   const playCelebrationSound = useCallback(()=>{
     if(!soundRef.current) return;
     try{
       if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
-      const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
-      const master = ctx.createGain(); master.gain.value=1.5; master.connect(ctx.destination);
-      const bufferSize = ctx.sampleRate*8; const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0);
-      for(let i=0;i<bufferSize;i++) data[i]=(Math.random()*2-1)*0.65;
-      const crowd = ctx.createBufferSource(); crowd.buffer=buffer;
-      const filter = ctx.createBiquadFilter(); filter.type='lowpass'; filter.frequency.value=900; filter.Q.value=1;
-      const gCrowd=ctx.createGain(); gCrowd.gain.setValueAtTime(0,t); gCrowd.gain.linearRampToValueAtTime(0.95,t+0.25); gCrowd.gain.setValueAtTime(0.95,t+6.8); gCrowd.gain.linearRampToValueAtTime(0,t+8);
-      crowd.connect(filter).connect(gCrowd).connect(master); crowd.start(t);
-      const whistle = (delay:number, f1:number, f2:number, vol:number)=>{
-        const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine';
-        o.frequency.setValueAtTime(f1,t+delay); o.frequency.linearRampToValueAtTime(f2,t+delay+0.7);
-        g.gain.setValueAtTime(0,t+delay); g.gain.linearRampToValueAtTime(vol,t+delay+0.04); g.gain.exponentialRampToValueAtTime(0.001,t+delay+1.4);
-        o.connect(g).connect(master); o.start(t+delay); o.stop(t+delay+1.5);
-      };
-      whistle(0.1,1800,3800,1.3); whistle(0.9,2200,4200,1.2); whistle(2.3,1600,3500,1.1); whistle(3.5,2000,3900,1.0);
-      [523,659,783,1046,1318].forEach((freq,i)=>{ const o=ctx.createOscillator(); const g2=ctx.createGain(); o.type='square'; o.frequency.value=freq; g2.gain.setValueAtTime(0,t+i*0.12); g2.gain.linearRampToValueAtTime(0.75,t+i*0.12+0.02); g2.gain.exponentialRampToValueAtTime(0.001,t+i*0.12+0.8); o.connect(g2).connect(master); o.start(t+i*0.12); o.stop(t+i*0.12+0.9); });
+      const ctx=audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t=ctx.currentTime;
+      [0,0.2,0.4,0.6].forEach((d,i)=>{ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='triangle'; o.frequency.setValueAtTime(440+i*80,t+d); g.gain.setValueAtTime(0.4,t+d); g.gain.exponentialRampToValueAtTime(0.001,t+d+0.5); o.connect(g).connect(ctx.destination); o.start(t+d); o.stop(t+d+0.5); });
     }catch{}
   },[]);
   const requestLaunch = useCallback(() => { if (servingRef.current.active) servingRef.current.requested = true; }, []);
@@ -699,10 +693,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     paddles: { top: { x: world.w / 2, y: 40 + ZONE / 2 } as Vec2, bottom: { x: world.w / 2, y: world.h - 40 - ZONE / 2 } as Vec2, left: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2, right: { x: world.w - 40 - ZONE / 2, y: world.h / 2 } as Vec2 },
     targetPaddles: { top: { x: world.w / 2, y: 40 + ZONE / 2 } as Vec2, bottom: { x: world.w / 2, y: world.h - 40 - ZONE / 2 } as Vec2, left: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2, right: { x: world.w - 40 - ZONE / 2, y: world.h / 2 } as Vec2 },
     prevPaddles: { top: { x: world.w / 2, y: 40 + ZONE / 2 } as Vec2, bottom: { x: world.w / 2, y: world.h - 40 - ZONE / 2 } as Vec2, left: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2, right: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2 },
-    last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 3, countdownStart: performance.now(), countdownSide: null as Player['side'] | null, effects: [] as { x: number; y: number; born: number; color: string; power: number }[]
+    last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 0, countdownStart: performance.now(), countdownSide: null as Player['side'] | null, effects: [] as any[]
   });
   const ballBuffer = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
-  const isOfflineMode = players.length <= 1; // ضد الكمبيوتر = محلي حتى على Render
+  const isOfflineMode = players.length <= 1;
   const getWorldFromClient = useCallback((clientX:number, clientY:number)=>{
     const arena = arenaRef.current; if(!arena) return {x:world.w/2,y:world.h/2};
     const rect = arena.getBoundingClientRect();
@@ -713,11 +707,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     return { x: dx*cos - dy*sin + world.w/2, y: dx*sin + dy*cos + world.h/2 };
   }, [world, myAngle]);
 
-  // ===== Render Fix: تجاهل السيرفر في وضع ضد الكمبيوتر =====
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
-      if (players.length <= 1) return; // ضد الكمبيوتر = لا تنتظر Render
+      if (players.length <= 1) return;
       if (data.ball) {
         ballBuffer.current.push({ x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, t: performance.now() });
         if (ballBuffer.current.length > 8) ballBuffer.current.shift();
@@ -728,7 +721,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
-          if (side === mySide) return; // ✅
+          if (side === mySide) return;
           const p = data.paddles[side];
           if (stateRef.current.targetPaddles[side as Player['side']]) {
             stateRef.current.targetPaddles[side as Player['side']].x = p.x;
@@ -737,7 +730,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         });
       }
       if (data.countdown !== undefined) { stateRef.current.countdown = data.countdown; setCountdown(data.countdown); }
-      if (data.countdownSide !== undefined) { setCountdownSide(data.countdownSide || ''); } // 🔥 جديد
+      if (data.countdownSide !== undefined) { setCountdownSide(data.countdownSide || ''); }
       if (data.rally !== undefined) setRally(data.rally);
     };
     socket.on('game-state', handleGameState);
@@ -746,11 +739,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
 
   useEffect(() => {
     const canvas = canvasRef.current; const arena = arenaRef.current; if (!canvas ||!arena) return; const context = canvas.getContext('2d'); if (!context) return; const state = stateRef.current;
-    const launchBall = (fromPaddle = false) => {
-      const spd = getInitialSpeed() * (state.speedMult || 1); const ang = fromPaddle? (Math.random() - 0.5) * Math.PI * 0.6 : Math.random() * Math.PI * 2;
-      if (fromPaddle) { const side = servingRef.current.side; if (side === 'bottom') { state.ball.vx = Math.sin(ang) * spd; state.ball.vy = -Math.abs(Math.cos(ang) * spd) - 1; } else if (side === 'top') { state.ball.vx = Math.sin(ang) * spd; state.ball.vy = Math.abs(Math.cos(ang) * spd) + 1; } else if (side === 'left') { state.ball.vx = Math.abs(Math.cos(ang) * spd) + 1; state.ball.vy = Math.sin(ang) * spd; } else { state.ball.vx = -Math.abs(Math.cos(ang) * spd) - 1; state.ball.vy = Math.sin(ang) * spd; } } else { state.ball.vx = Math.cos(ang) * spd; state.ball.vy = Math.sin(ang) * spd; if (Math.abs(state.ball.vx) < 2) state.ball.vx = state.ball.vx < 0? -2.5 : 2.5; if (Math.abs(state.ball.vy) < 2) state.ball.vy = state.ball.vy < 0? -2.5 : 2.5; }
-    };
-    // لا نقوم بفيزياء محلية، فقط نعرض الحالة من الخادم
     let frame = 0;
     const resize = () => { const ratio = Math.min(window.devicePixelRatio || 1, 2); const rect = arena.getBoundingClientRect(); canvas.width = rect.width * ratio; canvas.height = rect.height * ratio; context.setTransform(canvas.width / world.w, 0, 0, canvas.height / world.h, 0, 0); }; resize(); const observer = new ResizeObserver(resize); observer.observe(arena);
     const needCount = Math.max(2, players.length);
@@ -767,6 +755,12 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const clamp = (v: number, mn: number, mx: number) => Math.max(mn, Math.min(mx, v));
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2); state.last = now;
+      // --- إيقاف اللعبة في البداية: نرسم فقط بدون تحريك ---
+      if (!localReadyRef.current) {
+        draw(context, state, players, now, false, world, myAngle);
+        frame = requestAnimationFrame(tick);
+        return;
+      }
       if (celebratingRef.current) {
         state.ball.x += state.ball.vx * 0.28 * delta;
         state.ball.y += state.ball.vy * 0.28 * delta;
@@ -777,7 +771,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         return;
       }
       if (!pausedRef.current &&!gameEndedRef.current) {
-        // تحديث مضرب اللاعب محلياً وإرساله للخادم
         if (drag.current.side === mySide) {
           state.targetPaddles[mySide].x = clamp(drag.current.x, 50, world.w - 50);
           if(mySide==='bottom' || mySide==='top'){
@@ -790,11 +783,8 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             const maxX = mySide==='left'? 40 + PADDLE_MOVE_ZONE : world.w - 40;
             state.targetPaddles[mySide].x = clamp(drag.current.x, minX, maxX);
           }
-          // إرسال الموقع إلى الخادم عبر sendPaddleTarget
           socket.sendPaddleTarget(state.targetPaddles[mySide].x, state.targetPaddles[mySide].y);
         }
-
-        // ===== Render Optimized: محلي سريع ضد الكمبيوتر =====
         if (isOfflineMode && state.countdown > 0) {
           const elapsed = (now - state.countdownStart) / 1000;
           const newCount = Math.max(0, 3 - Math.floor(elapsed));
@@ -816,7 +806,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             return;
           }
         }
-
         if (isOfflineMode) {
           const ball = state.ball;
           const w = world.w, h = world.h;
@@ -865,18 +854,11 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
           cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
         } else {
-          const nowMs = performance.now();
-          // ============================================
-          // حركة الكرة بتقسيم الخطوات (Sub-stepping) لمنع الاختراق
-          // ============================================
           const SUBSTEPS = 4;
           const stepDelta = delta / SUBSTEPS;
-
           for (let i = 0; i < SUBSTEPS; i++) {
             state.ball.x += state.ball.vx * stepDelta;
             state.ball.y += state.ball.vy * stepDelta;
-
-            // كشف التصادم مع المضارب في كل خطوة صغيرة
             const HIT_DIST = 40;
             (['top','bottom','right','left'] as const).forEach(side => {
               if (!active(side)) return;
@@ -884,19 +866,15 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               const dx = state.ball.x - paddle.x;
               const dy = state.ball.y - paddle.y;
               const dist = Math.hypot(dx, dy);
-
               if (dist < HIT_DIST) {
                 const overlap = HIT_DIST - dist;
                 state.ball.x += (dx / dist) * overlap;
                 state.ball.y += (dy / dist) * overlap;
-                // ارتداد خفيف
                 state.ball.vx *= -1;
                 state.ball.vy *= -1;
               }
             });
           }
-
-          // مزامنة الموقع مع الخادم تدريجياً
           state.ball.x += (state.ballTarget.x - state.ball.x) * 0.1;
           state.ball.y += (state.ballTarget.y - state.ball.y) * 0.1;
           (['top','bottom','right','left'] as const).forEach(side => {
@@ -907,47 +885,14 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             current.y += (target.y - current.y) * lf;
           });
         }
-        if (!hasDraggedRef.current && hintDotRef.current && hintTextRef.current && arenaRef.current) {
-          const elapsed = now - noDragStartRef.current;
-          if (elapsed > 3000 && state.countdown === 0) {
-            const p = state.paddles[mySide];
-            const GRAB_OFFSET = 130;
-            let hx = p.x, hy = p.y;
-            if (mySide === 'bottom') hy = p.y + GRAB_OFFSET;
-            else if (mySide === 'top') hy = p.y - GRAB_OFFSET;
-            else if (mySide === 'left') hx = p.x - GRAB_OFFSET;
-            else hx = p.x + GRAB_OFFSET;
-            const cosA = Math.cos(myAngle), sinA = Math.sin(myAngle);
-            const dx = hx - world.w / 2, dy = hy - world.h / 2;
-            const rx = dx * cosA - dy * sinA + world.w / 2;
-            const ry = dx * sinA + dy * cosA + world.h / 2;
-            const rect = arenaRef.current.getBoundingClientRect();
-            const sx = (rx / world.w) * rect.width;
-            const sy = (ry / world.h) * rect.height;
-            hintDotRef.current.style.left = `${sx}px`;
-            hintDotRef.current.style.top = `${sy}px`;
-            hintDotRef.current.style.display = 'block';
-            hintTextRef.current.style.left = `${sx + 18}px`;
-            hintTextRef.current.style.top = `${sy - 12}px`;
-            hintTextRef.current.style.display = 'block';
-          }
-        }
       }
-      // رسم
       draw(context, state, players, now, false, world, myAngle);
-      
-      // التعديل: إذا كانت اللعبة متوقفة، لا تستمر في تحديث الإطارات للحركة، 
-      // بل استمر في الرسم فقط ليبقى المشهد ثابتاً
-      if (pausedRef.current || gameEndedRef.current) {
-        frame = requestAnimationFrame(tick);
-        return;
-      }
-
+      if (pausedRef.current || gameEndedRef.current) { frame = requestAnimationFrame(tick); return; }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
-  }, [players, settings, getInitialSpeed, isHost, roomCode, mySide, myAngle, playHit, playGoalSound]);
+  }, [players, settings, getInitialSpeed, isHost, roomCode, mySide, myAngle]);
 
   useEffect(() => {
     const down = (event: KeyboardEvent) => { const key = event.key.toLowerCase(); if (key === ' ' || event.code === 'Space') { if (servingRef.current.active) { servingRef.current.requested = true; event.preventDefault(); } } if (event.key === 'ArrowLeft' || key === 'a') touchControls.current.left = true; if (event.key === 'ArrowRight' || key === 'd') touchControls.current.right = true; if (event.key === 'ArrowUp' || key === 'w') touchControls.current.up = true; if (event.key === 'ArrowDown' || key === 's') touchControls.current.down = true; if (key === 'j') touchControls.current.bottomLeft = true; if (key === 'l') touchControls.current.bottomRight = true; if (key === 'i') touchControls.current.leftUp = true; if (key === 'k') touchControls.current.leftDown = true; };
@@ -982,9 +927,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     <main className="game-shell" dir="ltr" style={{ touchAction: 'none' }} onContextMenu={e => e.preventDefault()}>
   <style>{`
     @keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}
-    @keyframes crashShake{0%{transform:translate(0,0)}20%{transform:translate(-1px,1px)}40%{transform:translate(1px,-1px)}60%{transform:translate(-1px,-1px)}80%{transform:translate(1px,1px)}100%{transform:translate(0,0)}}
-    @keyframes celePulse{0%{transform:scale(1)}100%{transform:scale(1.08)}}
-    @keyframes crashFlash{0%{background:rgba(255,207,90,0)}10%{background:rgba(255,207,90,0.9)}20%{background:rgba(255,255,255,0.8)}30%{background:rgba(255,207,90,0.2)}100%{background:transparent}}
   `}</style>
   <header className="game-topbar">
     <Brand />
@@ -1007,10 +949,8 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     <div className="game-actions">
       <button className="game-icon" onClick={() => setSound((value) => !value)}><Volume2 size={18} /></button>
       <button className="game-icon" onClick={onPause}>{paused ? <Play size={18} /> : <Pause size={18} />}</button>
-      {/* --- الغاء الزر --- */}
     </div>
   </header>
-
   <div className="score-strip">
     {players.filter(Boolean).map((player: any) => (
       <div className="score-chip" key={player.id} style={{ border: player.side === mySide ? `2px solid ${player.color}` : undefined }}>
@@ -1021,93 +961,58 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     ))}
     <div className="rally-meter"><span>Rally</span><b>{rally}</b></div>
   </div>
-
   <section className="arena-stage" style={{ width: '100%', maxWidth: '100vw', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-    <div
-      className="arena-frame"
-      ref={arenaRef}
-      onPointerDown={startDrag}
-      onPointerMove={moveDrag}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-      style={{
-        touchAction: 'none',
-        position: 'relative',
-        width: `min(95vw, 760px, ${(88 * (world.w / world.h)).toFixed(2)}vh)`,
-        aspectRatio: `${world.w} / ${world.h}`,
-        margin: '0 auto',
-        borderRadius: '32px',
-        overflow: 'hidden',
-        background: '#000',
-        boxShadow: '0 0 0 2px #111, 0 0 40px rgba(0,229,255,0.25)',
-      }}
-    >
+    <div className="arena-frame" ref={arenaRef} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
+      style={{ touchAction: 'none', position: 'relative', width: `min(95vw, 760px, ${(88 * (world.w / world.h)).toFixed(2)}vh)`, aspectRatio: `${world.w} / ${world.h}`, margin: '0 auto', borderRadius: '32px', overflow: 'hidden', background: '#000', boxShadow: '0 0 0 2px #111, 0 0 40px rgba(0,229,255,0.25)' }}>
       <canvas ref={canvasRef} style={{ touchAction: 'none', width: '100%', height: '100%' }} />
       <div ref={hintDotRef} style={{ position: 'absolute', width: '14px', height: '14px', borderRadius: '50%', background: '#00e5ff', border: '2px solid #fff', display: 'none', zIndex: 20, pointerEvents: 'none', animation: 'hintPulse 1.2s infinite' }} />
       <div ref={hintTextRef} style={{ position: 'absolute', background: '#00e5ff', color: '#000', padding: '6px 12px', borderRadius: 999, fontSize: '12px', fontWeight: 900, display: 'none', zIndex: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>👆 حرك المضرب من هنا</div>
-      {/* زر خروج للجوال */}
-      <button 
-        onClick={() => window.location.reload()} 
-        style={{ 
-          position: 'absolute', top: 12, left: 12, zIndex: 100, 
-          background: 'rgba(255, 45, 45, 0.9)', color: 'white', 
-          border: 'none', padding: '8px 12px', borderRadius: 8, 
-          fontSize: '12px', fontWeight: 800, cursor: 'pointer' 
-        }}
-      >
-        {isAr ? 'خروج' : 'Exit'}
-      </button>
+      <button onClick={() => window.location.reload()} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: 'rgba(255, 45, 45, 0.9)', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>خروج</button>
+      {celebrating && <canvas ref={celebrationCanvasRef} style={{position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none', zIndex:15}} />}
 
+      {/* --- Overlay الجديد 2D: يغطي كامل الساحة وشبه شفاف --- */}
+      {!localReady && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s' }}>
+          <div style={{ width: 'calc(100% - 32px)', maxWidth: '420px', background: 'rgba(15,15,20,0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '20px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'center', boxShadow: '0 12px 40px rgba(0,0,0,0.6)' }}>
+            <div style={{textAlign:'center'}}>
+              <h3 style={{color:'#fff', fontSize:'18px', fontWeight:900, marginBottom:'6px'}}>جاهز؟ الساحة أمامك</h3>
+              <p style={{color:'rgba(255,255,255,0.6)', fontSize:'13px', lineHeight:1.4}}>الساحة ظاهرة بوضوح - حرك المضرب لتجربة التحكم قبل البدء</p>
+            </div>
+            <button onClick={()=>setLocalReady(true)} style={{width:'100%', padding:'14px', borderRadius:'12px', background:'#4CAF50', color:'#fff', fontWeight:900, fontSize:'16px', border:'none', cursor:'pointer', boxShadow:'0 4px 12px rgba(76,175,80,0.4)'}}>🎮 بدء اللعب</button>
+          </div>
+        </div>
+      )}
 
-      {countdown > 0 && (
+      {localReady && countdown > 0 && (
         <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.75)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, pointerEvents: 'none' }}>
           <span style={{ fontSize: '110px', fontWeight: 900, color: '#ff2233', textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>
-          {countdownSide && (
-            <span style={{ background: '#222', color: '#fff', padding: '8px 18px', borderRadius: 999, fontWeight: 800 }}>
-              {players.find((p: any) => p.side === countdownSide)?.name || ''} سجل!
-            </span>
-          )}
+          {countdownSide && (<span style={{ background: '#222', color: '#fff', padding: '8px 18px', borderRadius: 999, fontWeight: 800 }}>{players.find((p: any) => p.side === countdownSide)?.name || ''} سجل!</span>)}
         </div>
       )}
-
-      {lastGoal && !celebrating && (
-        <div style={{ position: 'absolute', top: '48%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.92)', color: '#fff', padding: '12px 22px', borderRadius: 12, fontWeight: 900, zIndex: 11 }}>
-          هدف! {lastGoal}
-        </div>
+      {localReady && lastGoal && !celebrating && (
+        <div style={{ position: 'absolute', top: '48%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.92)', color: '#fff', padding: '12px 22px', borderRadius: 12, fontWeight: 900, zIndex: 11 }}>هدف! {lastGoal}</div>
       )}
-
       {celebrating && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>
-          <div style={{ fontSize: '48px', fontWeight: 900, color: '#ffcf5a', textShadow: '0 0 20px #ffcf5a' }}>
-            {celebrating?.name ?? 'لاعب'} {isAr ? 'فاز بالجولة' : 'wins the round'}!
-          </div>
-          <div style={{ fontSize: '24px', color: '#fff', background: '#222', padding: '8px 24px', borderRadius: '999px' }}>
-            {isAr ? 'الجولة' : 'Round'} {currentRound} / {settings.seriesRounds}
-          </div>
-          <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
-            {players.filter(Boolean).map((p: any) => (
-              <span key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.color }} />
-                <span>{p.name}</span>
-                <strong style={{ color: p.color }}>{(seriesWins[p.id] ?? 0)}</strong>
-              </span>
-            ))}
-          </div>
+          <div style={{ fontSize: '48px', fontWeight: 900, color: '#ffcf5a', textShadow: '0 0 20px #ffcf5a' }}>{celebrating?.name ?? 'لاعب'} فاز بالجولة!</div>
+          <div style={{ fontSize: '24px', color: '#fff', background: '#222', padding: '8px 24px', borderRadius: '999px' }}>الجولة {currentRound} / {settings.seriesRounds}</div>
         </div>
       )}
     </div>
   </section>
-
-  <div className="touch-controls">
-    <button {...bindTouch('bottomRight')}><ChevronRight size={24} /></button>
-    <button {...bindTouch('bottomLeft')}><ChevronLeft size={24} /></button>
+  <div className="touch-controls" style={{display:'flex', gap:'8px', justifyContent:'center', padding:'12px'}}>
+    <button {...bindTouch('left')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#111', color:'#fff', border:'2px solid #333'}}><ChevronLeft size={24} /></button>
+    <button {...bindTouch('right')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#111', color:'#fff', border:'2px solid #333'}}><ChevronRight size={24} /></button>
+    <button {...bindTouch('up')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#111', color:'#fff', border:'2px solid #333'}}>↑</button>
+    <button {...bindTouch('down')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#111', color:'#fff', border:'2px solid #333'}}>↓</button>
+    <button {...bindTouch('bottomLeft')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#222', color:'#fff'}}><ChevronLeft size={20} /></button>
+    <button {...bindTouch('bottomRight')} style={{width:'56px', height:'56px', borderRadius:'50%', background:'#222', color:'#fff'}}><ChevronRight size={20} /></button>
   </div>
 </main>
   );
 }
 
 function ai(ball: number, paddle: number, difficulty: Difficulty) {
-
   const maxFactor = difficulty === 'easy'? 0.85 : difficulty === 'normal'? 1.45 : 2.15; const diff = ball - paddle; const dead = 4; if (Math.abs(diff) < dead) return 0; const proportional = diff * 0.15; return Math.max(-maxFactor, Math.min(maxFactor, proportional));
 }
 function getColoredPaddle(color: string, size: number = 42): HTMLCanvasElement {

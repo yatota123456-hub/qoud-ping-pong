@@ -182,7 +182,7 @@ function getArenaWorld(count: number, size: any = 'medium') {
 }
 
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
-  const isMobileNow = false; // forced false for all sizes
+  const isMobileNow = false;
   const PRESET_BY_SIZE: any = {
     small:  { distance: 1180, height: 820 },
     medium: { distance: 1380, height: 900 },
@@ -242,18 +242,9 @@ export function GameScreen3D({
     }
   }, []);
 
-  const saveCamera = (preset: string) => {
-    localStorage.setItem('qoud_camera_preset', preset);
-  };
-
   const restoreCamera = () => {
-    if (savedCamData) {
-      // هنا نقوم بتطبيق الكاميرا المحفوظة
-      // setCamPreset(savedCamData); // افترض وجود هذه الدالة أو ما يعادلها في الكود الخاص بك
-      setShowRestoreModal(false);
-    }
+    setShowRestoreModal(false);
   };
-  // ... باقي التعريفات
 
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
@@ -268,6 +259,8 @@ export function GameScreen3D({
   const pausedRef = useRef(paused);
   const gameEndedRef = useRef(false);
   const frameIdRef = useRef<number>(0);
+  const localReadyRef = useRef(localReady);
+  useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
   const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
@@ -296,7 +289,6 @@ export function GameScreen3D({
     }
   }, []);
 
-  // --- ADDED: حفظ إعدادات الكاميرا ---
   const saveCameraSettings = useCallback(() => {
     const settings = {
       angle: cam.current.angle,
@@ -309,11 +301,11 @@ export function GameScreen3D({
     localStorage.setItem('qoud_camera_settings', JSON.stringify(settings));
   }, []);
 
-  // --- ADDED: إعادة تعيين الكاميرا إلى الوضع الافتراضي ---
   const resetCameraToDefault = useCallback(() => {
     cam.current = { ...initialCam };
     localStorage.removeItem('qoud_camera_settings');
   }, [initialCam]);
+
   const threeRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext|null>(null);
   const hitEffectsRef = useRef<any[]>([]);
@@ -345,7 +337,8 @@ export function GameScreen3D({
     countdown: 0,
     countdownStart: 0,
     countdownSide: null as Player['side'] | null,
-    serving: { active: false, side: 'bottom' as Player['side'], startTime: 0, requested: false }
+    serving: { active: false, side: 'bottom' as Player['side'], startTime: 0, requested: false },
+    paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any
   });
 
   const playersKey = useMemo(() => players.map(p => `${p.side}:${p.color}`).join(','), [players]);
@@ -356,7 +349,6 @@ export function GameScreen3D({
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
-
   const isOfflineMode =!socket.connected || players.length <= 1;
 
   const createHatPaddle = useCallback((color: string) => {
@@ -392,7 +384,7 @@ export function GameScreen3D({
       targetZ: world.h / 2,
       lookX: world.w / 2,
       lookZ: world.h / 2
-    };
+    } as any;
     setCurrentPreset(sideKey as any);
   }, [world, adaptivePresets, getMySide]);
 
@@ -416,12 +408,9 @@ export function GameScreen3D({
   }, []);
 
   useEffect(() => {
-    cam.current = {...initialCam};
+    cam.current = {...initialCam} as any;
   }, [initialCam]);
 
-  // ============================================================
-  // 1. مستمع game-state للجميع (بدلاً من المستمع الخاص بغير المضيف)
-  // ============================================================
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
@@ -438,7 +427,7 @@ export function GameScreen3D({
           const p = data.paddles[side];
           if (stateRef.current.targetPaddles[side as Player['side']]) {
             stateRef.current.targetPaddles[side as Player['side']].x = p.x;
-            stateRef.current.targetPaddles[side as Player['side']].z = p.y; // في 3D نستخدم z بدلاً من y
+            stateRef.current.targetPaddles[side as Player['side']].z = p.y;
           }
         });
       }
@@ -446,7 +435,7 @@ export function GameScreen3D({
         stateRef.current.countdown = data.countdown;
         setCountdown(data.countdown);
       }
-      if (data.countdownSide !== undefined) { // 🔥 جديد
+      if (data.countdownSide !== undefined) {
         stateRef.current.countdownSide = data.countdownSide || null;
         setCountdownSide(data.countdownSide || '');
       }
@@ -458,9 +447,6 @@ export function GameScreen3D({
     return () => { socket.off('game-state', handleGameState); };
   }, [getMySide]);
 
-  // ============================================================
-  // 2. إرسال paddle-target بدلاً من paddle-input
-  // ============================================================
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -470,15 +456,11 @@ export function GameScreen3D({
     const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
     const handlePointerMove = (e: PointerEvent) => {
       if (!e.isPrimary || !threeRef.current) return;
-      
-      // منع تحريك الكاميرا عند التفاعل مع الأزرار
       if (e.target instanceof HTMLElement && e.target.closest('button')) return;
-      
       hasDraggedRef.current = true;
       if(hintDotRef.current) hintDotRef.current.style.display='none';
       if(hintTextRef.current) hintTextRef.current.style.display='none';
       const mySide = getMySide();
-      // FIX: تحريك من تحت 110px مثل 2D
       const isTouch = (e as any).pointerType === 'touch' || (e as any).pointerType === 'pen';
       const OFFSET = isTouch? 110 : 55;
       const rect = el.getBoundingClientRect();
@@ -494,25 +476,25 @@ export function GameScreen3D({
           const clampedZ = clamp(tz + OFFSET, 45, world.h * 0.38);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅ أزل !isHost
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'bottom') {
           const clampedX = clamp(tx, 45, world.w - 45);
           const clampedZ = clamp(tz - OFFSET, world.h * 0.62, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'left') {
           const clampedX = clamp(tx + OFFSET, 45, world.w * 0.38);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'right') {
           const clampedX = clamp(tx - OFFSET, world.w * 0.62, world.w - 45);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ); // ✅
+          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         }
       }
     };
@@ -524,16 +506,6 @@ export function GameScreen3D({
     };
   }, [world.w, world.h, getMySide, isOfflineMode, isHost, roomCode]);
 
-  // ============================================================
-  // 3. إزالة مستمع paddle-input القديم (نكتفي بـ game-state)
-  // ============================================================
- // لم نعد نستخدم paddle-input ولا المستمع القديم
-useEffect(() => {
-  // لا شيء، أو مجرد تنظيف إذا لزم الأمر
-}, []);
-  // ============================================================
-  // 4. إنشاء المشهد الثلاثي الأبعاد (بدون تغيير)
-  // ============================================================
   useEffect(() => {
     if (!mountRef.current) return;
     const mount = mountRef.current;
@@ -606,158 +578,23 @@ useEffect(() => {
     };
   }, [world.w, world.h, playersKey]);
 
-  // ============================================================
-  // 5. حلقة التحديث (tick) مع إلغاء الفيزياء المحلية واستخدام الاستيفاء
-  // ============================================================
   useEffect(() => {
     const state = stateRef.current;
     const needPlayers = Math.max(2, players.length, settings.players || 2);
     const sidesForCount: Player['side'][] = needPlayers === 2? ['bottom','top'] : ['bottom','top','right','left'];
-    const playerForSide = (side: Player['side']) => players.find(p => p.side === side);
     const activeSide = (side: Player['side']) => sidesForCount.includes(side);
-
-    const triggerHitEffect = (x: number, z: number, power: number, color: string) => {
-      const p = Math.max(0, Math.min(1, power));
-      if (settings.sound) {
-        try {
-          if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const ctx = audioCtxRef.current;
-          if (ctx.state === 'suspended') ctx.resume();
-          const t = ctx.currentTime;
-          const panVal = Math.max(-1, Math.min(1, (x / world.w) * 2 - 1));
-          const panner = (ctx as any).createStereoPanner? (ctx as any).createStereoPanner() : null;
-          if (panner) panner.pan.value = panVal;
-          const o = ctx.createOscillator(); const g = ctx.createGain();
-          o.type = 'sine'; o.frequency.setValueAtTime(90 + p * 800, t); o.frequency.exponentialRampToValueAtTime(35, t + 0.25);
-          g.gain.setValueAtTime(0.15 + p * 0.85, t); g.gain.exponentialRampToValueAtTime(0.01, t + 0.4 + p * 0.25);
-          if (panner) { o.connect(g); g.connect(panner); panner.connect(ctx.destination); } else { o.connect(g).connect(ctx.destination); }
-          o.start(t); o.stop(t + 0.45);
-          if (p > 0.3) {
-            const o2 = ctx.createOscillator(); const g2 = ctx.createGain(); const p2 = (ctx as any).createStereoPanner? (ctx as any).createStereoPanner() : null;
-            if (p2) p2.pan.value = panVal * 0.8;
-            o2.type = p > 0.7? 'square' : 'triangle'; o2.frequency.setValueAtTime(600 + p * 2000, t); o2.frequency.exponentialRampToValueAtTime(180, t + 0.15);
-            g2.gain.setValueAtTime(0.22 * p, t); g2.gain.exponentialRampToValueAtTime(0.01, t + 0.18);
-            if (p2) { o2.connect(g2); g2.connect(p2); p2.connect(ctx.destination); } else o2.connect(g2).connect(ctx.destination);
-            o2.start(t); o2.stop(t + 0.2);
-          }
-        } catch {}
-      }
-      if (!threeRef.current?.hitGroup) return;
-      const group = threeRef.current.hitGroup;
-      const col = p > 0.7? '#ff2233' : p > 0.4? color : '#ffffff';
-      const ringGeo = new THREE.RingGeometry(8, 12 + p * 26, 32);
-      const ringMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
-      const ring = new THREE.Mesh(ringGeo, ringMat); ring.rotation.x = -Math.PI / 2; ring.position.set(x, 15.5, z); group.add(ring);
-      hitEffectsRef.current.push({ mesh: ring, born: performance.now(), power: p, isCore: false });
-      if (p > 0.45) {
-        const coreGeo = new THREE.CircleGeometry(4 + p * 10, 24); const coreMat = new THREE.MeshBasicMaterial({ color: '#ffcf5a', transparent: true, opacity: 0.9 });
-        const core = new THREE.Mesh(coreGeo, coreMat); core.rotation.x = -Math.PI / 2; core.position.set(x, 15.8, z); group.add(core);
-        hitEffectsRef.current.push({ mesh: core, born: performance.now(), power: p * 1.3, isCore: true });
-      }
-      shakeRef.current.intensity = Math.max(shakeRef.current.intensity, p * 18);
-      if (threeRef.current?.ball) {
-        const ballMat = threeRef.current.ball.material as THREE.MeshStandardMaterial;
-        ballMat.emissiveIntensity = 0.85 + p * 3.5; setTimeout(() => { if (ballMat) ballMat.emissiveIntensity = 0.85; }, 120 + p * 80);
-      }
-    };
-
-    const playGoalSound = () => {
-      if(!settings.sound) return;
-      try{
-        if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
-        const ctx = audioCtxRef.current; if(ctx.state==='suspended') ctx.resume(); const t = ctx.currentTime;
-        const master = ctx.createGain(); master.gain.value=1.2; master.connect(ctx.destination);
-        [261.63,329.63,392,523.25,659.25].forEach((freq,i)=>{
-          const o=ctx.createOscillator(); const g=ctx.createGain(); const p=(ctx as any).createStereoPanner?.(); if(p) p.pan.value=i%2===0?-0.35:0.35;
-          o.type='square'; o.frequency.setValueAtTime(freq,t+i*0.08);
-          g.gain.setValueAtTime(0,t+i*0.08); g.gain.linearRampToValueAtTime(0.85,t+i*0.08+0.015); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.08+0.7);
-          if(p){o.connect(g); g.connect(p); p.connect(master);}else o.connect(g).connect(master);
-          o.start(t+i*0.08); o.stop(t+i*0.08+0.75);
-        });
-        const oB=ctx.createOscillator(); const gB=ctx.createGain(); oB.type='sine'; oB.frequency.setValueAtTime(180,t); oB.frequency.exponentialRampToValueAtTime(35,t+0.6); gB.gain.setValueAtTime(1.0,t); gB.gain.exponentialRampToValueAtTime(0.001,t+0.75); oB.connect(gB).connect(master); oB.start(t); oB.stop(t+0.8);
-      }catch{}
-    };
 
     const tick = (now: number) => {
       const delta = Math.min((now - state.last) / 16.67, 2);
       state.last = now;
-      
-      // التعديل هنا: منع تحديثات الكرة والمضارب والعداد تماماً إذا لم يبدأ اللاعب بعد أو عند الإيقاف
-      if (!localReady || pausedRef.current || gameEndedRef.current) {
-        requestAnimationFrame(tick);
-        return;
-      }
 
-      if (!gameEndedRef.current) {
-        const mySide = getMySide(); 
-        // ============================================
-        // فيزياء الحركة الملساء مع منع الاختراق
-        // ============================================
-        const lerpFactor = 0.25;
-        
-        // تحريك الكرة بناءً على السرعة الحالية
-        state.ball.x += state.ball.vx * delta;
-        state.ball.y += state.ball.vy * delta;
-
-        // دمج الموقع مع الهدف القادم من الخادم لضمان المزامنة
-        state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
-        state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
-
-        // تحديث السرعة
-        state.ball.vx = state.ballTarget.vx;
-        state.ball.vy = state.ballTarget.vy;
-
-        // ============================================
-        // تنعيم حركة مضارب الخصوم ومنع اختراق الكرة لهم
-        // ============================================
-        const PADDLE_LERP = 0.3; // سرعة التنعيم (يمكن زيادتها لتقليل التأخير)
-
-        (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
-          if (!activeSide(side)) return;
-          
-          const paddle = state.paddles[side];
-          const target = state.targetPaddles[side];
-
-          // 1. تنعيم حركة المضارب (إذا لم يكن المضرب هو مضرب اللاعب نفسه)
-          if (side !== getMySide()) {
-            paddle.x += (target.x - paddle.x) * PADDLE_LERP;
-            paddle.y += (target.y - paddle.y) * PADDLE_LERP;
-          }
-
-          // 2. منع اختراق الكرة للمضرب (حتى لو كان المضرب ثابتاً)
-          const dx = state.ball.x - paddle.x;
-          const dy = state.ball.y - paddle.y;
-          const dist = Math.hypot(dx, dy);
-          const HIT_DIST = 40; // مسافة تصادم محسنة (BALL_R + PADDLE_R)
-
-          if (dist < HIT_DIST) {
-            const overlap = HIT_DIST - dist;
-            const nx = dx / dist;
-            const ny = dy / dist;
-            
-            // دفع الكرة خارج نطاق المضرب
-            state.ball.x += nx * overlap;
-            state.ball.y += ny * overlap;
-
-            // عكس اتجاه الكرة بناءً على سرعة المضرب (إن وجد)
-            state.ball.vx = (state.ball.vx * -0.8) + (state.paddleVel[side]?.vx || 0) * 0.2;
-            state.ball.vy = (state.ball.vy * -0.8) + (state.paddleVel[side]?.vy || 0) * 0.2;
-          }
-        });
-
-        (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
-          if (!activeSide(side)) return;
-          const target = state.targetPaddles[side];
-          const current = state.paddles[side];
-          const lf = side === mySide ? 1 : lerpFactor;
-          current.x += (target.x - current.x) * lf;
-          current.z += (target.z - current.z) * lf;
-        });
-      }
-      // رسم المشهد الثلاثي الأبعاد (بدون تغيير)
+      // --- إذا اللعبة لم تبدأ بعد: نرسم فقط الساحة ليراها اللاعب بوضوح ---
       if (threeRef.current) {
-        const { ball, paddles, camera, renderer, hitGroup } = threeRef.current; const c = cam.current;
-        c.angle += (c.targetAngle - c.angle) * 0.1; c.distance += (c.targetDistance - c.distance) * 0.1; c.height += (c.targetHeight - c.height) * 0.1;
+        const { ball, paddles, camera, renderer } = threeRef.current;
+        const c = cam.current as any;
+        c.angle += (c.targetAngle - c.angle) * 0.1;
+        c.distance += (c.targetDistance - c.distance) * 0.1;
+        c.height += (c.targetHeight - c.height) * 0.1;
         let cx = c.lookX + Math.sin(c.angle) * c.distance;
         let cz = c.lookZ + Math.cos(c.angle) * c.distance;
         let cy = c.height;
@@ -768,15 +605,57 @@ useEffect(() => {
           shakeRef.current.intensity *= 0.88;
           if (shakeRef.current.intensity < 0.1) shakeRef.current.intensity = 0;
         }
-        camera.position.set(cx, cy, cz); camera.lookAt(c.lookX, 0, c.lookZ);
-        ball.position.x = state.ball.x; ball.position.z = state.ball.y;
-        ball.visible = state.countdown === 0;
+        camera.position.set(cx, cy, cz);
+        camera.lookAt(c.lookX, 0, c.lookZ);
+
+        if (localReadyRef.current && !pausedRef.current && !gameEndedRef.current) {
+          const lerpFactor = 0.25;
+          state.ball.x += state.ball.vx * delta;
+          state.ball.y += state.ball.vy * delta;
+          state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
+          state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
+          state.ball.vx = state.ballTarget.vx;
+          state.ball.vy = state.ballTarget.vy;
+          (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+            if (!activeSide(side)) return;
+            const paddle = state.paddles[side];
+            const target = state.targetPaddles[side];
+            const PADDLE_LERP = 0.3;
+            if (side !== getMySide()) {
+              paddle.x += (target.x - paddle.x) * PADDLE_LERP;
+              paddle.z += (target.z - paddle.z) * PADDLE_LERP;
+            }
+            const dx = state.ball.x - paddle.x;
+            const dy = state.ball.y - paddle.z;
+            const dist = Math.hypot(dx, dy);
+            const HIT_DIST = 40;
+            if (dist < HIT_DIST && dist > 0.5) {
+              const overlap = HIT_DIST - dist;
+              const nx = dx / dist;
+              const ny = dy / dist;
+              state.ball.x += nx * overlap;
+              state.ball.y += ny * overlap;
+            }
+          });
+          (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+            if (!activeSide(side)) return;
+            const target = state.targetPaddles[side];
+            const current = state.paddles[side];
+            const lf = side === getMySide() ? 1 : lerpFactor;
+            current.x += (target.x - current.x) * lf;
+            current.z += (target.z - current.z) * lf;
+          });
+        }
+
+        ball.position.x = state.ball.x;
+        ball.position.z = state.ball.y;
+        ball.visible = localReadyRef.current ? state.countdown === 0 : true;
         if (paddles['bottom']) paddles['bottom'].position.set(state.paddles.bottom.x, 12, state.paddles.bottom.z);
         if (paddles['top']) paddles['top'].position.set(state.paddles.top.x, 12, state.paddles.top.z);
         if (paddles['left']) paddles['left'].position.set(state.paddles.left.x, 12, state.paddles.left.z);
         if (paddles['right']) paddles['right'].position.set(state.paddles.right.x, 12, state.paddles.right.z);
 
-        if(!hasDraggedRef.current && hintDotRef.current && hintTextRef.current && mountRef.current){
+        if(!hasDraggedRef.current && hintDotRef.current && hintTextRef.current && mountRef.current && localReadyRef.current){
           const elapsed = now - noDragStartRef.current;
           if(elapsed>3000 && state.countdown===0 &&!pausedRef.current &&!gameEndedRef.current){
             const mySide = getMySide();
@@ -796,24 +675,6 @@ useEffect(() => {
             }
           }
         }
-
-        const nowMs = performance.now();
-        hitEffectsRef.current = hitEffectsRef.current.filter((e: any) => {
-          const age = (nowMs - e.born) / 1000;
-          const life = 0.45 + e.power * 0.35;
-          if (age > life) {
-            hitGroup.remove(e.mesh);
-            e.mesh.geometry.dispose();
-            (e.mesh.material as any).dispose();
-            return false;
-          }
-          const scale = 1 + age * (5 + e.power * 8);
-          if (!e.isCore) e.mesh.scale.set(scale, scale, 1);
-          else e.mesh.scale.set(1 + age * 2, 1 + age * 2, 1);
-          (e.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (e.isCore? 0.9 : 0.95) - age * (1.8 - e.power * 0.5));
-          return true;
-        });
-
         renderer.render(threeRef.current.scene, camera);
       }
       frameIdRef.current = requestAnimationFrame(tick);
@@ -850,40 +711,55 @@ useEffect(() => {
         </div>
       )}
 
+      {/* --- Overlay الجديد 3D: يغطي كامل الشاشة وشبه شفاف مع backdrop-filter --- */}
       {!localReady && (
         <div style={{
-          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9997, backdropFilter: 'blur(2px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
+          position: 'absolute', inset: 0, zIndex: 9997,
+          background: showCamMenu ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.35)',
+          backdropFilter: showCamMenu ? 'blur(2px)' : 'blur(12px)',
+          WebkitBackdropFilter: showCamMenu ? 'blur(2px)' : 'blur(12px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'all 0.3s ease',
+          pointerEvents: showCamMenu ? 'none' : 'auto'
         }}>
           <div style={{
-            width: 'calc(100% - 32px)', maxWidth: '480px',
-            backgroundColor: 'rgba(12, 12, 16, 0.95)', backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255,255,255,0.15)', borderRadius: '20px', padding: '24px',
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', zIndex: 9999, color: 'white',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.8)'
+            width: showCamMenu ? 'auto' : 'calc(100% - 32px)',
+            maxWidth: showCamMenu ? 'none' : '420px',
+            background: 'rgba(15,15,20,0.75)',
+            backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: showCamMenu ? '999px' : '20px',
+            padding: showCamMenu ? '10px 16px' : '24px',
+            display: 'flex', flexDirection: showCamMenu ? 'row' : 'column', gap: '12px',
+            alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+            pointerEvents: 'auto',
+            position: showCamMenu ? 'absolute' : 'relative',
+            bottom: showCamMenu ? '20px' : 'auto',
+            transition: 'all 0.3s ease'
           }}>
-            <h3 style={{ marginBottom: '20px', textAlign: 'center', fontSize: '18px', fontWeight: 'bold' }}>
-              اضبط الكاميرا ثم ابدأ اللعب
-            </h3>
-            <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
-              <button 
-                onClick={() => setLocalReady(true)} 
-                style={{ flex: 1, padding: '12px 16px', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#4CAF50', border: 'none', color: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(76,175,80,0.4)', transition: 'all 0.2s' }}
-              >
-                بدء اللعب
-              </button>
-              <button 
-                onClick={() => setShowCamMenu(true)} 
-                style={{ flex: 1, padding: '12px 16px', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#2196F3', border: 'none', color: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(33,150,243,0.4)', transition: 'all 0.2s' }}
-              >
-                تغيير الكاميرا
-              </button>
-            </div>
+            {!showCamMenu ? (
+              <>
+                <div style={{textAlign:'center'}}>
+                  <h3 style={{color:'#fff', fontSize:'18px', fontWeight:900, marginBottom:'6px', textAlign:'center'}}>اضبط الكاميرا ثم ابدأ اللعب</h3>
+                  <p style={{color:'rgba(255,255,255,0.6)', fontSize:'13px', lineHeight:1.4, textAlign:'center'}}>الساحة ظاهرة بوضوح خلف النافذة - جرب تحريك الكاميرا قبل البدء</p>
+                </div>
+                <div style={{display:'flex', gap:'12px', width:'100%'}}>
+                  <button onClick={()=>setLocalReady(true)} style={{flex:1, padding:'12px 16px', fontSize:'15px', fontWeight:900, cursor:'pointer', background:'#4CAF50', border:'none', color:'white', borderRadius:'12px', boxShadow:'0 4px 12px rgba(76,175,80,0.4)'}}>▶ بدء اللعب</button>
+                  <button onClick={()=>setShowCamMenu(true)} style={{flex:1, padding:'12px 16px', fontSize:'15px', fontWeight:900, cursor:'pointer', background:'#2196F3', border:'none', color:'white', borderRadius:'12px', boxShadow:'0 4px 12px rgba(33,150,243,0.4)'}}>📷 تغيير الكاميرا</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <span style={{color:'rgba(255,255,255,0.7)', fontSize:'12px', fontWeight:700}}>وضع الضبط</span>
+                <button onClick={()=>setLocalReady(true)} style={{padding:'8px 18px', borderRadius:'999px', background:'#4CAF50', color:'#fff', fontWeight:900, border:'none', cursor:'pointer', boxShadow:'0 4px 12px rgba(76,175,80,0.4)'}}>▶ بدء اللعب</button>
+                <button onClick={()=>setShowCamMenu(false)} style={{padding:'8px 12px', borderRadius:'999px', background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.2)', cursor:'pointer'}}>✕ إغلاق</button>
+              </>
+            )}
           </div>
         </div>
       )}
+
       {hideUI && (<button onClick={() => setHideUI(false)} style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, background: '#00e5ff', color: '#000', borderRadius: 999, padding: '8px 14px', fontWeight: 900, display: 'flex', gap: 6, alignItems: 'center', border: 'none', cursor: 'pointer' }}><Eye size={16} /> {isAr? 'اظهار' : 'Show'}</button>)}
       {!hideUI && (
         <>
@@ -892,7 +768,6 @@ useEffect(() => {
             <div className="match-meta" style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <b>{settings.mode === 'time'? formatTime(timeLeft) : '∞'}</b>
               <span>| Rally: {rally}</span>
-              {/* --- ADDED: عرض معلومات الجولة والانتصارات --- */}
               {settings.seriesType === 'series' && (
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: '#1a1a1a', padding: '4px 12px', borderRadius: '20px' }}>
                   <span style={{ fontWeight: 'bold', color: '#ffcf5a' }}>جولة {currentRound}/{settings.seriesRounds}</span>
@@ -912,7 +787,6 @@ useEffect(() => {
               </button>
               <button className="game-icon" onClick={onPause} style={{ background: '#111', color: '#fff', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #333' }}>{paused? <Play size={18} /> : <Pause size={18} />}</button>
               <button className="game-icon" onClick={resetCamera} style={{ background: '#ffcf5a', color: '#000', borderRadius: 10, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none' }}><RotateCcw size={16} /></button>
-              {/* --- الغاء الزر --- */}
             </div>
           </header>
           <div style={{ display: 'flex', gap: '8px', padding: '10px 16px', background: '#0a0a0a', borderBottom: '1px solid #1a1a1a', overflowX: 'auto' }}>
@@ -942,64 +816,38 @@ useEffect(() => {
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-        {countdown > 0 && (
-  <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.72)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px', pointerEvents: 'none' }}>
-    <span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>
-    {countdownSide && (
-      <span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>
-        {getNameForSide(countdownSide as Player['side'])} {isAr ? 'سجل!' : 'Scored!'}
-      </span>
-    )}
-  </div>
-)}
-        {lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
-        {/* --- ADDED: احتفال الفوز بالجولة مع رقم الجولة --- */}
+        {localReady && countdown > 0 && (
+          <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.72)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px', pointerEvents: 'none' }}>
+            <span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>
+            {countdownSide && (
+              <span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>
+                {getNameForSide(countdownSide as Player['side'])} {isAr ? 'سجل!' : 'Scored!'}
+              </span>
+            )}
+          </div>
+        )}
+        {localReady && lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
         {celebrating && (
-  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>
-    <div style={{ fontSize: '48px', fontWeight: 900, color: '#ffcf5a', textShadow: '0 0 20px #ffcf5a' }}>
-      {celebrating.name} {isAr? 'فاز بالجولة' : 'wins the round'}!
-    </div>
-    <div style={{ fontSize: '24px', color: '#fff', background: '#222', padding: '8px 24px', borderRadius: '999px' }}>
-      {isAr? 'الجولة' : 'Round'} {currentRound} / {settings.seriesRounds}
-    </div>
-    <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
-      {players.map(p => (
-        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#111', padding: '6px 12px', borderRadius: '999px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.color }} />
-          <span style={{ color: '#fff' }}>{p.name}</span>
-          <strong style={{ color: '#ffcf5a' }}>{(seriesWins[p.id] ?? 0)}</strong>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
-        {/* زر الرجوع */}
-        <button 
-          onClick={() => window.location.reload()} 
-          style={{ 
-            position: 'absolute', 
-            top: 12, 
-            left: 12, 
-            zIndex: 100, 
-            background: '#ff2d2d', 
-            color: 'white', 
-            border: 'none', 
-            padding: '10px 14px', 
-            borderRadius: 12, 
-            fontWeight: 800, 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 6,
-            cursor: 'pointer',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
-          }}
-        >
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>
+            <div style={{ fontSize: '48px', fontWeight: 900, color: '#ffcf5a', textShadow: '0 0 20px #ffcf5a' }}>{celebrating.name} {isAr? 'فاز بالجولة' : 'wins the round'}!</div>
+            <div style={{ fontSize: '24px', color: '#fff', background: '#222', padding: '8px 24px', borderRadius: '999px' }}>{isAr? 'الجولة' : 'Round'} {currentRound} / {settings.seriesRounds}</div>
+            <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
+              {players.map(p => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#111', padding: '6px 12px', borderRadius: '999px' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.color }} />
+                  <span style={{ color: '#fff' }}>{p.name}</span>
+                  <strong style={{ color: '#ffcf5a' }}>{(seriesWins[p.id] ?? 0)}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <button onClick={() => window.location.reload()} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: '#ff2d2d', color: 'white', border: 'none', padding: '10px 14px', borderRadius: 12, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
           <ArrowLeft size={18} /> {isAr ? 'خروج' : 'Exit'}
         </button>
-{/* --- تم الغاء زر الخروج بطلب من المستخدم --- */}
 
         {showCamMenu && !hideUI && (
-          <div style={{ position: 'absolute', bottom: 85, left: '50%', transform: 'translateX(-50%)', zIndex: 9998, background: 'rgba(10,10,12,0.94)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, padding: 14, width: 'calc(100% - 32px)', maxWidth: 360, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', color: '#fff', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
+          <div style={{ position: 'absolute', bottom: 85, left: '50%', transform: 'translateX(-50%)', zIndex: 10005, background: 'rgba(10,10,12,0.94)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, padding: 14, width: 'calc(100% - 32px)', maxWidth: 360, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', color: '#fff', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <b style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Video size={16} /> {isAr? 'تحكم الكاميرا' : 'Camera'}</b>
               <button onClick={() => setShowCamMenu(false)} style={{ background: '#222', borderRadius: 8, padding: 4, border: 'none', color: '#fff' }}><X size={14} /></button>
@@ -1026,7 +874,6 @@ useEffect(() => {
               <button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle, padding: '6px' }}><RotateCcw size={14} /> {isAr? 'يسار' : 'Left'}</button>
               <button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle, padding: '6px' }}><RotateCw size={14} /> {isAr? 'يمين' : 'Right'}</button>
             </div>
-            {/* --- ADDED: أزرار حفظ وإعادة تعيين الكاميرا --- */}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={saveCameraSettings} style={{ flex: 1, ...btnStyle, background: '#00e5ff', color: '#000', padding: '6px' }}>
                 <Save size={14} /> {isAr? 'حفظ' : 'Save'}
