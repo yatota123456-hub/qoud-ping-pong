@@ -74,8 +74,8 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   ctx.closePath();
   ctx.fill();
 
-  // أهداف جانبية للـ 4 لاعبين - مربعة فقط إذا مربعة
-  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150; // مربعة = 4 لاعبين
+  // أهداف جانبية للـ 4 لاعبين فقط - مربعة فقط إذا مربعة (لا ترسم إلا في اللعب الرباعي والساحة مربعة)
+  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150; // مربعة = 4 لاعبين فقط
   if (isSquareArena) {
     const sideGoalRadius = 360;
     ctx.strokeStyle = 'rgba(255, 30, 30, 0.9)';
@@ -352,7 +352,7 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const ARENA_SCALES: any = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
-  // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين يكون مستطيل - تصحيح حسب طلب المستخدم
+  // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين مستطيل - لا ترسم أهداف جانبية إلا في الرباعي
   const base = count >= 4 ? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
@@ -873,7 +873,7 @@ export function GameScreen3D({
     const BALL_RADIUS = 14;
     const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
     const MIN_SPEED = 4.5;
-    const MAX_SPEED = 12;
+    const MAX_SPEED = 18; // زيادة من 12 إلى 18 لارتداد قوي عند الضرب بقوة
     const WALL_BOUNCE_DAMP = 0.95;
 
     const tick = (now: number) => {
@@ -901,6 +901,33 @@ export function GameScreen3D({
         camera.lookAt(c.lookX, 0, c.lookZ);
 
         if (localReadyRef.current && !pausedRef.current && !gameEndedRef.current) {
+          // عداد 3-2-1 بعد كل هدف - إعادة تشغيل
+          if (state.countdown > 0) {
+            const elapsed = now - state.countdownStart;
+            if (elapsed >= 1000) {
+              state.countdown -= 1;
+              state.countdownStart = now;
+              setCountdown(state.countdown);
+              if (state.countdown <= 0) {
+                state.countdown = 0;
+                state.countdownSide = null;
+                setCountdown(0);
+                setCountdownSide('');
+                // إعادة الكرة للوسط عند انتهاء العداد
+                state.ball.x = world.w / 2;
+                state.ball.y = world.h / 2;
+                const ang = Math.random() * Math.PI * 2;
+                const sp = getInitialSpeed();
+                state.ball.vx = Math.cos(ang) * sp;
+                state.ball.vy = Math.sin(ang) * sp;
+                if (Math.abs(state.ball.vy) < 1.5) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * 2.5;
+                state.ballTarget.x = state.ball.x;
+                state.ballTarget.y = state.ball.y;
+                state.ballTarget.vx = state.ball.vx;
+                state.ballTarget.vy = state.ball.vy;
+              }
+            }
+          }
           // حساب سرعة المضارب - مهم لمنع الاختراق
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
@@ -959,9 +986,9 @@ export function GameScreen3D({
             const topBound = BALL_RADIUS;
             const bottomBound = world.h - BALL_RADIUS;
             
-            // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين - الأهداف كبيرة الآن
+            // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين فقط
             if (state.ball.x < leftBound) {
-              if (needPlayers < 3 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
+              if (needPlayers < 4 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
                 state.ball.x = leftBound;
                 state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
                 // تغيير مسار عشوائي بسيط لمنع التعلق
@@ -969,7 +996,7 @@ export function GameScreen3D({
               }
             }
             if (state.ball.x > rightBound) {
-              if (needPlayers < 3 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
+              if (needPlayers < 4 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
                 state.ball.x = rightBound;
                 state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
                 state.ball.vy += (Math.random() - 0.5) * 1.5;
@@ -991,61 +1018,51 @@ export function GameScreen3D({
               }
             }
 
-            // تسجيل الأهداف - إصلاح مشكلة الاختراق بدون تسجيل
+            // تسجيل الأهداف - مع العداد بعد كل هدف
             const goalScoredSide = (() => {
-              // هدف علوي
               if (state.ball.y < -BALL_RADIUS * 1.5) {
-                if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
-                  return 'top' as const;
-                }
+                if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) return 'top' as const;
               }
-              // هدف سفلي
               if (state.ball.y > world.h + BALL_RADIUS * 1.5) {
-                if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
-                  return 'bottom' as const;
-                }
+                if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) return 'bottom' as const;
               }
-              // أهداف جانبية للـ 4 لاعبين فقط
               if (needPlayers >= 4) {
                 if (state.ball.x < -BALL_RADIUS * 1.5) {
-                  if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
-                    return 'left' as const;
-                  }
+                  if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) return 'left' as const;
                 }
                 if (state.ball.x > world.w + BALL_RADIUS * 1.5) {
-                  if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
-                    return 'right' as const;
-                  }
+                  if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) return 'right' as const;
                 }
               }
               return null;
             })();
 
             if (goalScoredSide) {
-              // وجد هدف - سجل
               const missedPlayer = players.find(p => p.side === goalScoredSide) || { side: goalScoredSide, id: goalScoredSide, name: goalScoredSide } as any;
-              // إعادة تعيين الكرة
+              // إعادة تعيين الكرة للوسط
               state.ball.x = world.w / 2;
               state.ball.y = world.h / 2;
-              // إعطاء سرعة عشوائية للكرة الجديدة
               const angle = Math.random() * Math.PI * 2;
               const initSpeed = getInitialSpeed();
               state.ball.vx = Math.cos(angle) * initSpeed;
               state.ball.vy = Math.sin(angle) * initSpeed;
-              // منع المسار الأفقي
               if (Math.abs(state.ball.vy) < 1.5) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * 2.5;
               state.rally = 0;
               setRally(0);
-              // استدعاء onGoal - اللاعب الذي فشل (دخلت الكرة في مرماه)
+              // إرجاع العداد 3-2-1 بعد تسجيل الهدف
+              state.countdown = 3;
+              state.countdownStart = performance.now();
+              state.countdownSide = goalScoredSide as any;
+              setCountdown(3);
+              setCountdownSide(goalScoredSide as any);
+              // تسجيل الهدف
               if (onGoal) {
                 // @ts-ignore
                 onGoal(missedPlayer as any);
               }
-              // إرسال للشبكة إذا Host
               if (isHost && !isOfflineMode) {
                 socket.emit('goal-scored', { side: goalScoredSide });
               }
-              // لا نكمل باقي الفيزياء هذا الإطار
               return;
             }
 
@@ -1061,28 +1078,23 @@ export function GameScreen3D({
               
               if (dist >= HIT_DIST || dist < 0.5) return;
 
-              // منع الاصطدام من الخلف - فقط من الأمام - يعتمد على الموقع فقط (ليس السرعة) لضمان ارتداد مباشر
+              // منع الاصطدام من الخلف - يعتمد على الموقع فقط لارتداد مباشر وقوي
               let isFrontHit = false;
-              const frontThreshold = 8; // تسامح بسيط
-              if (side === 'bottom') {
-                // مضرب الأسفل - الأمام هو فوق (الكرة فوق المضرب) - ارتداد مباشر حتى لو الكرة تبتعد والمضرب يدفعها
-                isFrontHit = state.ball.y < paddle.z + frontThreshold;
-              } else if (side === 'top') {
-                isFrontHit = state.ball.y > paddle.z - frontThreshold;
-              } else if (side === 'left') {
-                isFrontHit = state.ball.x > paddle.x - frontThreshold;
-              } else if (side === 'right') {
-                isFrontHit = state.ball.x < paddle.x + frontThreshold;
-              }
+              const thresh = 10;
+              if (side === 'bottom') isFrontHit = state.ball.y < paddle.z + thresh;
+              else if (side === 'top') isFrontHit = state.ball.y > paddle.z - thresh;
+              else if (side === 'left') isFrontHit = state.ball.x > paddle.x - thresh;
+              else if (side === 'right') isFrontHit = state.ball.x < paddle.x + thresh;
               
-              // إذا الكرة خلف المضرب تماماً - ادفعها للخارج فقط (منع الاختراق)
+              // إذا خلف المضرب - ادفع فقط
               if (!isFrontHit) {
-                const pushFactor = 2.0; // دفع أقوى لمنع الاختراق
+                const pushFactor = 2.2;
                 const nx = dx / dist;
                 const ny = dy / dist;
                 const overlap = HIT_DIST - dist + 3;
                 state.ball.x += nx * overlap * pushFactor;
                 state.ball.y += ny * overlap * pushFactor;
+                // لا تغير السرعة كثيراً إذا من الخلف - فقط ادفع
                 return;
               }
 
@@ -1095,30 +1107,32 @@ export function GameScreen3D({
               state.ball.x += nx * overlap;
               state.ball.y += ny * overlap;
 
-              // حساب الارتداد مع سرعة المضرب - مثل Air Hockey الحقيقي
-              const paddleSpeedFactor = 0.35;
+              // حساب الارتداد مع سرعة المضرب - مثل Air Hockey الحقيقي - ارتداد قوي عند الضرب بقوة
+              const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
+              const paddleSpeedFactor = 0.85 + Math.min(paddleSpeed * 0.15, 0.6); // 0.85 إلى 1.45 حسب قوة الضرب
               const ballVelDotNormal = state.ball.vx * nx + state.ball.vy * ny;
               
-              // ارتداد مع إضافة سرعة المضرب
+              // ارتداد مع إضافة سرعة المضرب - كلما ضرب بقوة ترتد بقوة
               let newVx = state.ball.vx - 2 * ballVelDotNormal * nx + pVel.vx * paddleSpeedFactor;
               let newVy = state.ball.vy - 2 * ballVelDotNormal * ny + pVel.vy * paddleSpeedFactor;
 
-              // تأثير مكان الضرب على المضرب - يغير المسار
+              // تأثير مكان الضرب على المضرب - يغير المسار بقوة أكبر
               const hitOffset = side === 'bottom' || side === 'top' 
                 ? (state.ball.x - paddle.x) / PADDLE_RADIUS // -1 إلى 1
                 : (state.ball.y - paddle.z) / PADDLE_RADIUS;
               
               if (side === 'bottom' || side === 'top') {
-                newVx += hitOffset * 3.5; // ضرب الحافة يغير المسار أفقياً
+                newVx += hitOffset * 5.5; // ضرب الحافة يغير المسار أفقياً بقوة
               } else {
-                newVy += hitOffset * 3.5;
+                newVy += hitOffset * 5.5;
               }
 
-              // زيادة السرعة قليلاً مع كل ضربة - Rally
-              const speedBoost = 1.05 + state.rally * 0.02;
+              // زيادة السرعة مع قوة الضرب والرالي
+              const powerBoost = 1.0 + (paddleSpeed * 0.04); // قوة الضرب تزيد السرعة
+              const speedBoost = (1.08 + state.rally * 0.03) * powerBoost;
               let newSpeed = Math.hypot(newVx, newVy) * speedBoost;
-              newSpeed = Math.min(newSpeed, MAX_SPEED);
-              newSpeed = Math.max(newSpeed, MIN_SPEED);
+              newSpeed = Math.min(newSpeed, 18); // MAX_SPEED جديد 18 - كان 12
+              newSpeed = Math.max(newSpeed, 4.5);
               
               const angle = Math.atan2(newVy, newVx);
               // منع الزاوية الأفقية تماماً
@@ -1471,7 +1485,7 @@ export function GameScreen3D({
               <X size={14}/>
             </button>
 
-            {/* عمود الأيقونات بنفس شكل الرسمة - مع scroll إذا زادت */}
+            {/* عمود الأيقونات بنفس شكل الرسمة - مع scroll إذا زادت - ملونة */}
             <div style={{
               flex:1, width:'100%', overflowY:'auto', overflowX:'hidden',
               display:'flex', flexDirection:'column', alignItems:'center', gap:6,
@@ -1485,167 +1499,167 @@ export function GameScreen3D({
                 div::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
               `}</style>
 
-              {/* Save */}
+              {/* Save - سماوي */}
               <button onClick={saveCameraSettings} title="حفظ الكاميرا" style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                background:'#00e5ff', border:'2px solid #000', borderRadius:12,
                 display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000', gap:2
+                cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(0,229,255,0.4)', gap:2
               }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#fff'}}>Save</span>
+                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Save</span>
               </button>
 
-              {/* Rest / Reset */}
+              {/* Rest / Reset - برتقالي */}
               <button onClick={resetCameraToDefault} title="إعادة ضبط" style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                background:'#ff8a3d', border:'2px solid #000', borderRadius:12,
                 display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000', gap:2
+                cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(255,138,61,0.4)', gap:2
               }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#fff'}}>Rest</span>
+                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Rest</span>
               </button>
 
-              {/* <- Left */}
+              {/* <- Left - أخضر */}
               <button onClick={() => rotateCam('left')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
-                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'
+                background:'#61e7c2', border:'2px solid #000', borderRadius:12,
+                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(97,231,194,0.4)'
               }}>
-                <ArrowLeft size={22} strokeWidth={2.5} color="#fff"/>
+                <ArrowLeft size={22} strokeWidth={2.8} color="#000"/>
               </button>
 
-              {/* -> Right */}
+              {/* -> Right - أخضر */}
               <button onClick={() => rotateCam('right')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
-                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'
+                background:'#61e7c2', border:'2px solid #000', borderRadius:12,
+                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(97,231,194,0.4)'
               }}>
-                <ArrowRight size={22} strokeWidth={2.5} color="#fff"/>
+                <ArrowRight size={22} strokeWidth={2.8} color="#000"/>
               </button>
 
-              {/* Up */}
+              {/* Up - أصفر ملون */}
               <button onClick={() => rotateCam('up')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#ffcf5a', border:'2px solid #000', borderRadius:12,
-                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'
+                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(255,207,90,0.5)'
               }}>
                 <ArrowUp size={22} strokeWidth={2.8} color="#000"/>
               </button>
 
-              {/* Down */}
+              {/* Down - وردي ملون */}
               <button onClick={() => rotateCam('down')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
-                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'
+                background:'#ff6b8b', border:'2px solid #000', borderRadius:12,
+                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(255,107,139,0.5)'
               }}>
-                <ArrowDown size={22} strokeWidth={2.5} color="#fff"/>
+                <ArrowDown size={22} strokeWidth={2.8} color="#000"/>
               </button>
 
-              {/* Zoom+ مع دائرة و Z مثل الرسمة */}
+              {/* Zoom+ مع دائرة و Z - بنفسجي */}
               <button onClick={() => zoomCam(1)} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                background:'#9b8cff', border:'2px solid #000', borderRadius:12,
                 display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000', position:'relative'
+                cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(155,140,255,0.4)', position:'relative'
               }}>
-                <div style={{width:26, height:26, borderRadius:'50%', border:'1.5px solid #fff', display:'grid', placeItems:'center'}}>
-                  <span style={{fontSize:16, fontWeight:900, color:'#fff', lineHeight:1}}>+</span>
+                <div style={{width:26, height:26, borderRadius:'50%', border:'2px solid #000', display:'grid', placeItems:'center', background:'#fff'}}>
+                  <span style={{fontSize:16, fontWeight:900, color:'#000', lineHeight:1}}>+</span>
                 </div>
-                <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:800, color:'#888'}}>Z</span>
+                <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:900, color:'#000'}}>Z</span>
               </button>
 
-              {/* Zoom- */}
+              {/* Zoom- - بنفسجي */}
               <button onClick={() => zoomCam(-1)} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                background:'#9b8cff', border:'2px solid #000', borderRadius:12,
                 display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000', position:'relative'
+                cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(155,140,255,0.4)', position:'relative'
               }}>
-                <div style={{width:26, height:26, borderRadius:'50%', border:'1.5px solid #fff', display:'grid', placeItems:'center'}}>
-                  <span style={{fontSize:16, fontWeight:900, color:'#fff', lineHeight:1}}>−</span>
+                <div style={{width:26, height:26, borderRadius:'50%', border:'2px solid #000', display:'grid', placeItems:'center', background:'#fff'}}>
+                  <span style={{fontSize:16, fontWeight:900, color:'#000', lineHeight:1}}>−</span>
                 </div>
-                <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:800, color:'#888'}}>Z</span>
+                <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:900, color:'#000'}}>Z</span>
               </button>
 
-              {/* Bot - Bottom */}
+              {/* Bot - Bottom - أزرق */}
               <button onClick={() => applyPreset('bottom')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='bottom' ? '#00e5ff' : '#1e1e1e',
-                border: currentPreset==='bottom' ? '2px solid #00e5ff' : '1.5px solid #333',
+                background: currentPreset==='bottom' ? '#00e5ff' : '#1e90ff',
+                border: '2px solid #000',
                 borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='bottom' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+                cursor:'pointer', boxShadow: currentPreset==='bottom' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
               }}>
-                <span style={{fontSize:12, fontWeight:900, color: currentPreset==='bottom' ? '#000' : '#fff'}}>Bot</span>
+                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Bot</span>
               </button>
 
-              {/* Enm - Enemy / TopPlayer */}
+              {/* Enm - Enemy / TopPlayer - أحمر فاتح */}
               <button onClick={() => applyPreset('topPlayer')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='topPlayer' ? '#00e5ff' : '#1e1e1e',
-                border: currentPreset==='topPlayer' ? '2px solid #00e5ff' : '1.5px solid #333',
+                background: currentPreset==='topPlayer' ? '#00e5ff' : '#ff7a7a',
+                border: '2px solid #000',
                 borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='topPlayer' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+                cursor:'pointer', boxShadow: currentPreset==='topPlayer' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
               }}>
-                <span style={{fontSize:12, fontWeight:900, color: currentPreset==='topPlayer' ? '#000' : '#fff'}}>Enm</span>
+                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Enm</span>
               </button>
 
-              {/* Top */}
+              {/* Top - برتقالي فاتح */}
               <button onClick={() => applyPreset('top')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='top' ? '#00e5ff' : '#1e1e1e',
-                border: currentPreset==='top' ? '2px solid #00e5ff' : '1.5px solid #333',
+                background: currentPreset==='top' ? '#00e5ff' : '#ffb86b',
+                border: '2px solid #000',
                 borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='top' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+                cursor:'pointer', boxShadow: currentPreset==='top' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
               }}>
-                <span style={{fontSize:12, fontWeight:900, color: currentPreset==='top' ? '#000' : '#fff'}}>Top</span>
+                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Top</span>
               </button>
 
-              {/* Bot ثاني - Bottom مرة أخرى مثل الرسمة */}
+              {/* Bot ثاني - مثل الرسمة - أزرق فاتح */}
               <button onClick={() => applyPreset('bottom')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background: '#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                background:'#1e90ff', border:'2px solid #000', borderRadius:12,
                 display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
                 cursor:'pointer', boxShadow:'0 2px 0 #000'
               }}>
                 <span style={{fontSize:12, fontWeight:900, color:'#fff'}}>Bot</span>
               </button>
 
-              {/* Iso */}
+              {/* Iso - أخضر مصفر */}
               <button onClick={() => applyPreset('iso')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='iso' ? '#00e5ff' : '#1e1e1e',
-                border: currentPreset==='iso' ? '2px solid #00e5ff' : '1.5px solid #333',
+                background: currentPreset==='iso' ? '#00e5ff' : '#a8e6a0',
+                border: '2px solid #000',
                 borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='iso' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+                cursor:'pointer', boxShadow: currentPreset==='iso' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
               }}>
-                <span style={{fontSize:12, fontWeight:900, color: currentPreset==='iso' ? '#000' : '#fff'}}>Iso</span>
+                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Iso</span>
               </button>
 
-              {/* إضافي: Left / Right للـ 4 لاعبين */}
+              {/* إضافي: Left / Right للـ 4 لاعبين - ملون */}
               <button onClick={() => applyPreset('sideLeft')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='sideLeft' ? '#00e5ff' : '#1e1e1e',
-                border: currentPreset==='sideLeft' ? '2px solid #00e5ff' : '1.5px solid #333',
+                width:64, height:48, minHeight:48, flexShrink:0,
+                background: currentPreset==='sideLeft' ? '#00e5ff' : '#ffd166',
+                border: '2px solid #000',
                 borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='sideLeft' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+                cursor:'pointer', boxShadow: currentPreset==='sideLeft' ? '0 0 12px rgba(0,229,255,0.6), 0 2px 0 #000' : '0 2px 0 #000'
               }}>
-                <span style={{fontSize:10, fontWeight:900, color: currentPreset==='sideLeft' ? '#000' : '#fff'}}>LEFT</span>
+                <span style={{fontSize:10, fontWeight:900, color:'#000'}}>LEFT</span>
               </button>
 
               <button onClick={() => applyPreset('sideRight')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='sideRight' ? '#00e5ff' : '#1e1e1e',
-                border: currentPreset==='sideRight' ? '2px solid #00e5ff' : '1.5px solid #333',
+                width:64, height:48, minHeight:48, flexShrink:0,
+                background: currentPreset==='sideRight' ? '#00e5ff' : '#ffd166',
+                border: '2px solid #000',
                 borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='sideRight' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+                cursor:'pointer', boxShadow: currentPreset==='sideRight' ? '0 0 12px rgba(0,229,255,0.6), 0 2px 0 #000' : '0 2px 0 #000'
               }}>
-                <span style={{fontSize:10, fontWeight:900, color: currentPreset==='sideRight' ? '#000' : '#fff'}}>RIGHT</span>
+                <span style={{fontSize:10, fontWeight:900, color:'#000'}}>RIGHT</span>
               </button>
 
-              {/* Reset */}
+              {/* Reset - وردي غامق */}
               <button onClick={resetCamera} style={{
                 width:64, height:40, minHeight:40, flexShrink:0,
-                background:'#ff4081', border:'none', borderRadius:10,
+                background:'#ff4081', border:'2px solid #000', borderRadius:10,
                 display:'flex', alignItems:'center', justifyContent:'center',
                 cursor:'pointer', boxShadow:'0 2px 0 #000', marginTop:4
               }}>
@@ -1655,11 +1669,11 @@ export function GameScreen3D({
               {/* Hide UI */}
               <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{
                 width:64, height:36, minHeight:36, flexShrink:0,
-                background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10,
+                background:'#2a2a2a', border:'1.5px solid #444', borderRadius:10,
                 display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', gap:3
               }}>
-                <EyeOff size={10} color="rgba(255,255,255,0.5)"/>
-                <span style={{fontSize:8, color:'rgba(255,255,255,0.5)'}}>HIDE</span>
+                <EyeOff size={10} color="#aaa"/>
+                <span style={{fontSize:8, color:'#aaa', fontWeight:800}}>HIDE</span>
               </button>
             </div>
           </div>
