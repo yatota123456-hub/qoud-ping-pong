@@ -74,8 +74,9 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   ctx.closePath();
   ctx.fill();
 
-  // أهداف جانبية للـ 4 لاعبين - مربعة
-  if (worldW >= 900 || true) {
+  // أهداف جانبية للـ 4 لاعبين - مربعة فقط إذا مربعة
+  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150; // مربعة = 4 لاعبين
+  if (isSquareArena) {
     const sideGoalRadius = 360;
     ctx.strokeStyle = 'rgba(255, 30, 30, 0.9)';
     ctx.lineWidth = 5;
@@ -351,7 +352,8 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const ARENA_SCALES: any = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
-  const base = count >= 3? SQUARE : RECT;
+  // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين يكون مستطيل - تصحيح حسب طلب المستخدم
+  const base = count >= 4 ? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
 }
@@ -627,18 +629,21 @@ export function GameScreen3D({
   }, [adaptivePresets]);
 
   const zoomCam = useCallback((dir: number) => {
-    cam.current.targetDistance = Math.max(300, Math.min(3200, cam.current.targetDistance * (dir > 0? 0.85 : 1.18)));
+    cam.current.targetDistance = Math.max(600, Math.min(2200, cam.current.targetDistance * (dir > 0? 0.88 : 1.15)));
   }, []);
 
   const rotateCam = useCallback((dir: 'left' | 'right' | 'up' | 'down') => {
-    if (dir === 'left') cam.current.targetAngle -= 0.4;
-    if (dir === 'right') cam.current.targetAngle += 0.4;
-    if (dir === 'up') cam.current.targetHeight = Math.min(2800, cam.current.targetHeight + 120);
-    if (dir === 'down') cam.current.targetHeight = Math.max(250, cam.current.targetHeight - 120);
+    if (dir === 'left') cam.current.targetAngle -= 0.35;
+    if (dir === 'right') cam.current.targetAngle += 0.35;
+    if (dir === 'up') cam.current.targetHeight = Math.min(1800, cam.current.targetHeight + 100);
+    if (dir === 'down') cam.current.targetHeight = Math.max(400, cam.current.targetHeight - 100);
   }, []);
 
   useEffect(() => {
-    cam.current = {...initialCam} as any;
+    // لا نعيد تعيين الكاميرا إذا اللعب بدأ - يمنع تكبير الكانفاس واختفاء الأهداف
+    if (!localReadyRef.current) {
+      cam.current = {...initialCam} as any;
+    }
   }, [initialCam]);
 
   useEffect(() => {
@@ -986,7 +991,65 @@ export function GameScreen3D({
               }
             }
 
-            // اصطدام بالمضارب - إصلاح الاختراق من الخلف + lag
+            // تسجيل الأهداف - إصلاح مشكلة الاختراق بدون تسجيل
+            const goalScoredSide = (() => {
+              // هدف علوي
+              if (state.ball.y < -BALL_RADIUS * 1.5) {
+                if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
+                  return 'top' as const;
+                }
+              }
+              // هدف سفلي
+              if (state.ball.y > world.h + BALL_RADIUS * 1.5) {
+                if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
+                  return 'bottom' as const;
+                }
+              }
+              // أهداف جانبية للـ 4 لاعبين فقط
+              if (needPlayers >= 4) {
+                if (state.ball.x < -BALL_RADIUS * 1.5) {
+                  if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
+                    return 'left' as const;
+                  }
+                }
+                if (state.ball.x > world.w + BALL_RADIUS * 1.5) {
+                  if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
+                    return 'right' as const;
+                  }
+                }
+              }
+              return null;
+            })();
+
+            if (goalScoredSide) {
+              // وجد هدف - سجل
+              const missedPlayer = players.find(p => p.side === goalScoredSide) || { side: goalScoredSide, id: goalScoredSide, name: goalScoredSide } as any;
+              // إعادة تعيين الكرة
+              state.ball.x = world.w / 2;
+              state.ball.y = world.h / 2;
+              // إعطاء سرعة عشوائية للكرة الجديدة
+              const angle = Math.random() * Math.PI * 2;
+              const initSpeed = getInitialSpeed();
+              state.ball.vx = Math.cos(angle) * initSpeed;
+              state.ball.vy = Math.sin(angle) * initSpeed;
+              // منع المسار الأفقي
+              if (Math.abs(state.ball.vy) < 1.5) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * 2.5;
+              state.rally = 0;
+              setRally(0);
+              // استدعاء onGoal - اللاعب الذي فشل (دخلت الكرة في مرماه)
+              if (onGoal) {
+                // @ts-ignore
+                onGoal(missedPlayer as any);
+              }
+              // إرسال للشبكة إذا Host
+              if (isHost && !isOfflineMode) {
+                socket.emit('goal-scored', { side: goalScoredSide });
+              }
+              // لا نكمل باقي الفيزياء هذا الإطار
+              return;
+            }
+
+            // اصطدام بالمضارب - إصلاح الارتداد المباشر لكل اللاعبين
             (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
               if (!activeSide(side)) return;
               const paddle = state.paddles[side];
@@ -998,29 +1061,28 @@ export function GameScreen3D({
               
               if (dist >= HIT_DIST || dist < 0.5) return;
 
-              // منع الاصطدام من الخلف - فقط من الأمام
+              // منع الاصطدام من الخلف - فقط من الأمام - يعتمد على الموقع فقط (ليس السرعة) لضمان ارتداد مباشر
               let isFrontHit = false;
+              const frontThreshold = 8; // تسامح بسيط
               if (side === 'bottom') {
-                // مضرب الأسفل - الأمام هو فوق (الكرة فوق المضرب)
-                isFrontHit = state.ball.y < paddle.z && state.ball.vy > 0; // الكرة قادمة من فوق متجهة للأسفل
+                // مضرب الأسفل - الأمام هو فوق (الكرة فوق المضرب) - ارتداد مباشر حتى لو الكرة تبتعد والمضرب يدفعها
+                isFrontHit = state.ball.y < paddle.z + frontThreshold;
               } else if (side === 'top') {
-                isFrontHit = state.ball.y > paddle.z && state.ball.vy < 0;
+                isFrontHit = state.ball.y > paddle.z - frontThreshold;
               } else if (side === 'left') {
-                isFrontHit = state.ball.x > paddle.x && state.ball.vx < 0;
+                isFrontHit = state.ball.x > paddle.x - frontThreshold;
               } else if (side === 'right') {
-                isFrontHit = state.ball.x < paddle.x && state.ball.vx > 0;
+                isFrontHit = state.ball.x < paddle.x + frontThreshold;
               }
               
-              // إذا ليس أمامي، وتجاوز المضرب - ادفع الكرة للخارج بقوة بدون تغيير مسار كبير (منع الاختراق)
+              // إذا الكرة خلف المضرب تماماً - ادفعها للخارج فقط (منع الاختراق)
               if (!isFrontHit) {
-                // إذا الكرة خلف المضرب وتحاول الاختراق - ادفعها بسرعة
-                const pushFactor = 1.5;
+                const pushFactor = 2.0; // دفع أقوى لمنع الاختراق
                 const nx = dx / dist;
                 const ny = dy / dist;
-                const overlap = HIT_DIST - dist + 2; // +2 لتأمين عدم الاختراق
+                const overlap = HIT_DIST - dist + 3;
                 state.ball.x += nx * overlap * pushFactor;
                 state.ball.y += ny * overlap * pushFactor;
-                // لا تغير السرعة كثيراً إذا من الخلف - فقط ادفع
                 return;
               }
 
@@ -1383,123 +1445,221 @@ export function GameScreen3D({
         {showCamMenu && !hideUI && (
           <div style={{ 
             position: 'absolute', 
-            right: 12, 
-            top: '110px',
+            right: 8, 
+            top: 12,
+            bottom: 12,
             zIndex: 10005, 
-            background: 'rgba(10,10,12,0.94)', 
+            background: 'rgba(10,10,12,0.96)', 
             backdropFilter: 'blur(20px)', 
             WebkitBackdropFilter: 'blur(20px)', 
-            border: '1px solid rgba(255,255,255,0.15)', 
-            borderRadius: 20, 
-            padding: '10px 8px',
-            width: 88,
-            height: '58vh',
-            maxHeight: '520px',
+            border: '1.5px solid rgba(255,255,255,0.12)', 
+            borderRadius: 18, 
+            padding: '8px 6px',
+            width: 76,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             gap: 0,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.85)',
+            boxShadow: '0 16px 48px rgba(0,0,0,0.9)',
           }}>
-            {/* رأس */}
-            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:8, width:'100%', flexShrink:0}}>
-              <button onClick={()=>setShowCamMenu(false)} style={{width:32, height:32, borderRadius:'50%', background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.2)', color:'#fff', display:'grid', placeItems:'center', cursor:'pointer'}}><X size={14}/></button>
-              <span style={{fontSize:10, fontWeight:900, color:'rgba(255,255,255,0.6)', letterSpacing:1.2}}>CAMERA</span>
-              <div style={{width:'100%', height:'1px', background:'rgba(255,255,255,0.1)', margin:'4px 0'}}/>
-            </div>
-
-            {/* Up - بنفس الحجم */}
-            <button onClick={() => rotateCam('up')} style={{
-              width: 64, height: 48, minHeight:48, flexShrink:0,
-              background: '#ffcf5a', border:'2px solid #000', borderRadius:12,
-              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-              cursor:'pointer', boxShadow:'0 3px 0 #000, 0 4px 12px rgba(255,207,90,0.4)',
-              gap:2, marginBottom:8
+            {/* X في الأعلى مثل الرسمة */}
+            <button onClick={()=>setShowCamMenu(false)} style={{
+              width:36, height:28, borderRadius:8, background:'#1a1a1a', border:'1.5px solid #333',
+              color:'#fff', display:'grid', placeItems:'center', cursor:'pointer', flexShrink:0,
+              marginBottom:6, fontWeight:900
             }}>
-              <ArrowUp size={20} strokeWidth={3} color="#000"/>
-              <span style={{fontSize:10, fontWeight:900, color:'#000'}}>Up</span>
+              <X size={14}/>
             </button>
 
-            {/* منطقة Scroll للكاميرات - كلها نفس الحجم */}
+            {/* عمود الأيقونات بنفس شكل الرسمة - مع scroll إذا زادت */}
             <div style={{
               flex:1, width:'100%', overflowY:'auto', overflowX:'hidden',
               display:'flex', flexDirection:'column', alignItems:'center', gap:6,
-              padding:'4px 2px', 
+              padding:'4px 2px',
               scrollbarWidth:'thin',
               scrollbarColor:'#333 #111',
-              borderTop:'1px solid rgba(255,255,255,0.06)',
-              borderBottom:'1px solid rgba(255,255,255,0.06)',
-              background:'rgba(0,0,0,0.2)', borderRadius:'8px'
             }}>
               <style>{`
-                div::-webkit-scrollbar { width: 4px; }
+                div::-webkit-scrollbar { width: 3px; }
                 div::-webkit-scrollbar-track { background: #111; border-radius: 2px; }
-                div::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
-                div::-webkit-scrollbar-thumb:hover { background: #444; }
+                div::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
               `}</style>
-              {(Object.keys(CAM_PRESETS_3D) as Cam3DPresetKey[]).map((k) => (
-                <button 
-                  key={k}
-                  onClick={() => applyPreset(k)} 
-                  title={isAr? CAM_PRESETS_3D[k].name : CAM_PRESETS_3D[k].nameEn}
-                  style={{ 
-                    width: 64, height: 48, minHeight:48, flexShrink:0,
-                    background: currentPreset === k ? '#00e5ff' : '#1e1e1e',
-                    border: currentPreset === k ? '2px solid #00e5ff' : '1.5px solid #333',
-                    borderRadius:12,
-                    display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                    cursor:'pointer',
-                    boxShadow: currentPreset===k ? '0 0 16px rgba(0,229,255,0.6), 0 3px 0 #000' : '0 3px 0 #000',
-                    transition:'all 0.2s',
-                    gap:2
-                  }}
-                >
-                  <span style={{fontSize: 11, fontWeight:900, color: currentPreset===k ? '#000' : '#fff', lineHeight:1}}>
-                    {k==='top' ? 'TOP' : k==='bottom' ? 'BOT' : k==='iso' ? 'ISO' : k==='topPlayer' ? 'ENM' : k==='sideLeft' ? 'LEFT' : 'RIGHT'}
-                  </span>
-                  <span style={{fontSize:8, fontWeight:700, color: currentPreset===k ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.4)'}}>
-                    {k==='top' ? '⬆' : k==='bottom' ? '⬇' : k==='iso' ? '◫' : '◧'}
-                  </span>
-                </button>
-              ))}
-              {/* أزرار إضافية بنفس الحجم */}
-              <button onClick={() => zoomCam(1)} style={{width:64, height:48, minHeight:48, flexShrink:0, background:'#222', border:'1.5px solid #333', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 3px 0 #000', gap:2}}>
-                <ZoomIn size={16} color="#fff"/><span style={{fontSize:8, fontWeight:800, color:'#aaa'}}>ZOOM+</span>
-              </button>
-              <button onClick={() => zoomCam(-1)} style={{width:64, height:48, minHeight:48, flexShrink:0, background:'#222', border:'1.5px solid #333', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 3px 0 #000', gap:2}}>
-                <ZoomOut size={16} color="#fff"/><span style={{fontSize:8, fontWeight:800, color:'#aaa'}}>ZOOM-</span>
-              </button>
-              <button onClick={() => rotateCam('left')} style={{width:64, height:48, minHeight:48, flexShrink:0, background:'#1a1a1a', border:'1.5px solid #333', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 3px 0 #000', gap:2}}>
-                <ArrowLeft size={16} color="#fff"/><span style={{fontSize:8, fontWeight:800, color:'#aaa'}}>LEFT</span>
-              </button>
-              <button onClick={() => rotateCam('right')} style={{width:64, height:48, minHeight:48, flexShrink:0, background:'#1a1a1a', border:'1.5px solid #333', borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 3px 0 #000', gap:2}}>
-                <ArrowRight size={16} color="#fff"/><span style={{fontSize:8, fontWeight:800, color:'#aaa'}}>RIGHT</span>
-              </button>
-            </div>
 
-            {/* Down - بنفس الحجم */}
-            <button onClick={() => rotateCam('down')} style={{
-              width: 64, height: 48, minHeight:48, flexShrink:0,
-              background: '#ff6b8b', border:'2px solid #000', borderRadius:12,
-              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-              cursor:'pointer', boxShadow:'0 3px 0 #000, 0 4px 12px rgba(255,107,139,0.4)',
-              gap:2, marginTop:8, marginBottom:8
-            }}>
-              <span style={{fontSize:10, fontWeight:900, color:'#fff'}}>Down</span>
-              <ArrowDown size={20} strokeWidth={3} color="#fff"/>
-            </button>
-
-            {/* أزرار التحكم السفلية */}
-            <div style={{display:'flex', flexDirection:'column', gap:6, width:'100%', flexShrink:0}}>
-              <button onClick={resetCamera} style={{width:'100%', height:36, borderRadius:10, background:'#ff4081', border:'none', color:'#fff', fontWeight:900, fontSize:10, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4, boxShadow:'0 2px 0 #000'}}>
-                <Maximize2 size={12}/> RESET
+              {/* Save */}
+              <button onClick={saveCameraSettings} title="حفظ الكاميرا" style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow:'0 2px 0 #000', gap:2
+              }}>
+                <span style={{fontSize:12, fontWeight:900, color:'#fff'}}>Save</span>
               </button>
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:4}}>
-                <button onClick={saveCameraSettings} style={{height:32, borderRadius:8, background:'#00e5ff', border:'none', color:'#000', fontWeight:900, fontSize:9, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:3}}><Save size={10}/> SAVE</button>
-                <button onClick={resetCameraToDefault} style={{height:32, borderRadius:8, background:'#333', border:'1px solid #444', color:'#fff', fontWeight:900, fontSize:9, cursor:'pointer'}}>CLR</button>
-              </div>
-              <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{width:'100%', height:30, borderRadius:8, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.5)', fontSize:9, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4}}>
-                <EyeOff size={10}/> HIDE UI
+
+              {/* Rest / Reset */}
+              <button onClick={resetCameraToDefault} title="إعادة ضبط" style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow:'0 2px 0 #000', gap:2
+              }}>
+                <span style={{fontSize:12, fontWeight:900, color:'#fff'}}>Rest</span>
+              </button>
+
+              {/* <- Left */}
+              <button onClick={() => rotateCam('left')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'
+              }}>
+                <ArrowLeft size={22} strokeWidth={2.5} color="#fff"/>
+              </button>
+
+              {/* -> Right */}
+              <button onClick={() => rotateCam('right')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'
+              }}>
+                <ArrowRight size={22} strokeWidth={2.5} color="#fff"/>
+              </button>
+
+              {/* Up */}
+              <button onClick={() => rotateCam('up')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background:'#ffcf5a', border:'2px solid #000', borderRadius:12,
+                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'
+              }}>
+                <ArrowUp size={22} strokeWidth={2.8} color="#000"/>
+              </button>
+
+              {/* Down */}
+              <button onClick={() => rotateCam('down')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000'
+              }}>
+                <ArrowDown size={22} strokeWidth={2.5} color="#fff"/>
+              </button>
+
+              {/* Zoom+ مع دائرة و Z مثل الرسمة */}
+              <button onClick={() => zoomCam(1)} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow:'0 2px 0 #000', position:'relative'
+              }}>
+                <div style={{width:26, height:26, borderRadius:'50%', border:'1.5px solid #fff', display:'grid', placeItems:'center'}}>
+                  <span style={{fontSize:16, fontWeight:900, color:'#fff', lineHeight:1}}>+</span>
+                </div>
+                <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:800, color:'#888'}}>Z</span>
+              </button>
+
+              {/* Zoom- */}
+              <button onClick={() => zoomCam(-1)} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background:'#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow:'0 2px 0 #000', position:'relative'
+              }}>
+                <div style={{width:26, height:26, borderRadius:'50%', border:'1.5px solid #fff', display:'grid', placeItems:'center'}}>
+                  <span style={{fontSize:16, fontWeight:900, color:'#fff', lineHeight:1}}>−</span>
+                </div>
+                <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:800, color:'#888'}}>Z</span>
+              </button>
+
+              {/* Bot - Bottom */}
+              <button onClick={() => applyPreset('bottom')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background: currentPreset==='bottom' ? '#00e5ff' : '#1e1e1e',
+                border: currentPreset==='bottom' ? '2px solid #00e5ff' : '1.5px solid #333',
+                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow: currentPreset==='bottom' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+              }}>
+                <span style={{fontSize:12, fontWeight:900, color: currentPreset==='bottom' ? '#000' : '#fff'}}>Bot</span>
+              </button>
+
+              {/* Enm - Enemy / TopPlayer */}
+              <button onClick={() => applyPreset('topPlayer')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background: currentPreset==='topPlayer' ? '#00e5ff' : '#1e1e1e',
+                border: currentPreset==='topPlayer' ? '2px solid #00e5ff' : '1.5px solid #333',
+                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow: currentPreset==='topPlayer' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+              }}>
+                <span style={{fontSize:12, fontWeight:900, color: currentPreset==='topPlayer' ? '#000' : '#fff'}}>Enm</span>
+              </button>
+
+              {/* Top */}
+              <button onClick={() => applyPreset('top')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background: currentPreset==='top' ? '#00e5ff' : '#1e1e1e',
+                border: currentPreset==='top' ? '2px solid #00e5ff' : '1.5px solid #333',
+                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow: currentPreset==='top' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+              }}>
+                <span style={{fontSize:12, fontWeight:900, color: currentPreset==='top' ? '#000' : '#fff'}}>Top</span>
+              </button>
+
+              {/* Bot ثاني - Bottom مرة أخرى مثل الرسمة */}
+              <button onClick={() => applyPreset('bottom')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background: '#1e1e1e', border:'1.5px solid #333', borderRadius:12,
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow:'0 2px 0 #000'
+              }}>
+                <span style={{fontSize:12, fontWeight:900, color:'#fff'}}>Bot</span>
+              </button>
+
+              {/* Iso */}
+              <button onClick={() => applyPreset('iso')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background: currentPreset==='iso' ? '#00e5ff' : '#1e1e1e',
+                border: currentPreset==='iso' ? '2px solid #00e5ff' : '1.5px solid #333',
+                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow: currentPreset==='iso' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+              }}>
+                <span style={{fontSize:12, fontWeight:900, color: currentPreset==='iso' ? '#000' : '#fff'}}>Iso</span>
+              </button>
+
+              {/* إضافي: Left / Right للـ 4 لاعبين */}
+              <button onClick={() => applyPreset('sideLeft')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background: currentPreset==='sideLeft' ? '#00e5ff' : '#1e1e1e',
+                border: currentPreset==='sideLeft' ? '2px solid #00e5ff' : '1.5px solid #333',
+                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow: currentPreset==='sideLeft' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+              }}>
+                <span style={{fontSize:10, fontWeight:900, color: currentPreset==='sideLeft' ? '#000' : '#fff'}}>LEFT</span>
+              </button>
+
+              <button onClick={() => applyPreset('sideRight')} style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background: currentPreset==='sideRight' ? '#00e5ff' : '#1e1e1e',
+                border: currentPreset==='sideRight' ? '2px solid #00e5ff' : '1.5px solid #333',
+                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow: currentPreset==='sideRight' ? '0 0 12px rgba(0,229,255,0.5), 0 2px 0 #000' : '0 2px 0 #000'
+              }}>
+                <span style={{fontSize:10, fontWeight:900, color: currentPreset==='sideRight' ? '#000' : '#fff'}}>RIGHT</span>
+              </button>
+
+              {/* Reset */}
+              <button onClick={resetCamera} style={{
+                width:64, height:40, minHeight:40, flexShrink:0,
+                background:'#ff4081', border:'none', borderRadius:10,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', boxShadow:'0 2px 0 #000', marginTop:4
+              }}>
+                <span style={{fontSize:10, fontWeight:900, color:'#fff'}}>RESET</span>
+              </button>
+
+              {/* Hide UI */}
+              <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{
+                width:64, height:36, minHeight:36, flexShrink:0,
+                background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10,
+                display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', gap:3
+              }}>
+                <EyeOff size={10} color="rgba(255,255,255,0.5)"/>
+                <span style={{fontSize:8, color:'rgba(255,255,255,0.5)'}}>HIDE</span>
               </button>
             </div>
           </div>
