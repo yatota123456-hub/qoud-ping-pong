@@ -1104,6 +1104,33 @@ export function GameScreen3D({
           if (state.countdown === 0) {
             // إذا أوفلاين أو Host، نحن نتحكم بالفيزياء
             if (isOfflineMode || isHost) {
+            // === AI للكمبيوتر في وضع 3D - نفس طريقة 2D ===
+            if (isOfflineMode) {
+              const predX = state.ball.x + state.ball.vx * 10;
+              const predY = state.ball.y + state.ball.vy * 10;
+              const diffMax = settings.difficulty === 'easy' ? 3.0 : settings.difficulty === 'hard' ? 8.0 : 5.0;
+              const chase = (cur: number, target: number, deltaVal: number) => {
+                const diff = target - cur;
+                if (Math.abs(diff) < 1) return cur;
+                return cur + Math.max(-diffMax, Math.min(diffMax, diff * 0.14)) * deltaVal;
+              };
+              (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+                if (!activeSide(side)) return;
+                // تحقق هل هذا الجانب كمبيوتر
+                const playerForSide = players.find((p:any) => p.side === side);
+                const isComputerSide = (isVsComputer && side !== getMySide()) || (playerForSide && playerForSide.computer);
+                if (!isComputerSide) return;
+                const tp = state.targetPaddles[side];
+                if (side === 'top' || side === 'bottom') {
+                  const newX = chase(state.paddles[side].x, predX, delta);
+                  tp.x = Math.max(60, Math.min(world.w - 60, newX));
+                } else {
+                  const newZ = chase(state.paddles[side].z, predY, delta);
+                  tp.z = Math.max(60, Math.min(world.h - 60, newZ));
+                }
+              });
+            }
+
               state.ball.x += state.ball.vx * delta;
               state.ball.y += state.ball.vy * delta;
             } else {

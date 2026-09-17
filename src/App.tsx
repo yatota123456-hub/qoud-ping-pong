@@ -748,7 +748,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               state.ballTarget.vy = state.ball.vy;
             }
           }
+          // السماح بتحريك المضرب أثناء العد مثل 3D
           if (state.countdown > 0) {
+            const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
+            cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
             draw(context, state, players, now, false, world, myAngle);
             frame = requestAnimationFrame(tick);
             return;
@@ -850,23 +853,43 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
 
   const bindTouch = (direction: keyof typeof touchControls.current) => ({ onPointerDown: () => { touchControls.current[direction] = true; }, onPointerUp: () => { touchControls.current[direction] = false; }, onPointerLeave: () => { touchControls.current[direction] = false; } });
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (paused || celebrating) return; if (isServing) { requestLaunch(); return; }
-    (event.currentTarget as any).setPointerCapture?.(event.pointerId);
+    if (paused || celebrating) return; 
+    if (isServing) { requestLaunch(); return; }
+    try { (event.currentTarget as any).setPointerCapture?.(event.pointerId); } catch {}
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 130 : 50;
-    let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
-    hasDraggedRef.current=true; if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
+    const isTouch = (event as any).pointerType==='touch' || (event as any).touches; 
+    const OFFSET = isTouch? 130 : 50; // دائماً أسفل المضرب مثل 3D - المضرب فوق الإصبع 130px
+    let tx=pt.x;
+    let ty=pt.y - OFFSET; // نقطة التحريك دائماً أسفل المضرب (جنوب) - مثل 3D
+    hasDraggedRef.current=true; 
+    if(hintDotRef.current) hintDotRef.current.style.display='none'; 
+    if(hintTextRef.current) hintTextRef.current.style.display='none';
     drag.current = { side: mySide, x: tx, y: ty };
-    stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
+    // تحديث فوري للمضرب
+    stateRef.current.targetPaddles[mySide].x = tx; 
+    stateRef.current.targetPaddles[mySide].y = ty;
+    // أيضاً حدث الحالي مباشرة لتقليل الـ lag
+    stateRef.current.paddles[mySide].x = tx;
+    stateRef.current.paddles[mySide].y = ty;
     socket.sendPaddleTarget(tx, ty);
   };
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (!drag.current.side) return;
+    // حتى لو startDrag لم يلتقط، نعتبره سحب - إصلاح عدم حركة اللاعب
+    if (!drag.current.side) {
+      drag.current.side = mySide;
+      hasDraggedRef.current=true;
+      if(hintDotRef.current) hintDotRef.current.style.display='none'; 
+      if(hintTextRef.current) hintTextRef.current.style.display='none';
+    }
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 130 : 50;
-    let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
+    const isTouch = (event as any).pointerType==='touch' || (event as any).touches; 
+    const OFFSET = isTouch? 130 : 50; // دائماً أسفل المضرب مثل 3D - المضرب فوق الإصبع
+    let tx=pt.x;
+    let ty=pt.y - OFFSET; // نقطة التحريك دائماً أسفل المضرب (جنوب) - مثل 3D
     drag.current.x = tx; drag.current.y = ty;
-    stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
+    // تحديث فوري + مع clamp في الـ tick
+    stateRef.current.targetPaddles[mySide].x = tx; 
+    stateRef.current.targetPaddles[mySide].y = ty;
     socket.sendPaddleTarget(tx, ty);
   };
   const endDrag = (event: PointerEvent<HTMLDivElement>) => { if ((event.currentTarget as any).hasPointerCapture?.(event.pointerId)) (event.currentTarget as any).releasePointerCapture(event.pointerId); drag.current.side = null; };
