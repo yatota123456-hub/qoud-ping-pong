@@ -524,6 +524,7 @@ export function GameScreen3D({
   const [showCamMenu, setShowCamMenu] = useState(false);
   const [hideUI, setHideUI] = useState(false);
   const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('bottom');
+  const [readyPlayers, setReadyPlayers] = useState<string[]>([]); // طور الأصدقاء - من ضغط ابدأ
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
@@ -685,6 +686,46 @@ export function GameScreen3D({
     return () => { socket.off('game-state', handleGameState); };
   }, [getMySide]);
 
+  // طور الأصدقاء 2 و 4 لاعبين - نظام الجاهزية: لا تبدأ حتى يضغط الكل ابدأ
+  useEffect(() => {
+    const handlePlayerReady = (data: any) => {
+      const playerId = data.playerId || data.id || data.socketId;
+      if (playerId && !readyPlayers.includes(playerId)) {
+        setReadyPlayers(prev => [...prev, playerId]);
+      }
+    };
+    const handleAllReady = () => {
+      // الكل جاهز - ابدأ اللعبة
+      setLocalReady(true);
+      localReadyRef.current = true;
+      stateRef.current.countdown = 3;
+      stateRef.current.countdownStart = performance.now();
+      setCountdown(3);
+    };
+    socket.on('player-ready', handlePlayerReady);
+    socket.on('all-players-ready', handleAllReady);
+    socket.on('game-started', handleAllReady);
+    return () => {
+      socket.off('player-ready', handlePlayerReady);
+      socket.off('all-players-ready', handleAllReady);
+      socket.off('game-started', handleAllReady);
+    };
+  }, [readyPlayers, players.length]);
+
+  // عندما يصبح الجميع جاهز في طور الأصدقاء - يبدأ Host اللعبة
+  useEffect(() => {
+    if (!isOfflineMode && isHost && readyPlayers.length >= players.length && players.length > 1) {
+      // Host يعلن بدء اللعبة
+      socket.emit('all-players-ready', { roomCode });
+      socket.emit('game-started', { roomCode });
+      setLocalReady(true);
+      localReadyRef.current = true;
+      stateRef.current.countdown = 3;
+      stateRef.current.countdownStart = performance.now();
+      setCountdown(3);
+    }
+  }, [readyPlayers, isHost, isOfflineMode, players.length, roomCode]);
+
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -700,7 +741,7 @@ export function GameScreen3D({
       if(hintTextRef.current) hintTextRef.current.style.display='none';
       const mySide = getMySide();
       const isTouch = (e as any).pointerType === 'touch' || (e as any).pointerType === 'pen';
-      const OFFSET = isTouch? 110 : 55;
+      const OFFSET = isTouch? 140 : 70; // مسافة أكبر ليظهر المضرب ولا يغطيه الإصبع
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -711,34 +752,35 @@ export function GameScreen3D({
         let tz = target.z;
         // تحديد عدد اللاعبين لتحديد مدى التقدم - 4 لاعبين مربعة يتقدم قليلاً فقط
         const needCount = Math.max(2, players.length, settings.players || 2);
-        const isFourPlayers = needCount >= 3; // مربعة 4 لاعبين
+        const isFourPlayers = needCount >= 4; // مربعة فقط لـ 4 لاعبين
         // للـ 4 لاعبين: تقدم قليل جداً (22% و 78%)، للـ 2 لاعبين: تقدم أكبر (38% و 62%)
         const topLimit = isFourPlayers ? world.h * 0.22 : world.h * 0.38;
         const bottomLimit = isFourPlayers ? world.h * 0.78 : world.h * 0.62;
         const leftLimit = isFourPlayers ? world.w * 0.22 : world.w * 0.38;
         const rightLimit = isFourPlayers ? world.w * 0.78 : world.w * 0.62;
 
+        // نقطة التحريك دائماً أسفل المضرب (جنوب) بمسافة OFFSET - ليظهر المضرب ولا يغطيه الإصبع عند التحريك لكل الجهات
         if (mySide === 'top') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz + OFFSET, 45, topLimit);
+          const clampedZ = clamp(tz - OFFSET, 45, topLimit); // إصبع أسفل المضرب دائماً
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'bottom') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, bottomLimit, world.h - 45);
+          const clampedZ = clamp(tz - OFFSET, bottomLimit, world.h - 45); // إصبع أسفل المضرب
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'left') {
-          const clampedX = clamp(tx + OFFSET, 45, leftLimit);
-          const clampedZ = clamp(tz, 45, world.h - 45);
+          const clampedX = clamp(tx, 45, leftLimit);
+          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45); // إصبع أسفل المضرب وليس عليه
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'right') {
-          const clampedX = clamp(tx - OFFSET, rightLimit, world.w - 45);
-          const clampedZ = clamp(tz, 45, world.h - 45);
+          const clampedX = clamp(tx, rightLimit, world.w - 45);
+          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45); // إصبع أسفل المضرب لكل الجهات
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
@@ -1250,10 +1292,54 @@ export function GameScreen3D({
           border: '1px solid rgba(255,255,255,0.15)', borderRadius: '999px', padding: '10px 18px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.6)', pointerEvents: 'auto'
         }}>
-          <button onClick={()=>setLocalReady(true)} style={{padding:'10px 22px', borderRadius:'999px', background:'#4CAF50', color:'#fff', fontWeight:900, border:'none', cursor:'pointer', boxShadow:'0 4px 12px rgba(76,175,80,0.4)', fontSize:'14px'}}>▶ ابدأ بـ {arenaStyle==='classic' ? 'أ' : 'ب'}</button>
+          <button onClick={()=>{
+            // طور الأصدقاء 2 و 4 لاعبين: لا تبدأ حتى يضغط الكل ابدأ
+            if (isOfflineMode) {
+              setLocalReady(true);
+              localReadyRef.current = true;
+              stateRef.current.countdown = 3;
+              stateRef.current.countdownStart = performance.now();
+              setCountdown(3);
+            } else {
+              // أونلاين - أرسل جاهزيتي وانتظر البقية
+              const myId = socket.id || 'local';
+              if (!readyPlayers.includes(myId)) {
+                setReadyPlayers(prev => [...prev, myId]);
+              }
+              socket.emit('player-ready', { playerId: myId, roomCode, side: getMySide() });
+              // إذا أنا وحدي (2 لاعبين وأنا Host وحدي جاهز) لا أبدأ فوراً - أنتظر
+              if (players.length <= 1) {
+                setLocalReady(true);
+                localReadyRef.current = true;
+                stateRef.current.countdown = 3;
+                stateRef.current.countdownStart = performance.now();
+                setCountdown(3);
+              }
+            }
+          }} style={{padding:'10px 22px', borderRadius:'999px', background: isOfflineMode ? '#4CAF50' : '#00e5ff', color: isOfflineMode ? '#fff' : '#000', fontWeight:900, border:'none', cursor:'pointer', boxShadow: isOfflineMode ? '0 4px 12px rgba(76,175,80,0.4)' : '0 4px 12px rgba(0,229,255,0.4)', fontSize:'14px'}}>
+            {isOfflineMode ? `▶ ابدأ بـ ${arenaStyle==='classic' ? 'أ' : 'ب'}` : `▶ جاهز (${readyPlayers.length}/${players.length})`}
+          </button>
           <div style={{width:'1px', height:'22px', background:'rgba(255,255,255,0.15)'}}/>
-          <span style={{color:'rgba(255,255,255,0.6)', fontSize:'11px', whiteSpace:'nowrap'}}>اختر الشكل من اليمين ←</span>
+          <span style={{color:'rgba(255,255,255,0.6)', fontSize:'11px', whiteSpace:'nowrap'}}>
+            {isOfflineMode ? 'اختر الشكل من اليمين ←' : 'انتظر بقية الأصدقاء يضغطون ابدأ'}
+          </span>
           <button onClick={()=>setShowCamMenu(v=>!v)} style={{padding:'8px 14px', borderRadius:'999px', background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.12)', color: showCamMenu ? '#000' : '#fff', border:'none', cursor:'pointer', fontSize:'11px', fontWeight:800}}>{showCamMenu ? 'إخفاء' : '📷 كاميرا'}</button>
+        </div>
+      )}
+
+      {/* في طور الأصدقاء - شاشة انتظار حتى يصبح الكل جاهز */}
+      {!localReady && !isOfflineMode && readyPlayers.length > 0 && readyPlayers.length < players.length && (
+        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:9996, background:'rgba(0,0,0,0.85)', backdropFilter:'blur(12px)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:'20px', padding:'24px 32px', display:'flex', flexDirection:'column', alignItems:'center', gap:'12px' }}>
+          <div style={{width:'48px', height:'48px', borderRadius:'50%', border:'3px solid rgba(255,255,255,0.2)', borderTopColor:'#00e5ff', animation:'spin 1s linear infinite'}}/>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <span style={{color:'#fff', fontWeight:900, fontSize:'16px'}}>بانتظار الأصدقاء...</span>
+          <span style={{color:'rgba(255,255,255,0.6)', fontSize:'13px'}}>{readyPlayers.length} / {players.length} جاهزين</span>
+          <div style={{display:'flex', gap:'8px', marginTop:'8px'}}>
+            {players.map(p => {
+              const isReady = readyPlayers.includes(p.socketId || p.id) || readyPlayers.includes(p.id);
+              return <div key={p.id} style={{width:'36px', height:'36px', borderRadius:'50%', background: isReady ? '#4CAF50' : '#333', border: `2px solid ${p.color}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:'12px'}}>{isReady ? '✓' : '...'}</div>
+            })}
+          </div>
         </div>
       )}
 
