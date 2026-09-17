@@ -469,7 +469,11 @@ export function GameScreen3D({
     const mouse = new THREE.Vector2();
     const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
     const handlePointerMove = (e: PointerEvent) => {
-      if (!e.isPrimary ||!threeRef.current) return;
+      if (!e.isPrimary || !threeRef.current) return;
+      
+      // منع تحريك الكاميرا عند التفاعل مع الأزرار
+      if (e.target instanceof HTMLElement && e.target.closest('button')) return;
+      
       hasDraggedRef.current = true;
       if(hintDotRef.current) hintDotRef.current.style.display='none';
       if(hintTextRef.current) hintTextRef.current.style.display='none';
@@ -1002,28 +1006,28 @@ useEffect(() => {
                 </button>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, justifyItems: 'center' }}>
-              <div /><button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={18} /></button><div />
-              <button onClick={() => rotateCam('left')} style={btnStyle}><ArrowLeft size={18} /></button>
-              <button onClick={resetCamera} style={{...btnStyle, background: '#ff4081', color: '#fff' }}><Maximize2 size={16} /></button>
-              <button onClick={() => rotateCam('right')} style={btnStyle}><ArrowRight size={18} /></button>
-              <div /><button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={18} /></button><div />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, justifyItems: 'center' }}>
+              <div /><button onClick={() => rotateCam('up')} style={{...btnStyle, padding: '4px 8px'}}><ArrowUp size={14} /></button><div />
+              <button onClick={() => rotateCam('left')} style={{...btnStyle, padding: '4px 8px'}}><ArrowLeft size={14} /></button>
+              <button onClick={resetCamera} style={{...btnStyle, padding: '4px 8px', background: '#ff4081', color: '#fff' }}><Maximize2 size={14} /></button>
+              <button onClick={() => rotateCam('right')} style={{...btnStyle, padding: '4px 8px'}}><ArrowRight size={14} /></button>
+              <div /><button onClick={() => rotateCam('down')} style={{...btnStyle, padding: '4px 8px'}}><ArrowDown size={14} /></button><div />
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle }}><ZoomIn size={18} /> {isAr? 'قرب' : 'In'}</button>
-              <button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle }}><ZoomOut size={18} /> {isAr? 'بعد' : 'Out'}</button>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => zoomCam(1)} style={{ flex: 1,...btnStyle, padding: '6px' }}><ZoomIn size={14} /> {isAr? 'قرب' : 'In'}</button>
+              <button onClick={() => zoomCam(-1)} style={{ flex: 1,...btnStyle, padding: '6px' }}><ZoomOut size={14} /> {isAr? 'بعد' : 'Out'}</button>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle }}><RotateCcw size={16} /> {isAr? 'يسار' : 'Left'}</button>
-              <button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle }}><RotateCw size={16} /> {isAr? 'يمين' : 'Right'}</button>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => rotateCam('left')} style={{ flex: 1,...btnStyle, padding: '6px' }}><RotateCcw size={14} /> {isAr? 'يسار' : 'Left'}</button>
+              <button onClick={() => rotateCam('right')} style={{ flex: 1,...btnStyle, padding: '6px' }}><RotateCw size={14} /> {isAr? 'يمين' : 'Right'}</button>
             </div>
             {/* --- ADDED: أزرار حفظ وإعادة تعيين الكاميرا --- */}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={saveCameraSettings} style={{ flex: 1, ...btnStyle, background: '#00e5ff', color: '#000' }}>
-                <Save size={16} /> {isAr? 'حفظ' : 'Save'}
+              <button onClick={saveCameraSettings} style={{ flex: 1, ...btnStyle, background: '#00e5ff', color: '#000', padding: '6px' }}>
+                <Save size={14} /> {isAr? 'حفظ' : 'Save'}
               </button>
-              <button onClick={resetCameraToDefault} style={{ flex: 1, ...btnStyle, background: '#ff6b8b', color: '#fff' }}>
-                <RotateCcw size={16} /> {isAr? 'إعادة تعيين' : 'Reset'}
+              <button onClick={resetCameraToDefault} style={{ flex: 1, ...btnStyle, background: '#ff6b8b', color: '#fff', padding: '6px' }}>
+                <RotateCcw size={14} /> {isAr? 'إعادة تعيين' : 'Reset'}
               </button>
             </div>
             <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 10, background: '#111', border: '1px solid #333', color: '#888', cursor: 'pointer' }}>
@@ -1035,4 +1039,4 @@ useEffect(() => {
     </main>
   );
 }
-const btnStyle: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#fff', borderRadius: 10, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700, cursor: 'pointer' };
+const btnStyle: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#fff', borderRadius: 8, padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontWeight: 700, cursor: 'pointer', fontSize: '10px' };
