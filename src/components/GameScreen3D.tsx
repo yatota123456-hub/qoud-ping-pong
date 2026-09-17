@@ -476,53 +476,78 @@ export function GameScreen3D({
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
   const isOfflineMode =!socket.connected || players.length <= 1;
 
-  const createHatPaddle = useCallback((color: string) => {
+  const createHatPaddle = useCallback((color: string, style: 'classic' | 'modern' = arenaStyle) => {
     const group = new THREE.Group();
     const isBlue = color.toLowerCase().includes('61e7c2') || color.toLowerCase().includes('00e5ff') || color.toLowerCase().includes('blue') || color === '#61e7c2';
     const baseColor = isBlue ? '#0a84ff' : (color === '#ffcf5a' ? '#0a84ff' : color);
-    const baseMat = new THREE.MeshStandardMaterial({
-      color: baseColor,
-      roughness: 0.12,
-      metalness: 0.1,
-      emissive: new THREE.Color(baseColor),
-      emissiveIntensity: 0.15
-    });
-    const baseGeo = new THREE.CylinderGeometry(32, 34, 14, 48);
-    const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.y = 7;
-    group.add(base);
-    const ringMat = new THREE.MeshStandardMaterial({
-      color: '#ffffff',
-      roughness: 0.08,
-      metalness: 0.2,
-      transparent: true,
-      opacity: 0.3
-    });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(30, 1.5, 16, 48), ringMat);
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 10;
-    group.add(ring);
-    const handleMat = new THREE.MeshStandardMaterial({
-      color: baseColor,
-      roughness: 0.15,
-      metalness: 0.05,
-      emissive: new THREE.Color(baseColor),
-      emissiveIntensity: 0.2
-    });
-    const handle = new THREE.Mesh(new THREE.SphereGeometry(16, 32, 24), handleMat);
-    handle.position.y = 22;
-    handle.scale.y = 0.8;
-    group.add(handle);
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: baseColor,
-      transparent: true,
-      opacity: 0.25
-    });
-    const glow = new THREE.Mesh(new THREE.CylinderGeometry(36, 36, 2, 32), glowMat);
-    glow.position.y = 2;
-    group.add(glow);
+    
+    if (style === 'classic') {
+      // شكل أ - القديم: مضرب كلاسيكي مسطح مع نيون
+      const baseMat = new THREE.MeshStandardMaterial({ color: '#080808', roughness: 0.2, metalness: 0.85 });
+      const baseGeo = new THREE.CylinderGeometry(34, 34, 10, 48);
+      const base = new THREE.Mesh(baseGeo, baseMat);
+      base.position.y = 5;
+      group.add(base);
+      const topMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.15, metalness: 0.2, emissive: baseColor, emissiveIntensity: 0.3 });
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(28, 28, 6, 48), topMat);
+      top.position.y = 11;
+      group.add(top);
+      const neonTex = createNeonGradientTexture();
+      const ringMat = new THREE.MeshStandardMaterial({ map: neonTex || undefined, emissive: 0xffffff, emissiveMap: neonTex || undefined, emissiveIntensity: 1.2, roughness: 0.2 });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(32, 2.5, 16, 64), ringMat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 8;
+      group.add(ring);
+    } else {
+      // شكل ب - الجديد: مضرب زجاجي حديث أحمر/أزرق مع توهج
+      const baseMat = new THREE.MeshStandardMaterial({
+        color: baseColor,
+        roughness: 0.12,
+        metalness: 0.1,
+        emissive: new THREE.Color(baseColor),
+        emissiveIntensity: 0.15
+      });
+      const baseGeo = new THREE.CylinderGeometry(32, 34, 14, 48);
+      const base = new THREE.Mesh(baseGeo, baseMat);
+      base.position.y = 7;
+      group.add(base);
+      const ringMat = new THREE.MeshStandardMaterial({
+        color: '#ffffff',
+        roughness: 0.08,
+        metalness: 0.2,
+        transparent: true,
+        opacity: 0.3
+      });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(30, 1.5, 16, 48), ringMat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 10;
+      group.add(ring);
+      const handleMat = new THREE.MeshStandardMaterial({
+        color: baseColor,
+        roughness: 0.15,
+        metalness: 0.05,
+        emissive: new THREE.Color(baseColor),
+        emissiveIntensity: 0.2
+      });
+      const handle = new THREE.Mesh(new THREE.SphereGeometry(16, 32, 24), handleMat);
+      handle.position.y = 22;
+      handle.scale.y = 0.8;
+      group.add(handle);
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: baseColor,
+        transparent: true,
+        opacity: 0.25
+      });
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(36, 36, 2, 32), glowMat);
+      glow.position.y = 2;
+      group.add(glow);
+      // إضاءة إضافية للشكل الجديد
+      const pointLight = new THREE.PointLight(baseColor, 0.4, 80);
+      pointLight.position.set(0, 15, 0);
+      group.add(pointLight);
+    }
     return group;
-  }, []);
+  }, [arenaStyle]);
 
   const resetCamera = useCallback(() => {
     const sideKey = getMySide() === 'top'? 'topPlayer' : getMySide() === 'left'? 'sideLeft' : getMySide() === 'right'? 'sideRight' : 'bottom';
@@ -778,8 +803,17 @@ export function GameScreen3D({
     const sidesForCount: Player['side'][] = needPlayers === 2? ['bottom','top'] : ['bottom','top','right','left'];
     const activeSide = (side: Player['side']) => sidesForCount.includes(side);
 
+    // إعدادات الفيزياء المحسنة
+    const PADDLE_RADIUS = 36;
+    const BALL_RADIUS = 14;
+    const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
+    const MIN_SPEED = 4.5;
+    const MAX_SPEED = 12;
+    const WALL_BOUNCE_DAMP = 0.95;
+
     const tick = (now: number) => {
-      const delta = Math.min((now - state.last) / 16.67, 2);
+      const rawDelta = (now - state.last) / 16.67;
+      const delta = Math.min(rawDelta, 2.5); // منع القفزات الكبيرة
       state.last = now;
 
       if (threeRef.current) {
@@ -802,41 +836,203 @@ export function GameScreen3D({
         camera.lookAt(c.lookX, 0, c.lookZ);
 
         if (localReadyRef.current && !pausedRef.current && !gameEndedRef.current) {
-          const lerpFactor = 0.25;
-          state.ball.x += state.ball.vx * delta;
-          state.ball.y += state.ball.vy * delta;
-          state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
-          state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
-          state.ball.vx = state.ballTarget.vx;
-          state.ball.vy = state.ballTarget.vy;
+          // حساب سرعة المضارب - مهم لمنع الاختراق
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
-            const paddle = state.paddles[side];
-            const target = state.targetPaddles[side];
-            const PADDLE_LERP = 0.3;
-            if (side !== getMySide()) {
-              paddle.x += (target.x - paddle.x) * PADDLE_LERP;
-              paddle.z += (target.z - paddle.z) * PADDLE_LERP;
+            const prev = state.lastPaddles[side];
+            const curr = state.paddles[side];
+            state.paddleVel[side].vx = (curr.x - prev.x) / (delta || 1);
+            state.paddleVel[side].vy = (curr.z - prev.z) / (delta || 1);
+            prev.x = curr.x;
+            prev.z = curr.z;
+          });
+
+          // تحديث موقع الكرة - فيزياء محلية مستقرة
+          if (state.countdown === 0) {
+            // إذا أوفلاين أو Host، نحن نتحكم بالفيزياء
+            if (isOfflineMode || isHost) {
+              state.ball.x += state.ball.vx * delta;
+              state.ball.y += state.ball.vy * delta;
+            } else {
+              // أونلاين كـ client: تنبؤ + تصحيح بسيط بدون overwrite للسرعة
+              state.ball.x += state.ball.vx * delta;
+              state.ball.y += state.ball.vy * delta;
+              const corrFactor = 0.08; // تصحيح بسيط جداً لتقليل الـ lag
+              state.ball.x += (state.ballTarget.x - state.ball.x) * corrFactor;
+              state.ball.y += (state.ballTarget.y - state.ball.y) * corrFactor;
+              // لا نستبدل السرعة كاملة - ندمج فقط
+              if (Math.hypot(state.ballTarget.vx - state.ball.vx, state.ballTarget.vy - state.ball.vy) > 2) {
+                state.ball.vx += (state.ballTarget.vx - state.ball.vx) * 0.15;
+                state.ball.vy += (state.ballTarget.vy - state.ball.vy) * 0.15;
+              }
             }
-            const dx = state.ball.x - paddle.x;
-            const dy = state.ball.y - paddle.z;
-            const dist = Math.hypot(dx, dy);
-            const HIT_DIST = 40;
-            if (dist < HIT_DIST && dist > 0.5) {
-              const overlap = HIT_DIST - dist;
+
+            // منع الكرة من التعلق أفقياً يمين ويسار
+            const speed = Math.hypot(state.ball.vx, state.ball.vy);
+            if (speed < MIN_SPEED) {
+              const angle = Math.atan2(state.ball.vy, state.ball.vx);
+              state.ball.vx = Math.cos(angle) * MIN_SPEED;
+              state.ball.vy = Math.sin(angle) * MIN_SPEED;
+            }
+            if (speed > MAX_SPEED) {
+              const angle = Math.atan2(state.ball.vy, state.ball.vx);
+              state.ball.vx = Math.cos(angle) * MAX_SPEED;
+              state.ball.vy = Math.sin(angle) * MAX_SPEED;
+            }
+            // إذا المسار أفقي تماماً (vy صغير جداً) - غير المسار
+            if (Math.abs(state.ball.vy) < 0.8 && Math.abs(state.ball.vx) > 3) {
+              state.ball.vy += (Math.random() - 0.5) * 3;
+              // تأكد من عدم الالتصاق
+              if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
+            }
+
+            // اصطدام بالجدران (ليس الأهداف)
+            const goalHalfW = 140;
+            const leftBound = BALL_RADIUS;
+            const rightBound = world.w - BALL_RADIUS;
+            const topBound = BALL_RADIUS;
+            const bottomBound = world.h - BALL_RADIUS;
+            
+            // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين
+            if (state.ball.x < leftBound) {
+              if (needPlayers < 3 || Math.abs(state.ball.y - world.h/2) > goalHalfW) {
+                state.ball.x = leftBound;
+                state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                // تغيير مسار عشوائي بسيط لمنع التعلق
+                state.ball.vy += (Math.random() - 0.5) * 1.5;
+              }
+            }
+            if (state.ball.x > rightBound) {
+              if (needPlayers < 3 || Math.abs(state.ball.y - world.h/2) > goalHalfW) {
+                state.ball.x = rightBound;
+                state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                state.ball.vy += (Math.random() - 0.5) * 1.5;
+              }
+            }
+            // جدران فوق وتحت - مع استثناء الأهداف
+            if (state.ball.y < topBound) {
+              if (Math.abs(state.ball.x - world.w/2) > goalHalfW) {
+                state.ball.y = topBound;
+                state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                state.ball.vx += (Math.random() - 0.5) * 1.5;
+              }
+            }
+            if (state.ball.y > bottomBound) {
+              if (Math.abs(state.ball.x - world.w/2) > goalHalfW) {
+                state.ball.y = bottomBound;
+                state.ball.vy = -Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                state.ball.vx += (Math.random() - 0.5) * 1.5;
+              }
+            }
+
+            // اصطدام بالمضارب - إصلاح الاختراق من الخلف + lag
+            (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+              if (!activeSide(side)) return;
+              const paddle = state.paddles[side];
+              const pVel = state.paddleVel[side];
+              
+              const dx = state.ball.x - paddle.x;
+              const dy = state.ball.y - paddle.z;
+              const dist = Math.hypot(dx, dy);
+              
+              if (dist >= HIT_DIST || dist < 0.5) return;
+
+              // منع الاصطدام من الخلف - فقط من الأمام
+              let isFrontHit = false;
+              if (side === 'bottom') {
+                // مضرب الأسفل - الأمام هو فوق (الكرة فوق المضرب)
+                isFrontHit = state.ball.y < paddle.z && state.ball.vy > 0; // الكرة قادمة من فوق متجهة للأسفل
+              } else if (side === 'top') {
+                isFrontHit = state.ball.y > paddle.z && state.ball.vy < 0;
+              } else if (side === 'left') {
+                isFrontHit = state.ball.x > paddle.x && state.ball.vx < 0;
+              } else if (side === 'right') {
+                isFrontHit = state.ball.x < paddle.x && state.ball.vx > 0;
+              }
+              
+              // إذا ليس أمامي، وتجاوز المضرب - ادفع الكرة للخارج بقوة بدون تغيير مسار كبير (منع الاختراق)
+              if (!isFrontHit) {
+                // إذا الكرة خلف المضرب وتحاول الاختراق - ادفعها بسرعة
+                const pushFactor = 1.5;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const overlap = HIT_DIST - dist + 2; // +2 لتأمين عدم الاختراق
+                state.ball.x += nx * overlap * pushFactor;
+                state.ball.y += ny * overlap * pushFactor;
+                // لا تغير السرعة كثيراً إذا من الخلف - فقط ادفع
+                return;
+              }
+
+              // اصطدام أمامي صحيح - فيزياء محسنة
               const nx = dx / dist;
               const ny = dy / dist;
+              
+              // إخراج الكرة من التداخل فوراً - منع الـ lag
+              const overlap = HIT_DIST - dist + 1;
               state.ball.x += nx * overlap;
               state.ball.y += ny * overlap;
-            }
-          });
+
+              // حساب الارتداد مع سرعة المضرب - مثل Air Hockey الحقيقي
+              const paddleSpeedFactor = 0.35;
+              const ballVelDotNormal = state.ball.vx * nx + state.ball.vy * ny;
+              
+              // ارتداد مع إضافة سرعة المضرب
+              let newVx = state.ball.vx - 2 * ballVelDotNormal * nx + pVel.vx * paddleSpeedFactor;
+              let newVy = state.ball.vy - 2 * ballVelDotNormal * ny + pVel.vy * paddleSpeedFactor;
+
+              // تأثير مكان الضرب على المضرب - يغير المسار
+              const hitOffset = side === 'bottom' || side === 'top' 
+                ? (state.ball.x - paddle.x) / PADDLE_RADIUS // -1 إلى 1
+                : (state.ball.y - paddle.z) / PADDLE_RADIUS;
+              
+              if (side === 'bottom' || side === 'top') {
+                newVx += hitOffset * 3.5; // ضرب الحافة يغير المسار أفقياً
+              } else {
+                newVy += hitOffset * 3.5;
+              }
+
+              // زيادة السرعة قليلاً مع كل ضربة - Rally
+              const speedBoost = 1.05 + state.rally * 0.02;
+              let newSpeed = Math.hypot(newVx, newVy) * speedBoost;
+              newSpeed = Math.min(newSpeed, MAX_SPEED);
+              newSpeed = Math.max(newSpeed, MIN_SPEED);
+              
+              const angle = Math.atan2(newVy, newVx);
+              // منع الزاوية الأفقية تماماً
+              let finalAngle = angle;
+              const deg = angle * 180 / Math.PI;
+              if (Math.abs(Math.sin(finalAngle)) < 0.25) { // أقل من 14 درجة
+                finalAngle += (Math.random() > 0.5 ? 1 : -1) * 0.35; // أضف 20 درجة
+              }
+              
+              state.ball.vx = Math.cos(finalAngle) * newSpeed;
+              state.ball.vy = Math.sin(finalAngle) * newSpeed;
+
+              state.rally++;
+              setRally(state.rally);
+              
+              // إرسال للشبكة إذا Host
+              if (isHost && !isOfflineMode) {
+                socket.sendBallState?.(state.ball.x, state.ball.y, state.ball.vx, state.ball.vy);
+              }
+            });
+          }
+
+          // تحديث مواقع المضارب - مع منع الـ lag
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
             const target = state.targetPaddles[side];
             const current = state.paddles[side];
-            const lf = side === getMySide() ? 1 : lerpFactor;
-            current.x += (target.x - current.x) * lf;
-            current.z += (target.z - current.z) * lf;
+            if (side === getMySide()) {
+              // مضربي أنا - فوري بدون lerp لتقليل الـ lag
+              current.x = target.x;
+              current.z = target.z;
+            } else {
+              // مضارب الخصم - lerp سريع لتقليل الـ lag
+              const PADDLE_LERP = isOfflineMode ? 1 : 0.45; // كان 0.3 - الآن أسرع
+              current.x += (target.x - current.x) * PADDLE_LERP;
+              current.z += (target.z - current.z) * PADDLE_LERP;
+            }
           });
         }
 
@@ -1076,8 +1272,8 @@ export function GameScreen3D({
           <ArrowLeft size={14} /> EXIT
         </button>
 
-        {/* شكل الساحة - على اليمين فوق الأيقونات صغير مع رسم الساحة عليه - شكل أ / ب */}
-        {!hideUI && (
+        {/* شكل الساحة - على اليمين فوق الأيقونات صغير مع رسم الساحة عليه - شكل أ / ب - يختفي عند بدء اللعب */}
+        {!hideUI && !localReady && (
           <div style={{
             position: 'absolute', right: 12, top: 12, zIndex: 10004,
             background: 'rgba(10,10,12,0.92)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
