@@ -61,7 +61,7 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
   ctx.stroke();
   
-  // خط داخلي أبيض خفيف للتأكيد مثل الصورة (قوس داخلي أرفع)
+  // خط داخلي خفيف للتأكيد مثل الصورة (قوس داخلي أرفع)
   ctx.strokeStyle = 'rgba(255, 45, 45, 0.5)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -70,8 +70,36 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   ctx.beginPath();
   ctx.arc(canvas.width/2, canvas.height, goalRadius-12, Math.PI, Math.PI*2, false);
   ctx.stroke();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = 'transparent';
+  
+  // إضافة تعبئة واضحة داخل الأهداف لإبرازها
+  ctx.fillStyle = 'rgba(255, 30, 30, 0.14)'; // أوضح من قبل
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
+  ctx.lineTo(canvas.width/2 + goalRadius, 0);
+  ctx.lineTo(canvas.width/2 - goalRadius, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
+  ctx.lineTo(canvas.width/2 - goalRadius, canvas.height);
+  ctx.lineTo(canvas.width/2 + goalRadius, canvas.height);
+  ctx.closePath();
+  ctx.fill();
 
-  // أهداف جانبية للـ 4 لاعبين فقط - مربعة فقط إذا مربعة - نفس الشكل فتح يمين ويسار
+  // خط داخلي إضافي للتأكيد - يجعل الهدف ظاهر أكثر
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, 0, goalRadius-10, 0, Math.PI, false);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, canvas.height, goalRadius-10, Math.PI, Math.PI*2, false);
+  ctx.stroke();
+
+  // أهداف جانبية للـ 4 لاعبين فقط - مربعة فقط إذا مربعة
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150; // مربعة = 4 لاعبين
   if (isSquareArena) {
     const sideGoalRadius = 360; // نفس حجم الأهداف العلوية
@@ -174,12 +202,44 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
     metalness: 0.85,
     envMapIntensity: 1.2
   });
-  const bezelPieces = [
-    { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: -bezelThickness / 2 },
-    { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: worldH + bezelThickness / 2 },
-    { w: bezelThickness, d: worldH, x: -bezelThickness / 2, z: worldH / 2 },
-    { w: bezelThickness, d: worldH, x: worldW + bezelThickness / 2, z: worldH / 2 },
-  ];
+  // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
+  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
+  const goalGapW = worldW * 0.36; // عرض فتحة الهدف 36% مثل الصورة - نفس الأسود في الصورة
+  const goalGapH = worldH * 0.36;
+  
+  const bezelPieces: any[] = [];
+
+  // إطار علوي مقسوم لفتحة في المنتصف - فتح مثل الصورة (الأسود في الصورة هو الفتحة)
+  const topSideWidth = (worldW - goalGapW) / 2 + bezelThickness;
+  const topLeftX = -bezelThickness + topSideWidth/2;
+  const topRightX = worldW + bezelThickness - topSideWidth/2;
+  bezelPieces.push(
+    { w: topSideWidth, d: bezelThickness, x: topLeftX, z: -bezelThickness / 2 },
+    { w: topSideWidth, d: bezelThickness, x: topRightX, z: -bezelThickness / 2 }
+  );
+
+  // إطار سفلي مقسوم لفتحة في المنتصف
+  bezelPieces.push(
+    { w: topSideWidth, d: bezelThickness, x: topLeftX, z: worldH + bezelThickness / 2 },
+    { w: topSideWidth, d: bezelThickness, x: topRightX, z: worldH + bezelThickness / 2 }
+  );
+
+  if (isSquareArena) {
+    const sideWidth = (worldH - goalGapH) / 2 + bezelThickness;
+    const leftTopZ = -bezelThickness + sideWidth/2;
+    const leftBottomZ = worldH + bezelThickness - sideWidth/2;
+    bezelPieces.push(
+      { w: bezelThickness, d: sideWidth, x: -bezelThickness / 2, z: leftTopZ },
+      { w: bezelThickness, d: sideWidth, x: -bezelThickness / 2, z: leftBottomZ },
+      { w: bezelThickness, d: sideWidth, x: worldW + bezelThickness / 2, z: leftTopZ },
+      { w: bezelThickness, d: sideWidth, x: worldW + bezelThickness / 2, z: leftBottomZ }
+    );
+  } else {
+    bezelPieces.push(
+      { w: bezelThickness, d: worldH, x: -bezelThickness / 2, z: worldH / 2 },
+      { w: bezelThickness, d: worldH, x: worldW + bezelThickness / 2, z: worldH / 2 }
+    );
+  }
   bezelPieces.forEach((p) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, bezelHeight, p.d), bezelMat);
     mesh.position.set(p.x, bezelY, p.z);
@@ -277,12 +337,44 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     mesh.position.set(x, bezelY, z);
     return mesh;
   };
-  const bezelPieces = [
-    { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: -bezelThickness / 2 },
-    { w: worldW + bezelThickness * 2, d: bezelThickness, x: worldW / 2, z: worldH + bezelThickness / 2 },
-    { w: bezelThickness, d: worldH, x: -bezelThickness / 2, z: worldH / 2 },
-    { w: bezelThickness, d: worldH, x: worldW + bezelThickness / 2, z: worldH / 2 },
-  ];
+  // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
+  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
+  const goalGapW = worldW * 0.36; // عرض فتحة الهدف 36% مثل الصورة - نفس الأسود في الصورة
+  const goalGapH = worldH * 0.36;
+  
+  const bezelPieces: any[] = [];
+
+  // إطار علوي مقسوم لفتحة في المنتصف - فتح مثل الصورة (الأسود في الصورة هو الفتحة)
+  const topSideWidth = (worldW - goalGapW) / 2 + bezelThickness;
+  const topLeftX = -bezelThickness + topSideWidth/2;
+  const topRightX = worldW + bezelThickness - topSideWidth/2;
+  bezelPieces.push(
+    { w: topSideWidth, d: bezelThickness, x: topLeftX, z: -bezelThickness / 2 },
+    { w: topSideWidth, d: bezelThickness, x: topRightX, z: -bezelThickness / 2 }
+  );
+
+  // إطار سفلي مقسوم لفتحة في المنتصف
+  bezelPieces.push(
+    { w: topSideWidth, d: bezelThickness, x: topLeftX, z: worldH + bezelThickness / 2 },
+    { w: topSideWidth, d: bezelThickness, x: topRightX, z: worldH + bezelThickness / 2 }
+  );
+
+  if (isSquareArena) {
+    const sideWidth = (worldH - goalGapH) / 2 + bezelThickness;
+    const leftTopZ = -bezelThickness + sideWidth/2;
+    const leftBottomZ = worldH + bezelThickness - sideWidth/2;
+    bezelPieces.push(
+      { w: bezelThickness, d: sideWidth, x: -bezelThickness / 2, z: leftTopZ },
+      { w: bezelThickness, d: sideWidth, x: -bezelThickness / 2, z: leftBottomZ },
+      { w: bezelThickness, d: sideWidth, x: worldW + bezelThickness / 2, z: leftTopZ },
+      { w: bezelThickness, d: sideWidth, x: worldW + bezelThickness / 2, z: leftBottomZ }
+    );
+  } else {
+    bezelPieces.push(
+      { w: bezelThickness, d: worldH, x: -bezelThickness / 2, z: worldH / 2 },
+      { w: bezelThickness, d: worldH, x: worldW + bezelThickness / 2, z: worldH / 2 }
+    );
+  }
   bezelPieces.forEach((p) => {
     const mesh = createBeveledSide(p.w, bezelHeight, p.d, p.x, p.z);
     group.add(mesh);
@@ -945,6 +1037,52 @@ export function GameScreen3D({
         camera.lookAt(c.lookX, 0, c.lookZ);
 
         if (localReadyRef.current && !pausedRef.current && !gameEndedRef.current) {
+          // === العداد قبل اللعب وبعد كل هدف - إصلاح مطلوب ===
+          if (state.countdown > 0) {
+            const elapsed = (now - state.countdownStart) / 1000;
+            if (elapsed >= 1) {
+              state.countdown -= 1;
+              state.countdownStart = now;
+              setCountdown(state.countdown);
+              if (state.countdown === 0) {
+                // انتهى العد - أطلق الكرة
+                const angle = (Math.random() - 0.5) * 0.8; // زاوية عشوائية قريبة من العمودي
+                const initSpeed = getInitialSpeed();
+                // اتجاه الكرة بعيداً عن الهدف الأخير
+                if (state.countdownSide === 'top') {
+                  // آخر هدف كان علوي - الكرة تتجه للأسفل
+                  state.ball.vx = Math.sin(angle) * initSpeed;
+                  state.ball.vy = Math.abs(Math.cos(angle) * initSpeed) + 2;
+                } else if (state.countdownSide === 'bottom') {
+                  state.ball.vx = Math.sin(angle) * initSpeed;
+                  state.ball.vy = -Math.abs(Math.cos(angle) * initSpeed) - 2;
+                } else if (state.countdownSide === 'left') {
+                  state.ball.vx = Math.abs(initSpeed) + 2;
+                  state.ball.vy = Math.sin(angle) * initSpeed;
+                } else if (state.countdownSide === 'right') {
+                  state.ball.vx = -Math.abs(initSpeed) - 2;
+                  state.ball.vy = Math.sin(angle) * initSpeed;
+                } else {
+                  // بداية المباراة - اتجاه عشوائي
+                  const randAngle = Math.random() * Math.PI * 2;
+                  state.ball.vx = Math.cos(randAngle) * initSpeed;
+                  state.ball.vy = Math.sin(randAngle) * initSpeed;
+                }
+                state.ballTarget.vx = state.ball.vx;
+                state.ballTarget.vy = state.ball.vy;
+                if (isHost && !isOfflineMode) {
+                  socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy }, countdown: 0 });
+                }
+              }
+            }
+            // أثناء العد - الكرة ثابتة في الوسط
+            state.ball.x = world.w / 2;
+            state.ball.y = world.h / 2;
+            state.ballTarget.x = state.ball.x;
+            state.ballTarget.y = state.ball.y;
+            // لا نحرك المضارب أثناء العد؟ نسمح بالتحكم
+          }
+
           // حساب سرعة المضارب - مهم لمنع الاختراق
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
@@ -956,7 +1094,7 @@ export function GameScreen3D({
             prev.z = curr.z;
           });
 
-          // تحديث موقع الكرة - فيزياء محلية مستقرة
+          // تحديث موقع الكرة - فيزياء محلية مستقرة - فقط إذا انتهى العد
           if (state.countdown === 0) {
             // إذا أوفلاين أو Host، نحن نتحكم بالفيزياء
             if (isOfflineMode || isHost) {
@@ -995,9 +1133,9 @@ export function GameScreen3D({
               if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
             }
 
-            // اصطدام بالجدران (ليس الأهداف) - الأهداف نفس شكل الصورة: فتح أعلى وأسفل
-            const goalHalfW = Math.max(160, world.w * 0.18); // يطابق نصف قطر 360 في الصورة - كان 260 و 0.32
-            const sideGoalHalfW = Math.max(160, world.h * 0.18); // نفس الحجم للجوانب في 4 لاعبين
+            // اصطدام بالجدران (ليس الأهداف) - الأهداف كبيرة وظاهرة مثل الأسهم
+            const goalHalfW = Math.max(160, world.w * 0.18); // يطابق نصف قطر 360 في الصورة - فتح حقيقي // تكبير أكثر ليطابق الشكل الظاهر - كان 210
+            const sideGoalHalfW = Math.max(160, world.h * 0.18);
             const leftBound = BALL_RADIUS;
             const rightBound = world.w - BALL_RADIUS;
             const topBound = BALL_RADIUS;
@@ -1066,20 +1204,47 @@ export function GameScreen3D({
             })();
 
             if (goalScoredSide) {
-              // وجد هدف - سجل
+              // وجد هدف - سجل - إصلاح: العداد بعد كل هدف + منع التسجيل الخاطئ
               const missedPlayer = players.find(p => p.side === goalScoredSide) || { side: goalScoredSide, id: goalScoredSide, name: goalScoredSide } as any;
-              // إعادة تعيين الكرة
+              
+              // === إصلاح التسجيل الخاطئ: تأكد أن الكرة خرجت فعلاً من الفتحة ===
+              // نتحقق مرة ثانية أن الكرة ضمن فتحة الهدف الحقيقية (0.18 عرض) وليس مجرد قرب الحافة
+              const isValidGoal = (() => {
+                if (goalScoredSide === 'top' || goalScoredSide === 'bottom') {
+                  return Math.abs(state.ball.x - world.w/2) <= goalHalfW;
+                } else {
+                  return Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW;
+                }
+              })();
+              
+              if (!isValidGoal) {
+                // تسجيل خاطئ - أرجع الكرة للداخل ولا تسجل
+                if (goalScoredSide === 'top') state.ball.y = BALL_RADIUS + 5;
+                if (goalScoredSide === 'bottom') state.ball.y = world.h - BALL_RADIUS - 5;
+                if (goalScoredSide === 'left') state.ball.x = BALL_RADIUS + 5;
+                if (goalScoredSide === 'right') state.ball.x = world.w - BALL_RADIUS - 5;
+                state.ball.vx *= -0.8;
+                state.ball.vy *= -0.8;
+                return;
+              }
+
+              // تسجيل صحيح - أعد الكرة للوسط وابدأ العد 3-2-1
               state.ball.x = world.w / 2;
               state.ball.y = world.h / 2;
-              // إعطاء سرعة عشوائية للكرة الجديدة
-              const angle = Math.random() * Math.PI * 2;
-              const initSpeed = getInitialSpeed();
-              state.ball.vx = Math.cos(angle) * initSpeed;
-              state.ball.vy = Math.sin(angle) * initSpeed;
-              // منع المسار الأفقي
-              if (Math.abs(state.ball.vy) < 1.5) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * 2.5;
+              state.ballTarget.x = state.ball.x;
+              state.ballTarget.y = state.ball.y;
+              state.ball.vx = 0;
+              state.ball.vy = 0;
+              state.ballTarget.vx = 0;
+              state.ballTarget.vy = 0;
+              state.countdown = 3;
+              state.countdownStart = now;
+              state.countdownSide = goalScoredSide; // لحساب اتجاه الكرة بعد العد
+              setCountdown(3);
+              setCountdownSide(goalScoredSide);
               state.rally = 0;
               setRally(0);
+              
               // استدعاء onGoal - اللاعب الذي فشل (دخلت الكرة في مرماه)
               if (onGoal) {
                 // @ts-ignore
@@ -1088,6 +1253,7 @@ export function GameScreen3D({
               // إرسال للشبكة إذا Host
               if (isHost && !isOfflineMode) {
                 socket.emit('goal-scored', { side: goalScoredSide });
+                socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: 0, vy: 0 }, countdown: 3, countdownSide: goalScoredSide });
               }
               // لا نكمل باقي الفيزياء هذا الإطار
               return;
