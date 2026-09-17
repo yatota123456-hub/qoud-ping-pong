@@ -45,56 +45,39 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // الأهداف - ظاهرة جداً مثل الصورة المرفقة - أقواس حمراء كبيرة وواضحة في الأعلى والأسفل
-  ctx.strokeStyle = '#ff0000'; // أحمر صريح ظاهر جداً
-  ctx.lineWidth = 14; // سميك ليظهر
-  ctx.shadowColor = 'rgba(255,0,0,0.6)';
-  ctx.shadowBlur = 18;
-  const goalRadius = 460; // تكبير أكثر ليكون ظاهر مثل السهم
-  // هدف علوي - قوس كبير أحمر ظاهر في الحافة العلوية تماماً
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
-  ctx.stroke();
-  // هدف سفلي - ظاهر في الحافة السفلية
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
-  ctx.stroke();
+  // الأهداف - نفس شكل الصورة تماماً: فتح في الأعلى والأسفل - قوس أحمر صغير في الحافة
+  // في الصورة: هدف علوي فتحه للأسفل، وهدف سفلي فتحه للأعلى - مثل حرف U مقلوب
+  ctx.strokeStyle = '#ff2d2d'; // أحمر مثل الإطار في الصورة
+  ctx.lineWidth = 8; // رفيع مثل الصورة - ليس سميك جداً
   ctx.shadowBlur = 0;
   ctx.shadowColor = 'transparent';
-  
-  // إضافة تعبئة واضحة داخل الأهداف لإبرازها
-  ctx.fillStyle = 'rgba(255, 30, 30, 0.14)'; // أوضح من قبل
+  const goalRadius = 360; // حجم مثل الصورة - قوس صغير ليس كبير جداً (في الصورة القوس صغير)
+  // هدف علوي - قوس أحمر فتحه للأسفل (مثل الصورة - في الأعلى)
   ctx.beginPath();
   ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
-  ctx.lineTo(canvas.width/2 + goalRadius, 0);
-  ctx.lineTo(canvas.width/2 - goalRadius, 0);
-  ctx.closePath();
-  ctx.fill();
+  ctx.stroke();
+  // هدف سفلي - قوس أحمر فتحه للأعلى (مثل الصورة - في الأسفل)
   ctx.beginPath();
   ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
-  ctx.lineTo(canvas.width/2 - goalRadius, canvas.height);
-  ctx.lineTo(canvas.width/2 + goalRadius, canvas.height);
-  ctx.closePath();
-  ctx.fill();
-
-  // خط داخلي إضافي للتأكيد - يجعل الهدف ظاهر أكثر
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = 3;
+  ctx.stroke();
+  
+  // خط داخلي أبيض خفيف للتأكيد مثل الصورة (قوس داخلي أرفع)
+  ctx.strokeStyle = 'rgba(255, 45, 45, 0.5)';
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(canvas.width/2, 0, goalRadius-10, 0, Math.PI, false);
+  ctx.arc(canvas.width/2, 0, goalRadius-12, 0, Math.PI, false);
   ctx.stroke();
   ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height, goalRadius-10, Math.PI, Math.PI*2, false);
+  ctx.arc(canvas.width/2, canvas.height, goalRadius-12, Math.PI, Math.PI*2, false);
   ctx.stroke();
 
-  // أهداف جانبية للـ 4 لاعبين فقط - مربعة فقط إذا مربعة
+  // أهداف جانبية للـ 4 لاعبين فقط - مربعة فقط إذا مربعة - نفس الشكل فتح يمين ويسار
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150; // مربعة = 4 لاعبين
   if (isSquareArena) {
-    const sideGoalRadius = 400;
-    ctx.strokeStyle = '#ff0000';
-    ctx.lineWidth = 12;
-    ctx.shadowColor = 'rgba(255,0,0,0.5)';
-    ctx.shadowBlur = 14;
+    const sideGoalRadius = 360; // نفس حجم الأهداف العلوية
+    ctx.strokeStyle = '#ff2d2d';
+    ctx.lineWidth = 8;
+    ctx.shadowBlur = 0;
     ctx.beginPath();
     ctx.arc(0, canvas.height/2, sideGoalRadius, -Math.PI/2, Math.PI/2, false);
     ctx.stroke();
@@ -546,10 +529,10 @@ export function GameScreen3D({
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
   const isOfflineMode =!socket.connected || players.length <= 1;
-  // لا انتظار نهائياً في طور ضد الكمبيوتر - فقط في طور مع الأصدقاء
-  // نكشف ضد الكمبيوتر: إذا أحد اللاعبين بوت أو بدون socketId أو اسمه يحتوي كمبيوتر
-  const isVsComputer = players.some((p:any) => p.isBot || p.isComputer || p.type === 'bot' || !p.socketId || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot'))));
-  const isFriendsMode = !!roomCode && socket.connected && players.length > 1 && !isVsComputer; // فقط مع الأصدقاء - ضد الكمبيوتر لا يوجد انتظار نهائياً
+  // لا انتظار نهائياً في طور ضد الكمبيوتر - فقط في طور مع الأصدقاء (2 أو 4 لاعبين أصدقاء)
+  // نعتمد على زر القائمة نفسه: settings.vsComputer + حقل computer في اللاعبين
+  const isVsComputer = settings.vsComputer || players.some((p:any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
+  const isFriendsMode = !isVsComputer && !!roomCode && players.length > 1; // فقط عندما vsComputer = false وهناك غرفة (مع الأصدقاء) - ضد الكمبيوتر لا يوجد انتظار نهائياً
 
   const createHatPaddle = useCallback((color: string, style: 'classic' | 'modern' = arenaStyle) => {
     const group = new THREE.Group();
@@ -1012,9 +995,9 @@ export function GameScreen3D({
               if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
             }
 
-            // اصطدام بالجدران (ليس الأهداف) - الأهداف كبيرة وظاهرة مثل الأسهم
-            const goalHalfW = Math.max(260, world.w * 0.32); // تكبير أكثر ليطابق الشكل الظاهر - كان 210
-            const sideGoalHalfW = Math.max(220, world.h * 0.28);
+            // اصطدام بالجدران (ليس الأهداف) - الأهداف نفس شكل الصورة: فتح أعلى وأسفل
+            const goalHalfW = Math.max(160, world.w * 0.18); // يطابق نصف قطر 360 في الصورة - كان 260 و 0.32
+            const sideGoalHalfW = Math.max(160, world.h * 0.18); // نفس الحجم للجوانب في 4 لاعبين
             const leftBound = BALL_RADIUS;
             const rightBound = world.w - BALL_RADIUS;
             const topBound = BALL_RADIUS;
