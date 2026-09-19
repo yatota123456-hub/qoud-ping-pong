@@ -1,3 +1,4 @@
+
 import { Client } from '@colyseus/sdk';
 
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
@@ -46,7 +47,7 @@ class ColyseusBridge {
   'room-update','game-started','goal-scored','round-finished',
   'next-round','series-started','match-finished','host-left',
   'hit-effect','countdown','game-state','paddle-input',
-  'player-ready','all-players-ready' // <-- مهم
+  'player-ready','all-players-ready','pause-update','game-paused','pause-state'
 ];
     for (const messageType of messageTypes) {
       room.onMessage(messageType, (payload: unknown) => this.dispatch(messageType, payload));
@@ -90,22 +91,14 @@ class ColyseusBridge {
 }
 
 function getColyseusEndpoint() {
-  // الرابط الجديد الصحيح الذي ظهر في الـ Terminal الخاص بك
   const FLY_URL = 'wss://qoud-ping-pong-tqk-6q.fly.dev';
-  
   const envUrl = (import.meta as any).env?.VITE_COLYSEUS_URL;
   if (envUrl) return envUrl;
-  
-  // إذا كنا في بيئة الإنتاج، نستخدم الرابط الصحيح
-  if (window.location.hostname !== 'localhost') {
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
     return FLY_URL;
   }
-  
-  // للبيئة المحلية
-  return `ws://${window.location.hostname}:2567`;
+  return `ws://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:2567`;
 }
-
-
 
 export const colyseus = new Client(getColyseusEndpoint());
 export const socket = new ColyseusBridge();

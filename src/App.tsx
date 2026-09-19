@@ -176,6 +176,10 @@ useEffect(() => {
     setError(isArRef.current? 'منشئ الغرفة غادر' : 'Host left'); 
     setScreen('setup'); 
   };
+  const onPauseUpdate = (data: any) => {
+    const paused = typeof data === 'boolean' ? data : data?.paused;
+    if (typeof paused === 'boolean') setMatchPaused(paused);
+  };
   socket.on('room-update', onRoomUpdate);
   socket.on('game-started', onGameStarted);
   socket.on('match-finished', onMatchFinished);
@@ -183,6 +187,9 @@ useEffect(() => {
   socket.on('round-finished', onRoundFinished);
   socket.on('next-round', onNextRound);
   socket.on('series-started', onSeriesStarted);
+  socket.on('pause-update', onPauseUpdate);
+  socket.on('game-paused', onPauseUpdate);
+  socket.on('pause-state', onPauseUpdate);
   socket.on('error', onError);
   socket.on('connection-lost', onLost);
   socket.on('host-left', onHostLeft);
@@ -194,6 +201,9 @@ useEffect(() => {
     socket.off('round-finished', onRoundFinished);
     socket.off('next-round', onNextRound);
     socket.off('series-started', onSeriesStarted);
+    socket.off('pause-update', onPauseUpdate);
+    socket.off('game-paused', onPauseUpdate);
+    socket.off('pause-state', onPauseUpdate);
     socket.off('error', onError);
     socket.off('connection-lost', onLost);
     socket.off('host-left', onHostLeft);
@@ -219,44 +229,69 @@ useEffect(() => {
   };
   const makePlayers = useCallback(() => {
     const requested = settings.players;
-    const total = requested === 3? 4 : requested;
-    return Array.from({ length: total }, (_, index) => ({
-      id: String(index),
-      name: names[index]?.trim() || `لاعب ${index + 1}`,
-      color: COLORS[index],
-      side: SIDES[index],
-      computer: index === 0? false : (requested === 3 && index === 3? true : (index >= requested? true : computers[index])),
-    }));
-  }, [names, settings.players, computers]);
+    const total = (settings.vsComputer && requested === 3) ? 4 : requested;
+    return Array.from({ length: total }, (_, index) => {
+      let isComputer = false;
+      if (settings.vsComputer) {
+        if (index === 0) isComputer = false;
+        else if (requested === 3 && index === 3) isComputer = true;
+        else if (index >= requested) isComputer = true;
+        else isComputer = computers[index] ?? true;
+      } else {
+        isComputer = false;
+      }
+      return {
+        id: String(index),
+        name: names[index]?.trim() || `لاعب ${index + 1}`,
+        color: COLORS[index],
+        side: SIDES[index],
+        computer: isComputer,
+      };
+    });
+  }, [names, settings.players, computers, settings.vsComputer]);
 
-const enterWaiting = async () => {
+  const enterWaiting = async () => {
     const trimmed = names.slice(0, settings.players).map(n => n.trim());
     if (trimmed.some(n => n.length < 2)) { setError(isAr? 'اكتب اسم كل اللاعبين حرفين على الأقل' : 'Names must be at least 2 chars'); return; }
     if (new Set(trimmed).size!== trimmed.length) { setError(isAr? 'الاسماء لازم مختلفة' : 'Names must be unique'); return; }
     localStorage.setItem('qoud-ping-pong-settings', JSON.stringify(settings));
     const allPlayers = makePlayers();
+    if (settings.vsComputer) {
+      setPlayers(allPlayers);
+      setScores(Object.fromEntries(allPlayers.map(p => [p.id, 0])));
+      setRoom('');
+      setIsHost(true);
+      setWinner(null);
+      setLastGoal(null);
+      setMatchPaused(false);
+      setCelebrating(null);
+      setSeriesWins({});
+      setCurrentRound(1);
+      setRoundWinner(null);
+      setMatchKey(k=>k+1);
+      setError('');
+      setScreen('game');
+      return;
+    }
     setIsConnectingRoom(true);
     try {
       const colyseusRoom = await colyseus.create('qoud', {
         maxPlayers: allPlayers.length,
         settings,
         player: allPlayers[0],
-        computerPlayers: allPlayers.slice(1).filter(p=>p.computer),
+        computerPlayers: [],
         name: allPlayers[0].name
       });
       socket.attach(colyseusRoom);
-      // --- هنا التعديل: 6 أرقام فقط ---
       const tempCode = (colyseusRoom.state as any)?.code || colyseusRoom.roomId.replace(/\D/g,'').slice(0,6).padStart(6,'0');
       setRoom(tempCode);
       setIsHost(true); setError(''); setScreen('waiting');
     } catch (cause) { setError(cause instanceof Error? cause.message : (isAr? 'تعذر انشاء الغرفة' : 'Could not create room')); }
     finally { setIsConnectingRoom(false); }
   };
-
   const joinByCode = async (customName?: string) => {
-    // --- هنا التعديل: 6 أرقام فقط ---
-    const code = joinCode.replace(/\D/g,'').slice(0, 6);
-    if (code.length!== 6) { setError(isAr? 'الكود 6 أرقام' : 'Code 6 digits'); return; }
+    const code = joinCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    if (code.length!== 4) { setError(isAr? 'الكود 4 حروف' : 'Code 4 chars'); return; }
     const finalName = (customName || joinName || localStorage.getItem('qoud_name') || names[0] || 'لاعب').trim().slice(0, 15);
     if (finalName.length < 2) { setError(isAr? 'اكتب اسمك أولاً' : 'Write your name first'); return; }
     localStorage.setItem('qoud_name', finalName);
@@ -379,9 +414,9 @@ const enterWaiting = async () => {
   }
   if (screen === 'game') {
     if (settings.graphics === '3d') {
-      return <GameScreen3D key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} onGoal={goalScored} onTimeUp={() => {const top = [...players].filter(Boolean).sort((a, b) => (scores[b?.id]?? 0) - (scores[a?.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
+      return <GameScreen3D key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} onGoal={goalScored} onTimeUp={() => {const top = [...players].filter(Boolean).sort((a, b) => (scores[b?.id]?? 0) - (scores[a?.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => { setMatchPaused((p:any)=>{ const np=!p; if(socket.connected){ try{ socket.emit('pause-toggle', { paused: np }); socket.emit('pause-state', { paused: np }); socket.emit('game-paused', { paused: np }); }catch{} } return np; }); }} onExit={leaveMatch} />;
     }
-    return <GameScreen key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} roundWinner={roundWinner} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
+    return <GameScreen key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} roundWinner={roundWinner} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => { setMatchPaused((p:any)=>{ const np=!p; if(socket.connected){ try{ socket.emit('pause-toggle', { paused: np }); socket.emit('pause-state', { paused: np }); socket.emit('game-paused', { paused: np }); }catch{} } return np; }); }} onExit={leaveMatch} />;
   }
   if (screen === 'results') {
     return <ResultsScreen players={players} scores={scores} winner={winner} wins={wins} seriesWins={seriesWins} currentRound={currentRound} settings={settings} onAgain={startMatch} onHome={() => { void socket.leave(); setPlayers([]); setScreen('setup'); setSeriesWins({}); setCurrentRound(1); }} />;
@@ -449,9 +484,15 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           <div className="flex flex-col gap-2.5">
             {Array.from({ length: settings.players }, (_, i) => (
               <div key={i} className="grid grid-cols-[42px_1fr_34px] gap-2 items-center">
-                <button type="button" onClick={() => onToggleComputer(i)} className="w-10 h-7 rounded-full border-[2px] border-black bg-white flex items-center px-1 shrink-0">
-                  <div className="w-4 h-4 rounded-full border-[1.5px] border-black transition-all duration-200" style={{background: computers[i]? '#ff6b8b' : '#fff', marginLeft: computers[i]? '18px':'0'}} />
-                </button>
+                {settings.vsComputer ? (
+                  <button type="button" onClick={() => onToggleComputer(i)} className="w-10 h-7 rounded-full border-[2px] border-black bg-white flex items-center px-1 shrink-0">
+                    <div className="w-4 h-4 rounded-full border-[1.5px] border-black transition-all duration-200" style={{background: computers[i]? '#ff6b8b' : '#61e7c2', marginLeft: computers[i]? '18px':'0'}} />
+                  </button>
+                ) : (
+                  <div className="w-10 h-7 rounded-full border-[2px] border-black bg-[#61e7c2] flex items-center justify-center shrink-0">
+                    <span className="text-[10px] font-black">👤</span>
+                  </div>
+                )}
                 <input value={names[i]} onChange={(e) => onChangeName(i, e.target.value)} className="w-full h-10 rounded-full border-[2px] border-black bg-white px-4 font-bold text-[14px] outline-none" maxLength={14} />
                 <div className="w-8 h-8 rounded-full border-[2px] border-black grid place-items-center shrink-0" style={{background: COLORS[i]}}><span className="text-[10px]">●</span></div>
               </div>
@@ -462,18 +503,20 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
             <button onClick={() => onChangeSettings({ vsComputer: true })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>ضد الكمبيوتر</button>
           </div>
         </section>
-      <section className="bg-black border-[2.5px] border-black rounded- p-3.5 flex flex-col gap-3">
-  <div className="flex items-center justify-between">
-    <span className="bg-[#ffcf5a] text-black text- font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
-    <span className="font-black text- text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
-  </div>
-  <div className="grid grid-cols-[1fr_110px_48px] gap-2">
-    <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border- border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text- placeholder:text-white/40 outline-none focus:border-white/40" />
-    <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="000000" className="w-full h-11 rounded-full border- border-white bg-white text-black text-center font-black text- tracking-[0.2em] outline-none" />
-    <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border- border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
-  </div>
-  <div className="text- font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 6 أرقام ثم انضم</div>
-</section>
+        {!settings.vsComputer && (
+      <section className="bg-black border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="bg-[#ffcf5a] text-black text-[11px] font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
+            <span className="font-black text-[14px] text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
+          </div>
+          <div className="grid grid-cols-[1fr_110px_48px] gap-2">
+            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
+            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="000000" className="w-full h-11 rounded-full border border-white bg-white text-black text-center font-black text-[14px] tracking-[0.2em] outline-none" />
+            <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
+          </div>
+          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 6 أرقام ثم انضم - يظهر فقط في وضع الأصدقاء</div>
+        </section>
+      )}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2"><span className="bg-[#ffcf5a] border-[2px] border-black rounded-full px-3 h-7 text-[11px] font-black grid place-items-center">MODE 4</span><span className="font-black text-[14px]">السرعة</span></div>
@@ -654,7 +697,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 0, countdownStart: performance.now(), countdownSide: null as Player['side'] | null, effects: [] as any[]
   });
   const ballBuffer = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
-  const isOfflineMode = players.length <= 1 || settings.vsComputer || players.some((p:any)=>p.computer);
+  const isOfflineMode = players.length <= 1;
   const getWorldFromClient = useCallback((clientX:number, clientY:number)=>{
     const arena = arenaRef.current; if(!arena) return {x:world.w/2,y:world.h/2};
     const rect = arena.getBoundingClientRect();
@@ -758,10 +801,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               state.ballTarget.vy = state.ball.vy;
             }
           }
-          // السماح بتحريك المضرب أثناء العد مثل 3D
           if (state.countdown > 0) {
-            const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
-            cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
             draw(context, state, players, now, false, world, myAngle);
             frame = requestAnimationFrame(tick);
             return;
@@ -863,43 +903,23 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
 
   const bindTouch = (direction: keyof typeof touchControls.current) => ({ onPointerDown: () => { touchControls.current[direction] = true; }, onPointerUp: () => { touchControls.current[direction] = false; }, onPointerLeave: () => { touchControls.current[direction] = false; } });
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (paused || celebrating) return; 
-    if (isServing) { requestLaunch(); return; }
-    try { (event.currentTarget as any).setPointerCapture?.(event.pointerId); } catch {}
+    if (paused || celebrating) return; if (isServing) { requestLaunch(); return; }
+    (event.currentTarget as any).setPointerCapture?.(event.pointerId);
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch' || (event as any).touches; 
-    const OFFSET = isTouch? 130 : 50; // دائماً أسفل المضرب مثل 3D - المضرب فوق الإصبع 130px
-    let tx=pt.x;
-    let ty=pt.y - OFFSET; // نقطة التحريك دائماً أسفل المضرب (جنوب) - مثل 3D
-    hasDraggedRef.current=true; 
-    if(hintDotRef.current) hintDotRef.current.style.display='none'; 
-    if(hintTextRef.current) hintTextRef.current.style.display='none';
+    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 130 : 50;
+    let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
+    hasDraggedRef.current=true; if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     drag.current = { side: mySide, x: tx, y: ty };
-    // تحديث فوري للمضرب
-    stateRef.current.targetPaddles[mySide].x = tx; 
-    stateRef.current.targetPaddles[mySide].y = ty;
-    // أيضاً حدث الحالي مباشرة لتقليل الـ lag
-    stateRef.current.paddles[mySide].x = tx;
-    stateRef.current.paddles[mySide].y = ty;
+    stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
     socket.sendPaddleTarget(tx, ty);
   };
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
-    // حتى لو startDrag لم يلتقط، نعتبره سحب - إصلاح عدم حركة اللاعب
-    if (!drag.current.side) {
-      drag.current.side = mySide;
-      hasDraggedRef.current=true;
-      if(hintDotRef.current) hintDotRef.current.style.display='none'; 
-      if(hintTextRef.current) hintTextRef.current.style.display='none';
-    }
+    if (!drag.current.side) return;
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch' || (event as any).touches; 
-    const OFFSET = isTouch? 130 : 50; // دائماً أسفل المضرب مثل 3D - المضرب فوق الإصبع
-    let tx=pt.x;
-    let ty=pt.y - OFFSET; // نقطة التحريك دائماً أسفل المضرب (جنوب) - مثل 3D
+    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 130 : 50;
+    let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
     drag.current.x = tx; drag.current.y = ty;
-    // تحديث فوري + مع clamp في الـ tick
-    stateRef.current.targetPaddles[mySide].x = tx; 
-    stateRef.current.targetPaddles[mySide].y = ty;
+    stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
     socket.sendPaddleTarget(tx, ty);
   };
   const endDrag = (event: PointerEvent<HTMLDivElement>) => { if ((event.currentTarget as any).hasPointerCapture?.(event.pointerId)) (event.currentTarget as any).releasePointerCapture(event.pointerId); drag.current.side = null; };
@@ -980,6 +1000,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       )}
     </div>
   </section>
+  <div className="touch-controls">
+    <button {...bindTouch('bottomRight')}><ChevronRight size={24} /></button>
+    <button {...bindTouch('bottomLeft')}><ChevronLeft size={24} /></button>
+  </div>
 </main>
   );
 }

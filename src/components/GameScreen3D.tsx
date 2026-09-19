@@ -580,6 +580,7 @@ export function GameScreen3D({
   const audioCtxRef = useRef<AudioContext|null>(null);
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
+  const lastBallEmitRef = useRef(0);
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
     ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
@@ -616,7 +617,7 @@ export function GameScreen3D({
   const [showCamMenu, setShowCamMenu] = useState(false);
   const [hideUI, setHideUI] = useState(false);
   const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('bottom');
- const [friendsReadyCount, setFriendsReadyCount] = useState(1);
+  const [readyPlayers, setReadyPlayers] = useState<string[]>([]); // طور الأصدقاء فقط - من ضغط ابدأ
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
@@ -783,55 +784,48 @@ export function GameScreen3D({
   }, [getMySide]);
 
   // طور الأصدقاء فقط (مع الأصدقاء) - نظام الجاهزية: لا تبدأ حتى يضغط الكل ابدأ - ضد الكمبيوتر لا يوجد انتظار
- useEffect(()=>{
-  if(!isFriendsMode){
-    // ضد الكمبيوتر : ابدأ فورا - لا انتظار نهائيا
-    setLocalReady(true);
-    localReadyRef.current = true;
-    stateRef.current.countdown = 3;
-    stateRef.current.countdownStart = performance.now();
-    setCountdown(3);
-    return;
-  }
-  // مع الأصدقاء : ارسل انك جاهز
-  const myId = socket.id;
-  socket.emit('player-ready', { playerId: myId, roomCode });
-
-  // failsafe: لو السيرفر ما رد خلال 1.2 ثانية ابدأ لحالك عشان ما يعلق
-  const t = setTimeout(()=>{
-    if(!localReadyRef.current){
+  useEffect(() => {
+    if (!isFriendsMode) return; // فقط في طور الأصدقاء
+    const handlePlayerReady = (data: any) => {
+      const playerId = data.playerId || data.id || data.socketId;
+      if (playerId && !readyPlayers.includes(playerId)) {
+        setReadyPlayers(prev => [...prev, playerId]);
+      }
+    };
+    const handleAllReady = () => {
       setLocalReady(true);
       localReadyRef.current = true;
       stateRef.current.countdown = 3;
       stateRef.current.countdownStart = performance.now();
       setCountdown(3);
-    }
-  }, 1200);
-  return ()=>clearTimeout(t);
-},[isFriendsMode, roomCode]);
+    };
+    socket.on('player-ready', handlePlayerReady);
+    socket.on('all-players-ready', handleAllReady);
+    socket.on('game-started', handleAllReady);
+    return () => {
+      socket.off('player-ready', handlePlayerReady);
+      socket.off('all-players-ready', handleAllReady);
+      socket.off('game-started', handleAllReady);
+    };
+  }, [readyPlayers, players.length, isFriendsMode]);
 
-// 2- استقبال الجاهزية
-useEffect(()=>{
-  if(!isFriendsMode) return;
-  const onPlayerReady = (data:any)=>{
-    setFriendsReadyCount(prev => prev + 1); // functional
-  };
-  const onAllReady = ()=>{
-    setLocalReady(true);
-    localReadyRef.current = true;
-    stateRef.current.countdown = 3;
-    stateRef.current.countdownStart = performance.now();
-    setCountdown(3);
-  };
-  socket.on('player-ready', onPlayerReady);
-  socket.on('all-players-ready', onAllReady);
-  socket.on('game-started', onAllReady);
-  return ()=>{
-    socket.off('player-ready', onPlayerReady);
-    socket.off('all-players-ready', onAllReady);
-    socket.off('game-started', onAllReady);
-  };
-},[isFriendsMode]);
+  useEffect(() => {
+    if (isFriendsMode && readyPlayers.length >= players.length && players.length > 1) {
+      // عندما يصبح الكل جاهز - ابدأ للكل، ليس فقط للمضيف - إصلاح التعليق
+      if (isHost) {
+        socket.emit('all-players-ready', { roomCode });
+        socket.emit('game-started', { roomCode });
+      }
+      // أي لاعب يرى الكل جاهز يبدأ فوراً - يمنع التعليق
+      if (!localReadyRef.current) {
+        setLocalReady(true);
+        localReadyRef.current = true;
+        stateRef.current.countdown = 3;
+        stateRef.current.countdownStart = performance.now();
+        setCountdown(3);
+      }
+    }
+  }, [readyPlayers, isHost, isFriendsMode, players.length, roomCode]);
 
   useEffect(() => {
     const el = mountRef.current;
@@ -1391,6 +1385,21 @@ useEffect(()=>{
             });
           }
 
+          // إرسال حالة الكرة للعملاء بانتظام - إصلاح توقف اللعبة
+          if (isHost && !isOfflineMode && state.countdown === 0) {
+            const nowMs = performance.now();
+            if (nowMs - lastBallEmitRef.current > 50) { // كل 50ms
+              lastBallEmitRef.current = nowMs;
+              try {
+                socket.emit('game-state', { 
+                  ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy },
+                  rally: state.rally,
+                  timeLeft: timeLeft
+                });
+              } catch {}
+            }
+          }
+
           // تحديث مواقع المضارب - مع منع الـ lag
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
@@ -1487,21 +1496,17 @@ useEffect(()=>{
           boxShadow: '0 8px 24px rgba(0,0,0,0.6)', pointerEvents: 'auto'
         }}>
           <button onClick={()=>{
-            // فقط عند اختيار مع الأصدقاء يوجد انتظار - ضد الكمبيوتر لا يوجد انتظار
             if (!isFriendsMode) {
-              // ضد الكمبيوتر أو أوفلاين: ابدأ فوراً بدون انتظار
               setLocalReady(true);
               localReadyRef.current = true;
               stateRef.current.countdown = 3;
               stateRef.current.countdownStart = performance.now();
               setCountdown(3);
             } else {
-              // مع الأصدقاء: أرسل جاهزيتي وانتظر البقية - إصلاح التعليق
               const myId = socket.id || 'local_' + Math.random().toString(36).slice(2,7);
               if (!readyPlayers.includes(myId)) {
                 const newReady = [...readyPlayers, myId];
                 setReadyPlayers(newReady);
-                // إذا أصبح الكل جاهز (أنا آخر واحد) - ابدأ فوراً بدون انتظار السوكت
                 if (newReady.length >= players.length) {
                   setLocalReady(true);
                   localReadyRef.current = true;
@@ -1523,7 +1528,6 @@ useEffect(()=>{
           <span style={{color:'rgba(255,255,255,0.6)', fontSize:'11px', whiteSpace:'nowrap'}}>
             {isFriendsMode ? 'مع الأصدقاء: انتظر الكل يضغط ابدأ' : 'اختر الشكل من اليمين ←'}
           </span>
-          <button onClick={()=>setShowCamMenu(v=>!v)} style={{padding:'8px 14px', borderRadius:'999px', background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.12)', color: showCamMenu ? '#000' : '#fff', border:'none', cursor:'pointer', fontSize:'11px', fontWeight:800}}>{showCamMenu ? 'إخفاء' : '📷 كاميرا'}</button>
         </div>
       )}
 
@@ -1611,9 +1615,18 @@ useEffect(()=>{
 
             {/* أزرار التحكم */}
             <div style={{display:'flex', alignItems:'center', gap:'6px', padding:'0 8px 0 0'}}>
-              
+              <button onClick={()=>setShowCamMenu(v=>!v)} style={{
+                background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.08)', 
+                color: showCamMenu ? '#000' : 'rgba(255,255,255,0.7)',
+                border:'1px solid rgba(255,255,255,0.1)', borderRadius:'6px',
+                padding:'6px 10px', fontSize:'11px', fontWeight:800, cursor:'pointer',
+                display:'flex', alignItems:'center', gap:'4px'
+              }}>
+                <Camera size={12}/> {showCamMenu ? 'إخفاء' : 'كاميرا'}
+              </button>
               <button onClick={onPause} style={{
-                background:'rgba(255,255,255,0.08)', color:'rgba(255,255,255,0.7)',
+                background: paused ? '#ff2d2d' : 'rgba(255,255,255,0.08)', 
+                color: paused ? '#fff' : 'rgba(255,255,255,0.7)',
                 border:'1px solid rgba(255,255,255,0.1)', borderRadius:'6px',
                 padding:'6px 12px', fontSize:'11px', fontWeight:800, cursor:'pointer',
                 display:'flex', alignItems:'center', gap:'4px'
@@ -1665,6 +1678,13 @@ useEffect(()=>{
                 {getNameForSide(countdownSide as Player['side'])} {isAr ? 'سجل!' : 'Scored!'}
               </span>
             )}
+          </div>
+        )}
+        {paused && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 12, gap: '16px' }}>
+            <span style={{ fontSize: '48px', fontWeight: 900, color: '#fff' }}>⏸️ {isAr ? 'متوقف' : 'PAUSED'}</span>
+            <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px' }}>{isAr ? 'تم إيقاف اللعبة لكل اللاعبين' : 'Game paused for all players'}</span>
+            <button onClick={onPause} style={{ padding: '12px 28px', borderRadius: '999px', background: '#00e5ff', color: '#000', fontWeight: 900, border: 'none', cursor: 'pointer' }}>{isAr ? 'متابعة' : 'Resume'}</button>
           </div>
         )}
         {localReady && lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
