@@ -27,9 +27,8 @@ const PADDLE_SIZE = 42;
 const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 10, sound: true, graphics: '2d', arenaSize: 'medium', seriesType: 'single', seriesRounds: 3 } as Settings;
 
 function randomRoom(existing: string[] = []) {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
-  do { code = Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join(''); } while (existing.includes(code));
+  do { code = Array.from({ length: 6 }, () => Math.floor(Math.random()*10).toString()).join(''); } while (existing.includes(code));
   return code;
 }
 function loadWins(): Record<string, number> { try { return JSON.parse(localStorage.getItem('qoud-ping-pong-wins')?? '{}') as Record<string, number>; } catch { return {}; } }
@@ -230,7 +229,7 @@ useEffect(() => {
     }));
   }, [names, settings.players, computers]);
 
- const enterWaiting = async () => {
+const enterWaiting = async () => {
     const trimmed = names.slice(0, settings.players).map(n => n.trim());
     if (trimmed.some(n => n.length < 2)) { setError(isAr? 'اكتب اسم كل اللاعبين حرفين على الأقل' : 'Names must be at least 2 chars'); return; }
     if (new Set(trimmed).size!== trimmed.length) { setError(isAr? 'الاسماء لازم مختلفة' : 'Names must be unique'); return; }
@@ -238,7 +237,6 @@ useEffect(() => {
     const allPlayers = makePlayers();
     setIsConnectingRoom(true);
     try {
-      // التعديل هنا: لا نولد كود في الكلاينت
       const colyseusRoom = await colyseus.create('qoud', {
         maxPlayers: allPlayers.length,
         settings,
@@ -247,17 +245,18 @@ useEffect(() => {
         name: allPlayers[0].name
       });
       socket.attach(colyseusRoom);
-      // الكود راح يجي من السيرفر عبر room-update
-      // نحط كود مؤقت لين يوصل الحقيقي
-      const tempCode = (colyseusRoom.state as any)?.code || colyseusRoom.roomId.slice(0,4).toUpperCase();
+      // --- هنا التعديل: 6 أرقام فقط ---
+      const tempCode = (colyseusRoom.state as any)?.code || colyseusRoom.roomId.replace(/\D/g,'').slice(0,6).padStart(6,'0');
       setRoom(tempCode);
       setIsHost(true); setError(''); setScreen('waiting');
     } catch (cause) { setError(cause instanceof Error? cause.message : (isAr? 'تعذر انشاء الغرفة' : 'Could not create room')); }
     finally { setIsConnectingRoom(false); }
   };
+
   const joinByCode = async (customName?: string) => {
-    const code = joinCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
-    if (code.length!== 4) { setError(isAr? 'الكود 4 حروف' : 'Code 4 chars'); return; }
+    // --- هنا التعديل: 6 أرقام فقط ---
+    const code = joinCode.replace(/\D/g,'').slice(0, 6);
+    if (code.length!== 6) { setError(isAr? 'الكود 6 أرقام' : 'Code 6 digits'); return; }
     const finalName = (customName || joinName || localStorage.getItem('qoud_name') || names[0] || 'لاعب').trim().slice(0, 15);
     if (finalName.length < 2) { setError(isAr? 'اكتب اسمك أولاً' : 'Write your name first'); return; }
     localStorage.setItem('qoud_name', finalName);

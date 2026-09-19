@@ -29,8 +29,8 @@ function getArenaWorld(count: number, size: string = 'medium') {
   return { w: base.w * sc, h: base.h * sc };
 }
 
-// --- إضافات جديدة بدون حذف القديم - لدعم آلاف اللاعبين ---
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+// --- تعديل وحيد: 6 أرقام فقط بدون حروف - لدعم الجوال ---
+const CODE_ALPHABET = '0123456789';
 function generateUniqueCode(len = 6): string {
   let code: string;
   do {
@@ -65,17 +65,16 @@ class QoudRoom extends Room<QoudRoomState> {
   private seriesWinsMap = new Map<string, number>();
   private roundHistory: Array<{ round: number; scores: Record<string, number>; winnerId: string | null; isDraw: boolean }> = [];
 
-  // --- إضافة جديدة لحل مشكلة التعليق ---
+  // --- إضافة لحل مشكلة التعليق ---
   private readyPlayers = new Set<string>();
 
   onCreate(options: CreateOptions) {
-    // --- تعديل: كان 4 حروف من العميل ويسبب تصادم، الآن 6 حروف فريد من السيرفر ---
-    let rawCode = String(options.code?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    // --- تعديل وحيد: فلتر أرقام فقط ---
+    let rawCode = String(options.code?? '').replace(/\D/g, '').slice(0, 6);
     let code: string;
-    if (!rawCode || rawCode.length < 4 || roomsByCode.has(rawCode)) {
+    if (!rawCode || rawCode.length < 6 || roomsByCode.has(rawCode)) {
       code = generateUniqueCode(6);
     } else {
-      // لو العميل ارسل 4 قديمة نحتفظ بها لو غير مستخدمة، والا نولد 6 جديدة
       code = rawCode;
       if (roomsByCode.has(code)) {
         code = generateUniqueCode(6);
@@ -222,7 +221,6 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private handleMessage(type: string, client: { sessionId: string }, payload: any) {
-    // --- إضافات جديدة لحل التعليق - بدون حذف القديم ---
     if (type === 'player-ready') {
       this.readyPlayers.add(client.sessionId);
       this.broadcast('player-ready', { playerId: client.sessionId, count: this.readyPlayers.size, total: this.humanCount() });
@@ -807,7 +805,7 @@ const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
   express: async (app) => {
     app.get('/api/rooms', (req, res) => {
-      const code = String(req.query.code?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const code = String(req.query.code?? '').replace(/\D/g, '').slice(0, 6);
       if (code) {
         const room = roomsByCode.get(code);
         if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
@@ -832,4 +830,4 @@ const gameServer = new Server({
 });
 gameServer.define('qoud', QoudRoom);
 await gameServer.listen(port, '0.0.0.0');
-console.log(`[colyseus] Qoud server listening on port ${port}`);
+console.log(`[colyseus] Qoud server listening on port ${port} - 6 digits only`);
