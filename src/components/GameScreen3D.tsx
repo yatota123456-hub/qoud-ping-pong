@@ -8,20 +8,48 @@ type Player = { id: number | string; name: string; color: string; side: 'top' | 
 type Settings = any;
 type Scores = Record<string | number, number>;
 
-function createAirHockeySurface(worldW: number, worldH: number) {
+function createAirHockeySurface(worldW: number, worldH: number, arenaStyle: string = 'classic') {
   const canvas = document.createElement('canvas');
   canvas.width = 2048;
   canvas.height = 4096;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.fillStyle = '#fefefe';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  grad.addColorStop(0, 'rgba(0,0,0,0.02)');
-  grad.addColorStop(0.5, 'rgba(255,255,255,0)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.03)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // خلفية حسب الشكل - 4 أشكال جميلة
+  if (arenaStyle === 'galaxy') {
+    const bgGrad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width);
+    bgGrad.addColorStop(0, '#1a0b3e'); bgGrad.addColorStop(0.4, '#2d1b69'); bgGrad.addColorStop(1, '#0f0f23');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // نجوم مجرة
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    for (let i=0; i<200; i++) {
+      const x = Math.random()*canvas.width; const y = Math.random()*canvas.height;
+      const r = Math.random()*2+0.5;
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    }
+  } else if (arenaStyle === 'sunset') {
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bgGrad.addColorStop(0, '#ffecd2'); bgGrad.addColorStop(0.3, '#fcb69f'); bgGrad.addColorStop(0.7, '#ff8a5b'); bgGrad.addColorStop(1, '#ff7e5f');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else if (arenaStyle === 'neon') {
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // شبكة نيون
+    ctx.strokeStyle = 'rgba(0,229,255,0.08)';
+    ctx.lineWidth = 1;
+    for (let x=0; x<canvas.width; x+=80) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+    for (let y=0; y<canvas.height; y+=80) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
+  } else {
+    ctx.fillStyle = '#fefefe';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, 'rgba(0,0,0,0.02)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.03)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
   ctx.fillStyle = 'rgba(10,10,10,0.85)';
   const dotSize = 2.2;
   const spacing = 32;
@@ -923,7 +951,7 @@ export function GameScreen3D({
     renderer.toneMappingExposure = 1.1;
     mount.appendChild(renderer.domElement);
     const tableGroup = new THREE.Group();
-    const surfaceTexture = createAirHockeySurface(world.w, world.h);
+    const surfaceTexture = createAirHockeySurface(world.w, world.h, settings.arenaStyle || 'classic');
     const tableMaterial = new THREE.MeshStandardMaterial({ 
       color: '#ffffff', 
       map: surfaceTexture || undefined, 
@@ -1626,13 +1654,17 @@ export function GameScreen3D({
             {/* أزرار التحكم */}
             <div style={{display:'flex', alignItems:'center', gap:'6px', padding:'0 8px 0 0'}}>
               <button onClick={()=>setShowCamMenu(v=>!v)} style={{
-                background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.08)', 
-                color: showCamMenu ? '#000' : 'rgba(255,255,255,0.7)',
-                border:'1px solid rgba(255,255,255,0.1)', borderRadius:'6px',
-                padding:'6px 10px', fontSize:'11px', fontWeight:800, cursor:'pointer',
-                display:'flex', alignItems:'center', gap:'4px'
+                background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.12)', 
+                color: showCamMenu ? '#000' : 'rgba(255,255,255,0.9)',
+                border: showCamMenu ? '1px solid #00e5ff' : '1px solid rgba(255,255,255,0.2)', 
+                borderRadius:'8px',
+                padding:'8px 12px', fontSize:'12px', fontWeight:800, cursor:'pointer',
+                display:'flex', alignItems:'center', gap:'5px',
+                minHeight:'36px', minWidth:'70px',
+                boxShadow: showCamMenu ? '0 0 12px rgba(0,229,255,0.5)' : 'none',
+                WebkitTapHighlightColor: 'transparent'
               }}>
-                <Camera size={12}/> {showCamMenu ? 'إخفاء' : 'كاميرا'}
+                <Camera size={14}/> {showCamMenu ? 'إخفاء' : 'كاميرا'}
               </button>
               <button onClick={onPause} style={{
                 background: paused ? '#ff2d2d' : 'rgba(255,255,255,0.08)', 
@@ -1763,6 +1795,32 @@ export function GameScreen3D({
             <span style={{fontSize:7, color:'rgba(255,255,255,0.35)', textAlign:'center', lineHeight:1.1}}>أ=قديم<br/>ب=جديد</span>
           </div>
         )}
+
+        
+      {/* زر كاميرا عائم للجوال - يظهر دائما */}
+      {!hideUI && (
+        <button onClick={()=>setShowCamMenu(v=>!v)} style={{
+          position:'fixed',
+          bottom:'88px',
+          right:'12px',
+          width:'56px',
+          height:'56px',
+          borderRadius:'50%',
+          background: showCamMenu ? '#00e5ff' : 'rgba(0,0,0,0.75)',
+          backdropFilter:'blur(12px)',
+          WebkitBackdropFilter:'blur(12px)',
+          border: showCamMenu ? '2px solid #00e5ff' : '2px solid rgba(255,255,255,0.2)',
+          color: showCamMenu ? '#000' : '#fff',
+          display:'grid',
+          placeItems:'center',
+          cursor:'pointer',
+          zIndex:10004,
+          boxShadow: showCamMenu ? '0 0 20px rgba(0,229,255,0.6), 0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.5)',
+          transition:'all 0.2s'
+        }}>
+          <Camera size={22} />
+        </button>
+      )}
 
         {showCamMenu && !hideUI && (
           <div style={{ 

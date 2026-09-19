@@ -11,7 +11,8 @@ type MatchMode = 'time' | 'goals';
 type Difficulty = 'easy' | 'normal' | 'hard';
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
 type ArenaSize = 'small' | 'medium' | 'large' | 'xlarge';
-type Settings = { players: number; vsComputer: boolean; difficulty: Difficulty; start: StartMode; mode: MatchMode; duration: number; goal: number; speed: SpeedMode; ballSpeed: number; sound: boolean; graphics: '2d' | '3d'; arenaSize: ArenaSize; seriesType: 'single' | 'series'; seriesRounds: number; };
+type ArenaStyle = 'classic' | 'neon' | 'galaxy' | 'sunset';
+type Settings = { players: number; vsComputer: boolean; difficulty: Difficulty; start: StartMode; mode: MatchMode; duration: number; goal: number; speed: SpeedMode; ballSpeed: number; sound: boolean; graphics: '2d' | '3d'; arenaSize: ArenaSize; arenaStyle: ArenaStyle; seriesType: 'single' | 'series'; seriesRounds: number; };
 type Scores = Record<string | number, number>;
 type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: Partial<Settings> };
 type Vec2 = { x: number; y: number };
@@ -24,7 +25,7 @@ const SQUARE_WORLD = { w: 1000, h: 1000 };
 const ZONE = 100;
 const PADDLE_MOVE_ZONE = 220;
 const PADDLE_SIZE = 42;
-const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 10, sound: true, graphics: '2d', arenaSize: 'medium', seriesType: 'single', seriesRounds: 3 } as Settings;
+const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 10, sound: true, graphics: '2d', arenaSize: 'medium', arenaStyle: 'classic', seriesType: 'single', seriesRounds: 3 } as Settings;
 
 function randomRoom(existing: string[] = []) {
   let code = '';
@@ -428,7 +429,7 @@ useEffect(() => {
   }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers, settings.players, settings.vsComputer]);
 
   if (screen === 'waiting') {
-    return <WaitingRoom room={room} players={players} isHost={isHost} error={error} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
+    return <WaitingRoom room={room} players={players} isHost={isHost} error={error} settings={settings} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
   }
   if (screen === 'game') {
     if (settings.graphics === '3d') {
@@ -522,17 +523,17 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           </div>
         </section>
         {!settings.vsComputer && (
-   <section className="bg-black border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
+      <section className="bg-black border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="bg-[#ffcf5a] text-black text-[11px] font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
             <span className="font-black text-[14px] text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
           </div>
           <div className="grid grid-cols-[1fr_110px_48px] gap-2">
-            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border-[2px] border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
-            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="000000" className="w-full h-11 rounded-full border-[2px] border-white bg-white text-black text-center font-black text-[15px] tracking-[0.2em] outline-none" />
-            <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border-[2px] border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
+            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
+            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="000000" className="w-full h-11 rounded-full border border-white bg-white text-black text-center font-black text-[14px] tracking-[0.2em] outline-none" />
+            <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
           </div>
-          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 6 أرقام ثم انضم</div>
+          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 6 أرقام ثم انضم - يظهر فقط في وضع الأصدقاء</div>
         </section>
       )}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
@@ -603,6 +604,53 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           </div>
         </section>
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2"><span className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-[2.5px] border-black rounded-full px-3 h-7 text-[11px] font-black grid place-items-center">SHAPE</span><span className="font-black text-[14px]">🎨 شكل الساحة</span></div>
+            <div className="w-6 h-6 rounded-full border-[2px] border-black bg-white grid place-items-center text-[11px] font-black">★</div>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <button onClick={()=>onChangeSettings({arenaStyle:'classic'})} className={`relative h-[88px] rounded-[14px] border-[2.5px] border-black overflow-hidden transition-all ${settings.arenaStyle==='classic'?'ring-2 ring-black ring-offset-2':''}`}>
+              <div className="absolute inset-0 bg-[#f3f5f7]" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                <div className="w-12 h-12 rounded-lg bg-white border-2 border-black shadow-sm grid place-items-center"><div className="w-6 h-6 rounded-full bg-[#ff2d2d]" /></div>
+                <span className="text-[11px] font-black">كلاسيك</span>
+              </div>
+              <div className="absolute top-1.5 right-1.5 text-[10px] font-black px-2 h-5 rounded-full bg-white text-black border border-black grid place-items-center">خشب</div>
+              {settings.arenaStyle==='classic' && <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-black text-white rounded-full grid place-items-center text-[12px] font-black">✓</div>}
+            </button>
+            <button onClick={()=>onChangeSettings({arenaStyle:'neon'})} className={`relative h-[88px] rounded-[14px] border-[2.5px] border-black overflow-hidden transition-all ${settings.arenaStyle==='neon'?'ring-2 ring-black ring-offset-2':''}`}>
+              <div className="absolute inset-0 bg-black" />
+              <div className="absolute inset-0 opacity-60" style={{background: 'linear-gradient(45deg, #00e5ff 0%, #7c4dff 25%, #ff2d78 50%, #ffcf5a 75%, #00e5ff 100%)'}} />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                <div className="w-12 h-12 rounded-lg bg-black border-2 border-[#00e5ff] shadow-[0_0_10px_#00e5ff] grid place-items-center"><div className="w-6 h-6 rounded-full bg-[#00e5ff] shadow-[0_0_8px_#00e5ff]" /></div>
+                <span className="text-[11px] font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">نيون</span>
+              </div>
+              <div className="absolute top-1.5 right-1.5 text-[10px] font-black px-2 h-5 rounded-full bg-[#00e5ff] text-black border border-black grid place-items-center">LED</div>
+              {settings.arenaStyle==='neon' && <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[12px] font-black">✓</div>}
+            </button>
+            <button onClick={()=>onChangeSettings({arenaStyle:'galaxy'})} className={`relative h-[88px] rounded-[14px] border-[2.5px] border-black overflow-hidden transition-all ${settings.arenaStyle==='galaxy'?'ring-2 ring-black ring-offset-2':''}`}>
+              <div className="absolute inset-0" style={{background: 'radial-gradient(ellipse at 30% 20%, #1a0b3e 0%, #2d1b69 25%, #0f0f23 70%)'}} />
+              <div className="absolute inset-0 opacity-80" style={{backgroundImage: 'radial-gradient(2px 2px at 20% 30%, #fff, transparent), radial-gradient(2px 2px at 40% 70%, #a78bfa, transparent)'}} />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                <div className="w-12 h-12 rounded-lg bg-[#1a0b3e] border-2 border-[#a78bfa] shadow-[0_0_12px_#a78bfa] grid place-items-center"><div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#a78bfa] to-[#c084fc] shadow-[0_0_10px_#a78bfa]" /></div>
+                <span className="text-[11px] font-black text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">مجرة ✨</span>
+              </div>
+              <div className="absolute top-1.5 right-1.5 text-[10px] font-black px-2 h-5 rounded-full bg-gradient-to-r from-[#7c3aed] to-[#a78bfa] text-white border border-black grid place-items-center">جديد</div>
+              {settings.arenaStyle==='galaxy' && <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[12px] font-black">✓</div>}
+            </button>
+            <button onClick={()=>onChangeSettings({arenaStyle:'sunset'})} className={`relative h-[88px] rounded-[14px] border-[2.5px] border-black overflow-hidden transition-all ${settings.arenaStyle==='sunset'?'ring-2 ring-black ring-offset-2':''}`}>
+              <div className="absolute inset-0" style={{background: 'linear-gradient(135deg, #ff7e5f 0%, #feb47b 25%, #ff6a88 50%, #ff8a5b 75%, #ffc371 100%)'}} />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#ff7e5f] to-[#feb47b] border-2 border-white shadow-[0_0_12px_rgba(255,126,95,0.6)] grid place-items-center"><div className="w-6 h-6 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]" /></div>
+                <span className="text-[11px] font-black text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">غروب 🌅</span>
+              </div>
+              <div className="absolute top-1.5 right-1.5 text-[10px] font-black px-2 h-5 rounded-full bg-gradient-to-r from-[#ff7e5f] to-[#feb47b] text-white border border-black grid place-items-center">جديد</div>
+              {settings.arenaStyle==='sunset' && <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[12px] font-black">✓</div>}
+            </button>
+          </div>
+          <div className="text-[11px] font-bold bg-black text-white rounded-full px-3 h-7 grid place-items-center text-center">المضيف فقط يختار الشكل • المنضمون لا يمكنهم التغيير</div>
+        </section>
+        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between"><span className="font-black text-[14px]">طريقة الفوز</span><div className="w-6 h-6 rounded-full border-[2px] border-black bg-white grid place-items-center text-[11px] font-black">3</div></div>
           <div className="grid grid-cols-2 gap-2">
             <button onClick={()=>onChangeSettings({mode:'time'})} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] ${settings.mode==='time'?'bg-black text-white':'bg-white text-black'}`}>⏱ وقت</button>
@@ -643,15 +691,24 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
   );
 }
 
-function WaitingRoom({ room, players, isHost, error, onBack, onStart, onRefresh }: any) {
+function WaitingRoom({ room, players, isHost, error, onBack, onStart, onRefresh, settings }: any) {
   const [copied, setCopied] = useState(false); const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
   const copyCode = async () => { try { await navigator.clipboard.writeText(room); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
+  const arenaStyle = settings?.arenaStyle || 'classic';
+  const styleNames: any = { classic: 'كلاسيك 🪵', neon: 'نيون LED', galaxy: 'مجرة ✨', sunset: 'غروب 🌅' };
+  const styleColors: any = { classic: '#f3f5f7', neon: '#000', galaxy: 'linear-gradient(135deg, #1a0b3e, #2d1b69)', sunset: 'linear-gradient(135deg, #ff7e5f, #feb47b)' };
   return (
     <main className="min-h-screen w-full bg-[#e9dfb1] flex justify-center p-4" dir={isAr? 'rtl' : 'ltr'}>
       <div className="w-full max-w-[480px] flex flex-col gap-3">
         <div className="flex justify-between"><Brand /><button onClick={onBack} className="w-10 h-10 rounded-full border-[2.5px] border-black bg-white grid place-items-center"><ArrowLeft size={18} strokeWidth={2.5} /></button></div>
         <div className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-4">
           <div className="flex justify-between items-center"><h1 className="font-black text-[18px]">الكل جاهز؟</h1><button onClick={copyCode} className="border-[2.5px] border-black rounded-full px-4 h-9 bg-black text-white font-black text-[13px]">{room} {copied?'✓':'📋'}</button></div>
+          <div className="mt-3 flex items-center gap-2 bg-black text-white rounded-full px-3 h-8 w-fit">
+            <span className="text-[11px] font-black">الشكل:</span>
+            <span className="w-4 h-4 rounded-full border border-white" style={{background: styleColors[arenaStyle]}} />
+            <span className="text-[12px] font-bold">{styleNames[arenaStyle] || arenaStyle}</span>
+            {!isHost && <span className="text-[10px] opacity-60 mr-1">• المضيف اختار</span>}
+          </div>
           {error && <div className="mt-3 bg-[#ff2d2d] text-white border-[2.5px] border-black rounded-[12px] p-2.5 font-black text-[13px] text-center">{error}</div>}
           <div className="mt-3 flex flex-wrap gap-2">
   {players.filter(Boolean).map((p:any,i:number)=>(
@@ -776,7 +833,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       const delta = Math.min((now - state.last) / 16.67, 2); state.last = now;
       // --- إيقاف اللعبة في البداية: نرسم فقط بدون تحريك ---
       if (!localReadyRef.current) {
-        draw(context, state, players, now, false, world, myAngle);
+        draw(context, state, players, now, false, world, myAngle, settings.arenaStyle);
         frame = requestAnimationFrame(tick);
         return;
       }
@@ -785,7 +842,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         state.ball.y += state.ball.vy * 0.28 * delta;
         if (state.ball.x < 30 || state.ball.x > world.w-30) state.ball.vx *= -1;
         if (state.ball.y < 30 || state.ball.y > world.h-30) state.ball.vy *= -1;
-        draw(context, state, players, now, false, world, myAngle);
+        draw(context, state, players, now, false, world, myAngle, settings.arenaStyle);
         frame = requestAnimationFrame(tick);
         return;
       }
@@ -820,7 +877,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             }
           }
           if (state.countdown > 0) {
-            draw(context, state, players, now, false, world, myAngle);
+            draw(context, state, players, now, false, world, myAngle, settings.arenaStyle);
             frame = requestAnimationFrame(tick);
             return;
           }
@@ -919,7 +976,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           });
         }
       }
-      draw(context, state, players, now, false, world, myAngle);
+      draw(context, state, players, now, false, world, myAngle, settings.arenaStyle);
       if (pausedRef.current || gameEndedRef.current) { frame = requestAnimationFrame(tick); return; }
       frame = requestAnimationFrame(tick);
     };
@@ -1052,7 +1109,7 @@ function getColoredPaddle(color: string, size: number = 42): HTMLCanvasElement {
   grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.2, color); grad.addColorStop(1, color); ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(size / 2, size / 0.52, size * 0.30, 0, Math.PI * 2); ctx.fill();
   return c;
 }
-function draw(context: CanvasRenderingContext2D, state: any, players: Player[], now: number, isServing: boolean, world = RECTANGULAR_WORLD, myAngle=0) {
+function draw(context: CanvasRenderingContext2D, state: any, players: Player[], now: number, isServing: boolean, world = RECTANGULAR_WORLD, myAngle=0, arenaStyle: string = 'classic') {
   const canvas = context.canvas as HTMLCanvasElement; const sx = canvas.width / world.w; const sy = canvas.height / world.h;
   context.save(); context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height); context.restore();
   context.save(); context.translate(world.w/2, world.h/2); context.rotate(myAngle); context.translate(-world.w/2, -world.h/2);
@@ -1062,11 +1119,49 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
   context.fillStyle = '#0c0c0c'; rr(0, 0, world.w, world.h, outerRadius); context.fill();
   const ledX = borderOuter - 6; const ledY = borderOuter - 6; const ledW = world.w - (borderOuter - 6) * 2; const ledH = world.h - (borderOuter - 6) * 2; const ledR = outerRadius - 10;
   let ledGrad: CanvasGradient;
-  if (typeof (context as any).createConicGradient === 'function') { ledGrad = (context as any).createConicGradient(-Math.PI * 0.78, world.w / 2, world.h / 2); ledGrad.addColorStop(0.00, '#00e5ff'); ledGrad.addColorStop(0.20, '#7c4dff'); ledGrad.addColorStop(0.40, '#ff2d78'); ledGrad.addColorStop(0.60, '#ff7a28'); ledGrad.addColorStop(0.80, '#ffcf5a'); ledGrad.addColorStop(1.00, '#00e5ff'); } else { ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH); ledGrad.addColorStop(0, '#00e5ff'); ledGrad.addColorStop(0.5, '#ff2d78'); ledGrad.addColorStop(1, '#ff8a2a'); }
-  context.save(); context.shadowBlur = 35; context.shadowColor = '#00e5ff'; context.strokeStyle = ledGrad; context.lineWidth = 12; context.lineCap = 'round'; rr(ledX, ledY, ledW, ledH, ledR); context.stroke(); context.restore();
+  if (arenaStyle === 'galaxy') {
+    ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH);
+    ledGrad.addColorStop(0, '#7c3aed'); ledGrad.addColorStop(0.3, '#a78bfa'); ledGrad.addColorStop(0.6, '#c084fc'); ledGrad.addColorStop(1, '#7c3aed');
+  } else if (arenaStyle === 'sunset') {
+    ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH);
+    ledGrad.addColorStop(0, '#ff7e5f'); ledGrad.addColorStop(0.3, '#feb47b'); ledGrad.addColorStop(0.6, '#ff6a88'); ledGrad.addColorStop(1, '#ff7e5f');
+  } else if (typeof (context as any).createConicGradient === 'function') { 
+    ledGrad = (context as any).createConicGradient(-Math.PI * 0.78, world.w / 2, world.h / 2); 
+    ledGrad.addColorStop(0.00, '#00e5ff'); ledGrad.addColorStop(0.20, '#7c4dff'); ledGrad.addColorStop(0.40, '#ff2d78'); ledGrad.addColorStop(0.60, '#ff7a28'); ledGrad.addColorStop(0.80, '#ffcf5a'); ledGrad.addColorStop(1.00, '#00e5ff'); 
+  } else { 
+    ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH); 
+    ledGrad.addColorStop(0, '#00e5ff'); ledGrad.addColorStop(0.5, '#ff2d78'); ledGrad.addColorStop(1, '#ff8a2a'); 
+  }
+  context.save(); 
+  context.shadowBlur = arenaStyle === 'neon' ? 35 : arenaStyle === 'galaxy' ? 25 : arenaStyle === 'sunset' ? 20 : 35; 
+  context.shadowColor = arenaStyle === 'galaxy' ? '#a78bfa' : arenaStyle === 'sunset' ? '#ff7e5f' : '#00e5ff'; 
+  context.strokeStyle = ledGrad; context.lineWidth = 12; context.lineCap = 'round'; rr(ledX, ledY, ledW, ledH, ledR); context.stroke(); context.restore();
   context.strokeStyle = 'rgba(255,255,255,0.95)'; context.lineWidth = 4; rr(ledX, ledY, ledW, ledH, ledR); context.stroke();
   const innerX = borderOuter + borderInner; const innerY = borderOuter + borderInner; const innerW = world.w - (borderOuter + borderInner) * 2; const innerH = world.h - (borderOuter + borderInner) * 2; const innerR = outerRadius - 18;
-  context.fillStyle = '#f3f5f7'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
+  // خلفيات مختلفة حسب الشكل
+  if (arenaStyle === 'galaxy') {
+    const bgGrad = context.createRadialGradient(world.w/2, world.h/2, 0, world.w/2, world.h/2, Math.max(innerW, innerH));
+    bgGrad.addColorStop(0, '#1a0b3e'); bgGrad.addColorStop(0.4, '#2d1b69'); bgGrad.addColorStop(1, '#0f0f23');
+    context.fillStyle = bgGrad; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
+    // نجوم
+    context.fillStyle = 'rgba(255,255,255,0.8)';
+    for (let i=0; i<30; i++) {
+      const x = innerX + Math.random()*innerW; const y = innerY + Math.random()*innerH;
+      context.beginPath(); context.arc(x,y,Math.random()*1.5+0.5,0,Math.PI*2); context.fill();
+    }
+  } else if (arenaStyle === 'sunset') {
+    const bgGrad = context.createLinearGradient(innerX, innerY, innerX, innerY+innerH);
+    bgGrad.addColorStop(0, '#ffecd2'); bgGrad.addColorStop(0.3, '#fcb69f'); bgGrad.addColorStop(0.7, '#ff8a5b'); bgGrad.addColorStop(1, '#ff7e5f');
+    context.fillStyle = bgGrad; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
+  } else if (arenaStyle === 'neon') {
+    context.fillStyle = '#0a0a0a'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
+    // شبكة نيون
+    context.strokeStyle = 'rgba(0,229,255,0.15)'; context.lineWidth = 0.5;
+    for (let x=innerX; x<innerX+innerW; x+=40) { context.beginPath(); context.moveTo(x,innerY); context.lineTo(x,innerY+innerH); context.stroke(); }
+    for (let y=innerY; y<innerY+innerH; y+=40) { context.beginPath(); context.moveTo(innerX,y); context.lineTo(innerX+innerW,y); context.stroke(); }
+  } else {
+    context.fillStyle = '#f3f5f7'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
+  }
   const colors = Object.fromEntries(players.map((player) => [player.side, player.color]));
   const active = (side: Player['side']) => { if (players.some((player) => player.side === side)) return true; const count = Math.max(2, players.length || 2); const req = count === 2 ? ['bottom','top'] : ['bottom','top','right','left']; return (req as string[]).includes(side); };
   const GOAL_W = players.length === 2? 260 : 300; const GX1 = (world.w - GOAL_W) / 2; const GY1 = (world.h - GOAL_W) / 2;
