@@ -275,7 +275,10 @@ useEffect(() => {
     }
     setIsConnectingRoom(true);
     try {
+      // توليد كود 6 أرقام وإرساله للسيرفر - إصلاح مشكلة 404
+      const generatedCode = randomRoom();
       const colyseusRoom = await colyseus.create('qoud', {
+        code: generatedCode,
         maxPlayers: allPlayers.length,
         settings,
         player: allPlayers[0],
@@ -283,26 +286,41 @@ useEffect(() => {
         name: allPlayers[0].name
       });
       socket.attach(colyseusRoom);
-      const tempCode = (colyseusRoom.state as any)?.code || colyseusRoom.roomId.replace(/\D/g,'').slice(0,6).padStart(6,'0');
-      setRoom(tempCode);
+      // انتظر حتى يصل كود الغرفة من السيرفر، وإلا استخدم الكود المولد
+      const serverCode = (colyseusRoom.state as any)?.code || generatedCode;
+      setRoom(serverCode);
       setIsHost(true); setError(''); setScreen('waiting');
+      console.log('[QOUD] Room created with code:', serverCode);
     } catch (cause) { setError(cause instanceof Error? cause.message : (isAr? 'تعذر انشاء الغرفة' : 'Could not create room')); }
     finally { setIsConnectingRoom(false); }
   };
-  const joinByCode = async (customName?: string) => {
-    const code = joinCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
-    if (code.length!== 4) { setError(isAr? 'الكود 4 حروف' : 'Code 4 chars'); return; }
+    const joinByCode = async (customName?: string) => {
+    const code = joinCode.replace(/\D/g,'').slice(0, 6);
+    console.log('[QOUD] Trying to join code:', code);
+    if (code.length!== 6) { setError(isAr? 'الكود 6 أرقام - اكتب 6 أرقام كاملة' : 'Code must be 6 digits'); return; }
     const finalName = (customName || joinName || localStorage.getItem('qoud_name') || names[0] || 'لاعب').trim().slice(0, 15);
     if (finalName.length < 2) { setError(isAr? 'اكتب اسمك أولاً' : 'Write your name first'); return; }
     localStorage.setItem('qoud_name', finalName);
     setIsConnectingRoom(true);
     try {
+      // تحقق من وجود الغرفة أولاً
       const lookup = await fetch(`/api/rooms?code=${encodeURIComponent(code)}`);
-      if (!lookup.ok) throw new Error(isAr? 'الغرفة غير موجودة' : 'Room not found');
-      const { roomId } = await lookup.json() as { roomId: string };
-      const colyseusRoom = await colyseus.joinById(roomId, { name: finalName });
-      socket.attach(colyseusRoom); setRoom(code); setIsHost(false); setError(''); setScreen('waiting');
-    } catch (cause) { setError(cause instanceof Error? cause.message : 'تعذر الانضمام'); }
+      if (!lookup.ok) {
+        const errText = await lookup.text().catch(()=> '');
+        console.error('[QOUD] Room lookup failed:', code, lookup.status, errText);
+        throw new Error(isAr? `الغرفة ${code} غير موجودة - تأكد من الكود` : `Room ${code} not found`);
+      }
+      const data = await lookup.json() as { roomId: string; code: string };
+      console.log('[QOUD] Found room:', data);
+      const colyseusRoom = await colyseus.joinById(data.roomId, { name: finalName });
+      socket.attach(colyseusRoom);
+      setRoom(data.code || code);
+      setIsHost(false); setError(''); setScreen('waiting');
+      console.log('[QOUD] Joined room:', data.code);
+    } catch (cause) {
+      console.error('[QOUD] Join failed:', cause);
+      setError(cause instanceof Error? cause.message : 'تعذر الانضمام - الغرفة غير موجودة');
+    }
     finally { setIsConnectingRoom(false); }
   };
   const leaveWaiting = () => { void socket.leave(); setPlayers([]); setError(''); setScreen('setup'); };
