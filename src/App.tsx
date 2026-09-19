@@ -828,7 +828,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         if (isOfflineMode) {
           const ball = state.ball;
           const w = world.w, h = world.h;
-          const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
+          const BALL_R = 16, PADDLE_R = 32, HIT_DIST = BALL_R + PADDLE_R + 4;
           const predX = ball.x + ball.vx * 8;
           const predY = ball.y + ball.vy * 8;
           const diffMax = settings.difficulty === 'easy' ? 1.0 : settings.difficulty === 'hard' ? 3.0 : 2.0;
@@ -851,16 +851,28 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             if (!active(side)) return;
             const paddle = state.paddles[side];
             const dx = ball.x - paddle.x, dy = ball.y - paddle.y, d = Math.hypot(dx, dy);
-            if (d < HIT_DIST && d > 0.5) {
+            const HIT_DIST_BIG = 52; // مسافة أكبر لضمان عدم التفويت
+            if (d < HIT_DIST_BIG && d > 0.5) {
               const nx = dx / d, ny = dy / d;
-              ball.x = paddle.x + nx * (HIT_DIST + 1);
-              ball.y = paddle.y + ny * (HIT_DIST + 1);
+              ball.x = paddle.x + nx * (HIT_DIST_BIG + 3);
+              ball.y = paddle.y + ny * (HIT_DIST_BIG + 3);
               const curSpd = Math.hypot(ball.vx, ball.vy);
-              const targetSpd = Math.max(curSpd, getInitialSpeed()) + 0.6;
-              if (side === 'bottom') { ball.vy = -Math.abs(targetSpd); ball.vx = (ball.x - paddle.x) * 0.15; }
-              else if (side === 'top') { ball.vy = Math.abs(targetSpd); ball.vx = (ball.x - paddle.x) * 0.15; }
-              else if (side === 'left') { ball.vx = Math.abs(targetSpd); ball.vy = (ball.y - paddle.y) * 0.15; }
-              else { ball.vx = -Math.abs(targetSpd); ball.vy = (ball.y - paddle.y) * 0.15; }
+              const targetSpd = Math.max(curSpd, getInitialSpeed()) + 1.0;
+              // ارتداد قوي مع تأثير موضع الضربة
+              if (side === 'bottom') {
+                ball.vy = -Math.abs(targetSpd);
+                ball.vx = (ball.x - paddle.x) * 0.32;
+              } else if (side === 'top') {
+                ball.vy = Math.abs(targetSpd);
+                ball.vx = (ball.x - paddle.x) * 0.32;
+              } else if (side === 'left') {
+                ball.vx = Math.abs(targetSpd);
+                ball.vy = (ball.y - paddle.y) * 0.32;
+              } else {
+                ball.vx = -Math.abs(targetSpd);
+                ball.vy = (ball.y - paddle.y) * 0.32;
+              }
+              if (Math.abs(ball.vx) < 1.2) ball.vx = (Math.random() > 0.5 ? 1 : -1) * 1.5;
               state.rally++; setRally(state.rally);
             }
           });
@@ -873,33 +885,35 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
           cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
         } else {
-          const SUBSTEPS = 4;
-          const stepDelta = delta / SUBSTEPS;
-          for (let i = 0; i < SUBSTEPS; i++) {
-            state.ball.x += state.ball.vx * stepDelta;
-            state.ball.y += state.ball.vy * stepDelta;
-            const HIT_DIST = 40;
-            (['top','bottom','right','left'] as const).forEach(side => {
-              if (!active(side)) return;
-              const paddle = state.paddles[side];
-              const dx = state.ball.x - paddle.x;
-              const dy = state.ball.y - paddle.y;
-              const dist = Math.hypot(dx, dy);
-              if (dist < HIT_DIST) {
-                const overlap = HIT_DIST - dist;
-                state.ball.x += (dx / dist) * overlap;
-                state.ball.y += (dy / dist) * overlap;
-                state.ball.vx *= -1;
-                state.ball.vy *= -1;
-              }
-            });
+          // === وضع الأصدقاء أونلاين - السيرفر مسؤول وحيد عن الكرة (إصلاح عدم الاستقرار) ===
+          // لا نحسب فيزياء محلية للكرة هنا - فقط interpolation من السيرفر
+          const ball = state.ball;
+          
+          // إذا السيرفر أرسل بيانات، نستخدمها مباشرة مع lerp سلس
+          if (state.ballTarget.x !== 0 || state.ballTarget.y !== 0) {
+            const lerp = 0.25; // أسرع لتقليل التأخير المرئي
+            ball.x += (state.ballTarget.x - ball.x) * lerp;
+            ball.y += (state.ballTarget.y - ball.y) * lerp;
+            ball.vx += (state.ballTarget.vx - ball.vx) * 0.2;
+            ball.vy += (state.ballTarget.vy - ball.vy) * 0.2;
+          } else {
+            // أول مرة - انسخ مباشرة
+            ball.x = state.ballTarget.x || ball.x;
+            ball.y = state.ballTarget.y || ball.y;
           }
-          state.ball.x += (state.ballTarget.x - state.ball.x) * 0.1;
-          state.ball.y += (state.ballTarget.y - state.ball.y) * 0.1;
+          
+          // تنبؤ بسيط فقط إذا تأخر السيرفر أكثر من 150ms
+          const lastT = ballBuffer.current[ballBuffer.current.length - 1]?.t || 0;
+          if (performance.now() - lastT > 150 && (ball.vx !== 0 || ball.vy !== 0)) {
+            ball.x += ball.vx * delta * 0.35;
+            ball.y += ball.vy * delta * 0.35;
+          }
+          
+          // تحريك المضارب
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side)) return;
             const target = state.targetPaddles[side]; const current = state.paddles[side];
-            const lf = side === mySide ? 0.5 : 0.22;
+            const lf = side === mySide ? 0.55 : 0.40; // أسرع للخصوم لعدم التفويت
             current.x += (target.x - current.x) * lf;
             current.y += (target.y - current.y) * lf;
           });

@@ -1103,8 +1103,8 @@ export function GameScreen3D({
 
           // تحديث موقع الكرة - فيزياء محلية مستقرة - فقط إذا انتهى العد
           if (state.countdown === 0) {
-            // إذا أوفلاين أو Host، نحن نتحكم بالفيزياء
-            if (isOfflineMode || isHost) {
+            // فقط أوفلاين يتحكم بالفيزياء محلياً - أونلاين السيرفر مسؤول (إصلاح عدم الاستقرار)
+            if (isOfflineMode) {
             // === AI للكمبيوتر في وضع 3D - نفس طريقة 2D ===
             if (isOfflineMode) {
               const predX = state.ball.x + state.ball.vx * 10;
@@ -1410,8 +1410,18 @@ export function GameScreen3D({
               current.x = target.x;
               current.z = target.z;
             } else {
+              // === وضع الأصدقاء أونلاين - السيرفر مسؤول عن الكرة ===
+              // لا نحسب فيزياء الكرة محلياً - فقط نستقبل من السيرفر
+              if (!isOfflineMode) {
+                // interpolation للكرة من السيرفر
+                const lerp = 0.28;
+                state.ball.x += (state.ballTarget.x - state.ball.x) * lerp;
+                state.ball.y += (state.ballTarget.y - state.ball.y) * lerp;
+                state.ball.vx += (state.ballTarget.vx - state.ball.vx) * 0.22;
+                state.ball.vy += (state.ballTarget.vy - state.ball.vy) * 0.22;
+              }
               // مضارب الخصم - lerp سريع لتقليل الـ lag
-              const PADDLE_LERP = isOfflineMode ? 1 : 0.45; // كان 0.3 - الآن أسرع
+              const PADDLE_LERP = isOfflineMode ? 1 : 0.48;
               current.x += (target.x - current.x) * PADDLE_LERP;
               current.z += (target.z - current.z) * PADDLE_LERP;
             }

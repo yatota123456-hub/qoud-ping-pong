@@ -505,8 +505,9 @@ class QoudRoom extends Room<QoudRoomState> {
       const speed = Math.hypot(this.state.ball.vx, this.state.ball.vy);
       const moved = Math.hypot(this.state.ball.x - this.lastBallPos.x, this.state.ball.y - this.lastBallPos.y);
       const timeSinceMove = Date.now() - this.lastBallPos.time;
+      const minSpeed = 4 + Number(this.settings.ballSpeed || 10) * 0.18;
       
-      if (speed < 2.5) {
+      if (speed < minSpeed * 0.6) {
         // الكرة بطيئة جداً - ادفعها
         const ang = Math.random() * Math.PI * 2;
         const minSpeed = 4 + Number(this.settings.ballSpeed || 10) * 0.15;
@@ -595,9 +596,9 @@ class QoudRoom extends Room<QoudRoomState> {
   private stepBallImproved(delta: number) {
     const ball = this.state.ball;
     const w = this.state.worldW, h = this.state.worldH;
-    const BALL_R = 14;
-    const PADDLE_R = 26;
-    const HIT_DIST = BALL_R + PADDLE_R;
+    const BALL_R = 18; // أكبر لضمان الاصطدام
+    const PADDLE_R = 34;
+    const HIT_DIST = BALL_R + PADDLE_R + 6; // 58 - مسافة كبيرة لعدم التفويت
 
     const totalVx = ball.vx * delta;
     const totalVy = ball.vy * delta;
@@ -618,7 +619,7 @@ class QoudRoom extends Room<QoudRoomState> {
       let bestHit: { side: PlayerSide; t: number; nx: number; ny: number; dist: number } | null = null;
 
       for (const side of this.activeSides) {
-        if (this.lastHitSide === side && Date.now() - this.lastHitTime < 80) continue;
+        if (this.lastHitSide === side && Date.now() - this.lastHitTime < 30) continue; // تقليل الكولداون لمنع التفويت
 
         const paddle = this.state.paddles.get(side)!;
         const px = paddle.x;
@@ -660,8 +661,8 @@ class QoudRoom extends Room<QoudRoomState> {
         const paddle = this.state.paddles.get(side)!;
         const pVel = this.paddleVel.get(side) || { vx: 0, vy: 0 };
 
-        ball.x = paddle.x + bestHit.nx * (HIT_DIST + 1.5);
-        ball.y = paddle.y + bestHit.ny * (HIT_DIST + 1.5);
+        ball.x = paddle.x + bestHit.nx * (HIT_DIST + 4);
+        ball.y = paddle.y + bestHit.ny * (HIT_DIST + 4);
 
         const currentSpeed = Math.hypot(ball.vx, ball.vy);
         const minHitSpeed = 3.5 + Number(this.settings.ballSpeed || 10) * 0.15;
