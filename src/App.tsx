@@ -461,7 +461,8 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
             <button onClick={() => onChangeSettings({ vsComputer: false })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${!settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>مع الأصدقاء</button>
             <button onClick={() => onChangeSettings({ vsComputer: true })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>ضد الكمبيوتر</button>
           </div>
-       <section className="bg-black border-[2.5px] border-black rounded- p-3.5 flex flex-col gap-3">
+        </section>
+      <section className="bg-black border-[2.5px] border-black rounded- p-3.5 flex flex-col gap-3">
   <div className="flex items-center justify-between">
     <span className="bg-[#ffcf5a] text-black text- font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
     <span className="font-black text- text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
