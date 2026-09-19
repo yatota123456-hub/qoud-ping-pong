@@ -461,19 +461,18 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
             <button onClick={() => onChangeSettings({ vsComputer: false })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${!settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>مع الأصدقاء</button>
             <button onClick={() => onChangeSettings({ vsComputer: true })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>ضد الكمبيوتر</button>
           </div>
-        </section>
-        <section className="bg-black border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="bg-[#ffcf5a] text-black text-[11px] font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
-            <span className="font-black text-[14px] text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
-          </div>
-          <div className="grid grid-cols-[1fr_90px_48px] gap-2">
-            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border-[2px] border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
-            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4))} placeholder="BZYF" className="w-full h-11 rounded-full border-[2px] border-white bg-white text-black text-center font-black text-[15px] tracking-[0.2em] outline-none" />
-            <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border-[2px] border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
-          </div>
-          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 4 حروف ثم انضم</div>
-        </section>
+       <section className="bg-black border-[2.5px] border-black rounded- p-3.5 flex flex-col gap-3">
+  <div className="flex items-center justify-between">
+    <span className="bg-[#ffcf5a] text-black text- font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
+    <span className="font-black text- text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
+  </div>
+  <div className="grid grid-cols-[1fr_110px_48px] gap-2">
+    <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border- border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text- placeholder:text-white/40 outline-none focus:border-white/40" />
+    <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="000000" className="w-full h-11 rounded-full border- border-white bg-white text-black text-center font-black text- tracking-[0.2em] outline-none" />
+    <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border- border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
+  </div>
+  <div className="text- font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 6 أرقام ثم انضم</div>
+</section>
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2"><span className="bg-[#ffcf5a] border-[2px] border-black rounded-full px-3 h-7 text-[11px] font-black grid place-items-center">MODE 4</span><span className="font-black text-[14px]">السرعة</span></div>
