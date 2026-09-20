@@ -56,6 +56,7 @@ class QoudRoom extends Room<QoudRoomState> {
   private paddlePrev = new Map<PlayerSide, { x: number; y: number }>();
   private paddleVel = new Map<PlayerSide, { vx: number; vy: number }>();
   private lastHitSide: PlayerSide | null = null;
+  private lastServeSide: PlayerSide | null = null;
   private lastHitTime = 0;
 
   // Series
@@ -366,8 +367,18 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private startCountdown(scorerSide: PlayerSide | null) {
+    // تناوب الإرسال: لا يبدأ من نفس المضرب مرتين حتى لو 4 لاعبين
+    let finalScorerSide = scorerSide;
+    if (scorerSide && this.lastServeSide && scorerSide === this.lastServeSide) {
+      const alternatives = this.activeSides.filter(s => s !== this.lastServeSide);
+      if (alternatives.length > 0) {
+        finalScorerSide = alternatives[Math.floor(Math.random() * alternatives.length)];
+      }
+    }
+    if (finalScorerSide) this.lastServeSide = finalScorerSide;
+    
     this.state.countdown = 3;
-    this.state.countdownSide = scorerSide?? '';
+    this.state.countdownSide = finalScorerSide?? '';
     this.countdownStartedAt = Date.now();
     this.state.rally = 0;
     this.state.ball.vx = 0;
@@ -505,9 +516,8 @@ class QoudRoom extends Room<QoudRoomState> {
       const speed = Math.hypot(this.state.ball.vx, this.state.ball.vy);
       const moved = Math.hypot(this.state.ball.x - this.lastBallPos.x, this.state.ball.y - this.lastBallPos.y);
       const timeSinceMove = Date.now() - this.lastBallPos.time;
-      const minSpeed = 4 + Number(this.settings.ballSpeed || 10) * 0.18;
       
-      if (speed < minSpeed * 0.6) {
+      if (speed < 2.5) {
         // الكرة بطيئة جداً - ادفعها
         const ang = Math.random() * Math.PI * 2;
         const minSpeed = 4 + Number(this.settings.ballSpeed || 10) * 0.15;
@@ -596,9 +606,9 @@ class QoudRoom extends Room<QoudRoomState> {
   private stepBallImproved(delta: number) {
     const ball = this.state.ball;
     const w = this.state.worldW, h = this.state.worldH;
-    const BALL_R = 18; // أكبر لضمان الاصطدام
-    const PADDLE_R = 34;
-    const HIT_DIST = BALL_R + PADDLE_R + 6; // 58 - مسافة كبيرة لعدم التفويت
+    const BALL_R = 14;
+    const PADDLE_R = 26;
+    const HIT_DIST = BALL_R + PADDLE_R;
 
     const totalVx = ball.vx * delta;
     const totalVy = ball.vy * delta;
@@ -619,7 +629,7 @@ class QoudRoom extends Room<QoudRoomState> {
       let bestHit: { side: PlayerSide; t: number; nx: number; ny: number; dist: number } | null = null;
 
       for (const side of this.activeSides) {
-        if (this.lastHitSide === side && Date.now() - this.lastHitTime < 30) continue; // تقليل الكولداون لمنع التفويت
+        if (this.lastHitSide === side && Date.now() - this.lastHitTime < 80) continue;
 
         const paddle = this.state.paddles.get(side)!;
         const px = paddle.x;
@@ -661,8 +671,8 @@ class QoudRoom extends Room<QoudRoomState> {
         const paddle = this.state.paddles.get(side)!;
         const pVel = this.paddleVel.get(side) || { vx: 0, vy: 0 };
 
-        ball.x = paddle.x + bestHit.nx * (HIT_DIST + 4);
-        ball.y = paddle.y + bestHit.ny * (HIT_DIST + 4);
+        ball.x = paddle.x + bestHit.nx * (HIT_DIST + 1.5);
+        ball.y = paddle.y + bestHit.ny * (HIT_DIST + 1.5);
 
         const currentSpeed = Math.hypot(ball.vx, ball.vy);
         const minHitSpeed = 3.5 + Number(this.settings.ballSpeed || 10) * 0.15;
@@ -684,13 +694,14 @@ class QoudRoom extends Room<QoudRoomState> {
         const maxAllowedSpeed = 16 + Number(this.settings.ballSpeed || 10) * 0.5;
         targetSpeed = Math.min(targetSpeed, maxAllowedSpeed);
 
-        let dirVx = bestHit.nx * 0.75 + pVel.vx * 0.25;
-        let dirVy = bestHit.ny * 0.75 + pVel.vy * 0.25;
+        // ارتداد قوي حسب اتجاه حركة المضرب - لكل اللاعبين
+        let dirVx = bestHit.nx * 0.55 + pVel.vx * 0.45;
+        let dirVy = bestHit.ny * 0.55 + pVel.vy * 0.45;
 
         const normalDot = dirVx * bestHit.nx + dirVy * bestHit.ny;
-        if (normalDot < 0.1) {
-          dirVx = bestHit.nx * 0.9 + pVel.vx * 0.1;
-          dirVy = bestHit.ny * 0.9 + pVel.vy * 0.1;
+        if (normalDot < 0.15) {
+          dirVx = bestHit.nx * 0.7 + pVel.vx * 0.3;
+          dirVy = bestHit.ny * 0.7 + pVel.vy * 0.3;
         }
 
         const dirMag = Math.hypot(dirVx, dirVy);

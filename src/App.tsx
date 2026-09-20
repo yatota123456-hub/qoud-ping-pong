@@ -823,7 +823,16 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const active = (side: Player['side']) => { return requiredSides.includes(side); };
     const opposite: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
     const resetBall = (missedSide?: Player['side']) => {
-      const scorerSide = missedSide? opposite[missedSide] : null;
+      let scorerSide = missedSide? opposite[missedSide] : null;
+      // تناوب الإرسال: لا يبدأ من نفس المضرب مرتين حتى لو 4 لاعبين
+      const lastServe = (state as any).lastServeSide || 'bottom';
+      if (scorerSide && scorerSide === lastServe) {
+        const allSides = requiredSides.filter(s => s !== lastServe);
+        if (allSides.length > 0) {
+          scorerSide = allSides[Math.floor(Math.random() * allSides.length)] as Player['side'];
+        }
+      }
+      if (scorerSide) (state as any).lastServeSide = scorerSide;
       const scorer = scorerSide? playerForSide(scorerSide) : null;
       state.countdown = 3; state.countdownStart = performance.now(); state.countdownSide = scorerSide as any; setCountdown(3); setCountdownName(scorer? scorer.name : '');
       state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ballTarget.x = world.w/2; state.ballTarget.y = world.h/2; state.ball.vx = 0; state.ball.vy = 0; state.rally = 0; setRally(0); state.speedMult = 1; hasDraggedRef.current=false; noDragStartRef.current=performance.now(); if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
@@ -915,21 +924,30 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               ball.y = paddle.y + ny * (HIT_DIST_BIG + 3);
               const curSpd = Math.hypot(ball.vx, ball.vy);
               const targetSpd = Math.max(curSpd, getInitialSpeed()) + 1.0;
-              // ارتداد قوي مع تأثير موضع الضربة
+              // ارتداد قوي حسب اتجاه حركة المضرب + موضع الضربة - لكل اللاعبين
+              const paddleMoveX = paddle.x - (state as any).prevPaddles?.[side]?.x || 0;
+              const paddleMoveY = paddle.y - (state as any).prevPaddles?.[side]?.y || 0;
+              // حفظ موضع سابق لحساب السرعة
+              if (!(state as any).prevPaddles) (state as any).prevPaddles = {};
+              if (!(state as any).prevPaddles[side]) (state as any).prevPaddles[side] = {x: paddle.x, y: paddle.y};
+              
               if (side === 'bottom') {
                 ball.vy = -Math.abs(targetSpd);
-                ball.vx = (ball.x - paddle.x) * 0.32;
+                ball.vx = (ball.x - paddle.x) * 0.42 + paddleMoveX * 0.55; // اتجاه حركة المضرب يؤثر
               } else if (side === 'top') {
                 ball.vy = Math.abs(targetSpd);
-                ball.vx = (ball.x - paddle.x) * 0.32;
+                ball.vx = (ball.x - paddle.x) * 0.42 + paddleMoveX * 0.55;
               } else if (side === 'left') {
                 ball.vx = Math.abs(targetSpd);
-                ball.vy = (ball.y - paddle.y) * 0.32;
+                ball.vy = (ball.y - paddle.y) * 0.42 + paddleMoveY * 0.55;
               } else {
                 ball.vx = -Math.abs(targetSpd);
-                ball.vy = (ball.y - paddle.y) * 0.32;
+                ball.vy = (ball.y - paddle.y) * 0.42 + paddleMoveY * 0.55;
               }
-              if (Math.abs(ball.vx) < 1.2) ball.vx = (Math.random() > 0.5 ? 1 : -1) * 1.5;
+              if (Math.abs(ball.vx) < 1.2 && (side === 'bottom' || side === 'top')) ball.vx = (Math.random() > 0.5 ? 1 : -1) * 1.8;
+              if (Math.abs(ball.vy) < 1.2 && (side === 'left' || side === 'right')) ball.vy = (Math.random() > 0.5 ? 1 : -1) * 1.8;
+              // تحديث الموضع السابق
+              (state as any).prevPaddles[side] = {x: paddle.x, y: paddle.y};
               state.rally++; setRally(state.rally);
             }
           });
@@ -995,8 +1013,13 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     if (paused || celebrating) return; if (isServing) { requestLaunch(); return; }
     (event.currentTarget as any).setPointerCapture?.(event.pointerId);
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 130 : 50;
-    let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
+    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 190 : 60; // زيادة المسافة ليظهر المضرب ولا يغطيه الإصبع
+    let tx=pt.x, ty=pt.y; 
+    // دائما الإصبع أسفل المضرب (جنوب) ليظهر المضرب ولا يغطيه الإصبع - لكل الجهات
+    if(mySide==='bottom') ty=pt.y-OFFSET; // إصبع أسفل المضرب
+    else if(mySide==='top') ty=pt.y-OFFSET; // حتى العلوي إصبعه أسفل المضرب (بين المضرب والوسط) ليظهر
+    else if(mySide==='left') { tx=pt.x; ty=pt.y-OFFSET; } // إصبع أسفل
+    else if(mySide==='right') { tx=pt.x; ty=pt.y-OFFSET; } // إصبع أسفل لكل الجهات
     hasDraggedRef.current=true; if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     drag.current = { side: mySide, x: tx, y: ty };
     stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
@@ -1005,8 +1028,13 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (!drag.current.side) return;
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 130 : 50;
-    let tx=pt.x, ty=pt.y; if(mySide==='bottom') ty=pt.y-OFFSET; if(mySide==='top') ty=pt.y+OFFSET; if(mySide==='left') tx=pt.x+OFFSET; if(mySide==='right') tx=pt.x-OFFSET;
+    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 190 : 60; // زيادة المسافة ليظهر المضرب ولا يغطيه الإصبع
+    let tx=pt.x, ty=pt.y; 
+    // دائما الإصبع أسفل المضرب (جنوب) ليظهر المضرب ولا يغطيه الإصبع - لكل الجهات
+    if(mySide==='bottom') ty=pt.y-OFFSET; // إصبع أسفل المضرب
+    else if(mySide==='top') ty=pt.y-OFFSET; // حتى العلوي إصبعه أسفل المضرب (بين المضرب والوسط) ليظهر
+    else if(mySide==='left') { tx=pt.x; ty=pt.y-OFFSET; } // إصبع أسفل
+    else if(mySide==='right') { tx=pt.x; ty=pt.y-OFFSET; } // إصبع أسفل لكل الجهات
     drag.current.x = tx; drag.current.y = ty;
     stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
     socket.sendPaddleTarget(tx, ty);

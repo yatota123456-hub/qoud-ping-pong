@@ -534,14 +534,31 @@ export function GameScreen3D({
 
   useEffect(() => {
     const savedCam = localStorage.getItem('qoud_camera_preset');
+    // لا نعرض المودال تلقائيا - المستخدم يستخدم زر تحميل في قائمة الكاميرا
     if (savedCam) {
       setSavedCamData(savedCam);
-      setShowRestoreModal(true);
+      // setShowRestoreModal(true); // معطل - التحميل يدوي عبر زر تحميل
     }
   }, []);
 
   const restoreCamera = () => {
+    const saved = localStorage.getItem('qoud_camera_preset') || localStorage.getItem('qoud_camera_settings');
+    if (saved) {
+      try {
+        const s = JSON.parse(saved);
+        cam.current.angle = s.angle ?? cam.current.angle;
+        cam.current.targetAngle = s.targetAngle ?? s.angle ?? cam.current.targetAngle;
+        cam.current.distance = s.distance ?? cam.current.distance;
+        cam.current.targetDistance = s.targetDistance ?? s.distance ?? cam.current.targetDistance;
+        cam.current.height = s.height ?? cam.current.height;
+        cam.current.targetHeight = s.targetHeight ?? s.height ?? cam.current.targetHeight;
+        if (s.targetX !== undefined) cam.current.targetX = s.targetX;
+        if (s.targetZ !== undefined) cam.current.targetZ = s.targetZ;
+      } catch {}
+    }
     setShowRestoreModal(false);
+    setCamSaved(true);
+    setTimeout(()=>setCamSaved(false), 2000);
   };
 
   const { i18n } = useTranslation();
@@ -587,6 +604,8 @@ export function GameScreen3D({
     }
   }, []);
 
+  const [camSaved, setCamSaved] = useState(false);
+  
   const saveCameraSettings = useCallback(() => {
     const settings = {
       angle: cam.current.angle,
@@ -595,8 +614,45 @@ export function GameScreen3D({
       targetAngle: cam.current.targetAngle,
       targetDistance: cam.current.targetDistance,
       targetHeight: cam.current.targetHeight,
+      targetX: cam.current.targetX,
+      targetZ: cam.current.targetZ,
+      lookX: cam.current.lookX,
+      lookZ: cam.current.lookZ,
+      savedAt: Date.now()
     };
     localStorage.setItem('qoud_camera_settings', JSON.stringify(settings));
+    localStorage.setItem('qoud_camera_preset', JSON.stringify(settings));
+    setCamSaved(true);
+    setShowCamMenu(false);
+    setTimeout(()=>setCamSaved(false), 2500);
+  }, []);
+
+  const loadCameraSettings = useCallback(() => {
+    const saved = localStorage.getItem('qoud_camera_settings') || localStorage.getItem('qoud_camera_preset');
+    if (saved) {
+      try {
+        const s = JSON.parse(saved);
+        cam.current.angle = s.angle ?? cam.current.angle;
+        cam.current.targetAngle = s.targetAngle ?? s.angle ?? cam.current.targetAngle;
+        cam.current.distance = s.distance ?? cam.current.distance;
+        cam.current.targetDistance = s.targetDistance ?? s.distance ?? cam.current.targetDistance;
+        cam.current.height = s.height ?? cam.current.height;
+        cam.current.targetHeight = s.targetHeight ?? s.height ?? cam.current.targetHeight;
+        if (s.targetX !== undefined) cam.current.targetX = s.targetX;
+        if (s.targetZ !== undefined) cam.current.targetZ = s.targetZ;
+        if (s.lookX !== undefined) cam.current.lookX = s.lookX;
+        if (s.lookZ !== undefined) cam.current.lookZ = s.lookZ;
+        setCamSaved(true);
+        setShowCamMenu(false);
+        setTimeout(()=>setCamSaved(false), 2000);
+        return true;
+      } catch {}
+    }
+    return false;
+  }, []);
+
+  const hasSavedCam = useCallback(() => {
+    return !!localStorage.getItem('qoud_camera_settings') || !!localStorage.getItem('qoud_camera_preset');
   }, []);
 
   const resetCameraToDefault = useCallback(() => {
@@ -767,8 +823,17 @@ export function GameScreen3D({
 
   useEffect(() => {
     // لا نعيد تعيين الكاميرا إذا اللعب بدأ - يمنع تكبير الكانفاس واختفاء الأهداف
-    if (!localReadyRef.current) {
+    // ولا نعيد تعيينها إذا هناك حفظ سابق - نحافظ على تعديل المستخدم
+    const hasSaved = localStorage.getItem('qoud_camera_settings');
+    if (!localReadyRef.current && !hasSaved) {
       cam.current = {...initialCam} as any;
+    } else if (hasSaved) {
+      try {
+        const s = JSON.parse(hasSaved);
+        cam.current = { ...cam.current, ...initialCam, ...s, targetAngle: s.targetAngle ?? s.angle ?? initialCam.angle, targetDistance: s.targetDistance ?? s.distance ?? initialCam.distance, targetHeight: s.targetHeight ?? s.height ?? initialCam.height };
+      } catch {
+        if (!localReadyRef.current) cam.current = {...initialCam} as any;
+      }
     }
   }, [initialCam]);
 
@@ -870,7 +935,7 @@ export function GameScreen3D({
       if(hintTextRef.current) hintTextRef.current.style.display='none';
       const mySide = getMySide();
       const isTouch = (e as any).pointerType === 'touch' || (e as any).pointerType === 'pen';
-      const OFFSET = isTouch? 140 : 70; // مسافة أكبر ليظهر المضرب ولا يغطيه الإصبع
+      const OFFSET = isTouch? 195 : 75; // زيادة كبيرة - الإصبع أسفل المضرب ولا يغطيه أبدا
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1299,9 +1364,18 @@ export function GameScreen3D({
               state.ball.vy = 0;
               state.ballTarget.vx = 0;
               state.ballTarget.vy = 0;
+              // تناوب الإرسال - لا يبدأ من نفس المضرب مرتين حتى لو 4
+              let nextServeSide = goalScoredSide;
+              const lastServe = (state as any).lastServeSide;
+              if (lastServe && nextServeSide === lastServe) {
+                const allSides = sidesForCount.filter(s => s !== lastServe) as Player['side'][];
+                if (allSides.length > 0) nextServeSide = allSides[Math.floor(Math.random() * allSides.length)];
+              }
+              (state as any).lastServeSide = nextServeSide;
+              
               state.countdown = 3;
               state.countdownStart = now;
-              state.countdownSide = goalScoredSide; // لحساب اتجاه الكرة بعد العد
+              state.countdownSide = nextServeSide; // لحساب اتجاه الكرة بعد العد - متناوب
               setCountdown(3);
               setCountdownSide(goalScoredSide);
               state.rally = 0;
@@ -1368,7 +1442,7 @@ export function GameScreen3D({
               state.ball.y += ny * overlap;
 
               // حساب الارتداد مع سرعة المضرب - مثل Air Hockey الحقيقي
-              const paddleSpeedFactor = 0.35;
+              const paddleSpeedFactor = 0.62; // زيادة قوية حسب طلب المستخدم - اتجاه المضرب
               const ballVelDotNormal = state.ball.vx * nx + state.ball.vy * ny;
               
               // ارتداد مع إضافة سرعة المضرب
@@ -1381,9 +1455,9 @@ export function GameScreen3D({
                 : (state.ball.y - paddle.z) / PADDLE_RADIUS;
               
               if (side === 'bottom' || side === 'top') {
-                newVx += hitOffset * 3.5; // ضرب الحافة يغير المسار أفقياً
+                newVx += hitOffset * 4.2; // تأثير حافة أقوى // ضرب الحافة يغير المسار أفقياً
               } else {
-                newVy += hitOffset * 3.5;
+                newVy += hitOffset * 4.2;
               }
 
               // زيادة السرعة قليلاً مع كل ضربة - Rally
@@ -1822,6 +1896,27 @@ export function GameScreen3D({
         </button>
       )}
 
+      {/* رسالة حفظ الكاميرا */}
+      {camSaved && (
+        <div style={{
+          position:'fixed',
+          bottom:'160px',
+          left:'50%',
+          transform:'translateX(-50%)',
+          background:'#00e5ff',
+          color:'#000',
+          padding:'10px 20px',
+          borderRadius:'999px',
+          fontWeight:900,
+          fontSize:'13px',
+          zIndex:10006,
+          boxShadow:'0 4px 20px rgba(0,229,255,0.5)',
+          animation:'fadeIn 0.3s'
+        }}>
+          ✓ تم حفظ الكاميرا - ستبدأ بها اللعبة
+        </div>
+      )}
+
         {showCamMenu && !hideUI && (
           <div style={{ 
             position: 'absolute', 
@@ -1865,14 +1960,29 @@ export function GameScreen3D({
                 div::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
               `}</style>
 
-              {/* Save - سماوي */}
-              <button onClick={saveCameraSettings} title="حفظ الكاميرا" style={{
+              {/* Save - سماوي - يحفظ ويغلق */}
+              <button onClick={saveCameraSettings} title="حفظ الكاميرا وإغلاق" style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#00e5ff', border:'2px solid #000', borderRadius:12,
                 display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
                 cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(0,229,255,0.4)', gap:2
               }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Save</span>
+                <Save size={16} color="#000" strokeWidth={2.5}/>
+                <span style={{fontSize:9, fontWeight:900, color:'#000'}}>حفظ</span>
+              </button>
+
+              {/* Load - أخضر فاتح - يحمل المحفوظ */}
+              <button onClick={loadCameraSettings} title="تحميل الكاميرا المحفوظة" style={{
+                width:64, height:52, minHeight:52, flexShrink:0,
+                background: hasSavedCam() ? '#a7f3d0' : '#e5e7eb', border:'2px solid #000', borderRadius:12,
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor: hasSavedCam() ? 'pointer' : 'not-allowed', 
+                boxShadow: hasSavedCam() ? '0 2px 0 #000, 0 4px 12px rgba(167,243,208,0.4)' : '0 2px 0 #000', 
+                gap:2,
+                opacity: hasSavedCam() ? 1 : 0.5
+              }}>
+                <Video size={14} color="#000" strokeWidth={2.5}/>
+                <span style={{fontSize:9, fontWeight:900, color:'#000'}}>تحميل</span>
               </button>
 
               {/* Rest / Reset - برتقالي */}
