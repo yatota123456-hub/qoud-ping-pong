@@ -584,6 +584,8 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
 }
 
 
+
+
 function WaitingRoom({ room, players, isHost, error, onBack, onStart, onRefresh }: any) {
   const [copied, setCopied] = useState(false); const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
   const copyCode = async () => { try { await navigator.clipboard.writeText(room); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
@@ -764,11 +766,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         return;
       }
       if (celebratingRef.current) {
-        // أوقف اللعب كلياً بعد الفوز
-        state.ball.vx = 0;
-        state.ball.vy = 0;
-        state.ballTarget.vx = 0;
-        state.ballTarget.vy = 0;
+        state.ball.x += state.ball.vx * 0.28 * delta;
+        state.ball.y += state.ball.vy * 0.28 * delta;
+        if (state.ball.x < 30 || state.ball.x > world.w-30) state.ball.vx *= -1;
+        if (state.ball.y < 30 || state.ball.y > world.h-30) state.ball.vy *= -1;
         draw(context, state, players, now, false, world, myAngle);
         frame = requestAnimationFrame(tick);
         return;
@@ -928,62 +929,57 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             prev.x = paddle.x;
             prev.y = paddle.y;
           });
-          // === إصلاح الارتداد: هدف أصغر + جدار يرتد ===
-          const WALL_BOUNCE_R = 16;
-          const goalW = Math.min(360, Math.max(220, w * 0.32));
-          const goalH = Math.min(360, Math.max(220, h * 0.32));
-          const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW, gy1 = (h - goalH) / 2, gy2 = gy1 + goalH;
-          const EDGE_MARGIN = 24;
-          if (ball.y < WALL_BOUNCE_R) {
+          const goalW = Math.min(360, Math.max(220, w * 0.32)); // fix // أكبر من فوق الإطار على كل الساحات - 2 - أكبر بكثير
+          const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW, gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
+          const EDGE_MARGIN = 38; // هامش ارتداد أطراف الهدف - إصلاح 1
+          // هدف علوي مع ارتداد حواف
+          if (ball.y < 18) {
             if (active('top') && ball.x >= gx1 && ball.x <= gx2) {
+              // داخل الهدف - هدف
               onGoalRef.current(playerForSide('bottom')); resetBall('top');
+            } else if (ball.x >= gx1 - EDGE_MARGIN && ball.x <= gx1 + 12) {
+              // حافة يسار الهدف العلوي - ارتداد قوي
+              ball.x = gx1 - 22; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
+            } else if (ball.x >= gx2 - 12 && ball.x <= gx2 + EDGE_MARGIN) {
+              ball.x = gx2 + 22; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
             } else {
-              if (ball.x >= gx1 - EDGE_MARGIN && ball.x <= gx1 + 12) {
-                ball.x = gx1 - WALL_BOUNCE_R - 6; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
-              } else if (ball.x >= gx2 - 12 && ball.x <= gx2 + EDGE_MARGIN) {
-                ball.x = gx2 + WALL_BOUNCE_R + 6; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
-              } else {
-                ball.y = WALL_BOUNCE_R; ball.vy = Math.abs(ball.vy) * 1.05;
-              }
+              ball.y = 18; ball.vy = Math.abs(ball.vy);
             }
           }
-          if (ball.y > h - WALL_BOUNCE_R) {
+          // هدف سفلي مع ارتداد حواف
+          if (ball.y > h - 18) {
             if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) {
               onGoalRef.current(playerForSide('top')); resetBall('bottom');
+            } else if (ball.x >= gx1 - EDGE_MARGIN && ball.x <= gx1 + 12) {
+              ball.x = gx1 - 22; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
+            } else if (ball.x >= gx2 - 12 && ball.x <= gx2 + EDGE_MARGIN) {
+              ball.x = gx2 + 22; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
             } else {
-              if (ball.x >= gx1 - EDGE_MARGIN && ball.x <= gx1 + 12) {
-                ball.x = gx1 - WALL_BOUNCE_R - 6; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
-              } else if (ball.x >= gx2 - 12 && ball.x <= gx2 + EDGE_MARGIN) {
-                ball.x = gx2 + WALL_BOUNCE_R + 6; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
-              } else {
-                ball.y = h - WALL_BOUNCE_R; ball.vy = -Math.abs(ball.vy) * 1.05;
-              }
+              ball.y = h - 18; ball.vy = -Math.abs(ball.vy);
             }
           }
-          if (ball.x < WALL_BOUNCE_R) {
+          // هدف يسار مع ارتداد حواف
+          if (ball.x < 18) {
             if (active('left') && ball.y >= gy1 && ball.y <= gy2) {
               onGoalRef.current(playerForSide('right')); resetBall('left');
+            } else if (ball.y >= gy1 - EDGE_MARGIN && ball.y <= gy1 + 12) {
+              ball.y = gy1 - 22; ball.vy = -Math.abs(ball.vy) * 1.1; ball.vx = Math.abs(ball.vx);
+            } else if (ball.y >= gy2 - 12 && ball.y <= gy2 + EDGE_MARGIN) {
+              ball.y = gy2 + 22; ball.vy = Math.abs(ball.vy) * 1.1; ball.vx = Math.abs(ball.vx);
             } else {
-              if (ball.y >= gy1 - EDGE_MARGIN && ball.y <= gy1 + 12) {
-                ball.y = gy1 - WALL_BOUNCE_R - 6; ball.vy = -Math.abs(ball.vy) * 1.1; ball.vx = Math.abs(ball.vx);
-              } else if (ball.y >= gy2 - 12 && ball.y <= gy2 + EDGE_MARGIN) {
-                ball.y = gy2 + WALL_BOUNCE_R + 6; ball.vy = Math.abs(ball.vy) * 1.1; ball.vx = Math.abs(ball.vx);
-              } else {
-                ball.x = WALL_BOUNCE_R; ball.vx = Math.abs(ball.vx) * 1.05;
-              }
+              ball.x = 18; ball.vx = Math.abs(ball.vx);
             }
           }
-          if (ball.x > w - WALL_BOUNCE_R) {
+          // هدف يمين مع ارتداد حواف
+          if (ball.x > w - 18) {
             if (active('right') && ball.y >= gy1 && ball.y <= gy2) {
               onGoalRef.current(playerForSide('left')); resetBall('right');
+            } else if (ball.y >= gy1 - EDGE_MARGIN && ball.y <= gy1 + 12) {
+              ball.y = gy1 - 22; ball.vy = -Math.abs(ball.vy) * 1.1; ball.vx = -Math.abs(ball.vx);
+            } else if (ball.y >= gy2 - 12 && ball.y <= gy2 + EDGE_MARGIN) {
+              ball.y = gy2 + 22; ball.vy = Math.abs(ball.vy) * 1.1; ball.vx = -Math.abs(ball.vx);
             } else {
-              if (ball.y >= gy1 - EDGE_MARGIN && ball.y <= gy1 + 12) {
-                ball.y = gy1 - WALL_BOUNCE_R - 6; ball.vy = -Math.abs(ball.vy) * 1.1; ball.vx = -Math.abs(ball.vx);
-              } else if (ball.y >= gy2 - 12 && ball.y <= gy2 + EDGE_MARGIN) {
-                ball.y = gy2 + WALL_BOUNCE_R + 6; ball.vy = Math.abs(ball.vy) * 1.1; ball.vx = -Math.abs(ball.vx);
-              } else {
-                ball.x = w - WALL_BOUNCE_R; ball.vx = -Math.abs(ball.vx) * 1.05;
-              }
+              ball.x = w - 18; ball.vx = -Math.abs(ball.vx);
             }
           }
           const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
@@ -1292,23 +1288,82 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
   const canvas = context.canvas as HTMLCanvasElement; const sx = canvas.width / world.w; const sy = canvas.height / world.h;
   context.save(); context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height); context.restore();
   context.save(); context.translate(world.w/2, world.h/2); context.rotate(myAngle); context.translate(-world.w/2, -world.h/2);
-  const outerRadius = 36; const borderOuter = 32; const borderInner = 14; const countdown = (state as any).countdown || 0;
+  const outerRadius = 22; const borderThick = 28; const innerMargin = 10; const countdown = (state as any).countdown || 0;
+  // خلفية سوداء خارجية
   context.fillStyle = '#000000'; context.fillRect(0, 0, world.w, world.h);
   const rr = (x: number, y: number, w: number, h: number, r: number) => { context.beginPath(); context.moveTo(x + r, y); context.lineTo(x + w - r, y); context.quadraticCurveTo(x + w, y, x + w, y + r); context.lineTo(x + w, y + h - r); context.quadraticCurveTo(x + w, y + h, x + w - r, y + h); context.lineTo(x + r, y + h); context.quadraticCurveTo(x, y + h, x, y + h - r); context.lineTo(x, y + r); context.quadraticCurveTo(x, y, x + r, y); context.closePath(); };
-  context.fillStyle = '#0c0c0c'; rr(0, 0, world.w, world.h, outerRadius); context.fill();
-  const ledX = borderOuter - 6; const ledY = borderOuter - 6; const ledW = world.w - (borderOuter - 6) * 2; const ledH = world.h - (borderOuter - 6) * 2; const ledR = outerRadius - 10;
-  let ledGrad: CanvasGradient;
-  if (typeof (context as any).createConicGradient === 'function') { ledGrad = (context as any).createConicGradient(-Math.PI * 0.78, world.w / 2, world.h / 2); ledGrad.addColorStop(0.00, '#00e5ff'); ledGrad.addColorStop(0.20, '#7c4dff'); ledGrad.addColorStop(0.40, '#ff2d78'); ledGrad.addColorStop(0.60, '#ff7a28'); ledGrad.addColorStop(0.80, '#ffcf5a'); ledGrad.addColorStop(1.00, '#00e5ff'); } else { ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH); ledGrad.addColorStop(0, '#00e5ff'); ledGrad.addColorStop(0.5, '#ff2d78'); ledGrad.addColorStop(1, '#ff8a2a'); }
-  context.save(); context.shadowBlur = 35; context.shadowColor = '#00e5ff'; context.strokeStyle = ledGrad; context.lineWidth = 12; context.lineCap = 'round'; rr(ledX, ledY, ledW, ledH, ledR); context.stroke(); context.restore();
-  context.strokeStyle = 'rgba(255,255,255,0.95)'; context.lineWidth = 4; rr(ledX, ledY, ledW, ledH, ledR); context.stroke();
-  const innerX = borderOuter + borderInner; const innerY = borderOuter + borderInner; const innerW = world.w - (borderOuter + borderInner) * 2; const innerH = world.h - (borderOuter + borderInner) * 2; const innerR = outerRadius - 18;
-  context.fillStyle = '#f3f5f7'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
+  // إطار أحمر سميك مثل الصورة - مع فتحة سوداء للهدف
+  const GOAL_W = Math.min(360, Math.max(180, world.w * 0.32));
+  const GOAL_H = Math.min(360, Math.max(180, world.h * 0.32));
+  const GX1 = (world.w - GOAL_W) / 2; const GX2 = GX1 + GOAL_W;
+  const GY1 = (world.h - GOAL_H) / 2; const GY2 = GY1 + GOAL_H;
+
+  // رسم الإطار الأحمر مع قطع مكان الهدف (أسود)
   const colors = Object.fromEntries(players.map((player) => [player.side, player.color]));
   const active = (side: Player['side']) => { if (players.some((player) => player.side === side)) return true; const count = Math.max(2, players.length || 2); const req = count === 2 ? ['bottom','top'] : ['bottom','top','right','left']; return (req as string[]).includes(side); };
-  const GOAL_W = players.length === 2? 560 : 680; // أكبر من فوق الإطار على كل الساحات - 2 const GX1 = (world.w - GOAL_W) / 2; const GY1 = (world.h - GOAL_W) / 2;
-  const drawGoal = (x: number, y: number, w: number, h: number, col: string) => { context.fillStyle = '#000000'; context.fillRect(x, y, w, h); context.fillStyle = col + '33'; context.fillRect(x, y, w, h); context.strokeStyle = col; context.lineWidth = 2.5; context.shadowColor = col; context.shadowBlur = 12; context.strokeRect(x, y, w, h); context.shadowBlur = 0; };
-  if (active('top')) drawGoal(GX1, 0, GOAL_W, borderOuter + 2, colors.top?? COLORS[1]); if (active('bottom')) drawGoal(GX1, world.h - (borderOuter + 2), GOAL_W, borderOuter + 2, colors.bottom?? COLORS[0]); if (active('left')) drawGoal(0, GY1, borderOuter + 2, GOAL_W, colors.left?? COLORS[3]); if (active('right')) drawGoal(world.w - (borderOuter + 2), GY1, borderOuter + 2, GOAL_W, colors.right?? COLORS[2]);
-  const drawHatPaddle = (x: number, y: number, color: string) => { const size = PADDLE_SIZE; context.save(); const clampedX = Math.max(innerX + size / 2, Math.min(innerX + innerW - size / 2, x)); const clampedY = Math.max(innerY + size / 2, Math.min(innerY + innerH - size / 2, y)); context.translate(clampedX, clampedY); context.shadowColor = color; context.shadowBlur = 20; const img = getColoredPaddle(color, size); context.drawImage(img, -size / 2, -size / 2, size, size); context.restore(); };
+
+  // طبقة الإطار الأحمر
+  context.fillStyle = '#d32f2f'; // أحمر مثل الصورة
+  // علوي: جزئين يسار ويمين الفتحة
+  if (active('top')) {
+    context.fillRect(0, 0, GX1, borderThick); // يسار الفتحة
+    context.fillRect(GX2, 0, world.w - GX2, borderThick); // يمين الفتحة
+  } else {
+    context.fillRect(0, 0, world.w, borderThick);
+  }
+  // سفلي
+  if (active('bottom')) {
+    context.fillRect(0, world.h - borderThick, GX1, borderThick);
+    context.fillRect(GX2, world.h - borderThick, world.w - GX2, borderThick);
+  } else {
+    context.fillRect(0, world.h - borderThick, world.w, borderThick);
+  }
+  // يسار
+  if (active('left')) {
+    context.fillRect(0, 0, borderThick, GY1);
+    context.fillRect(0, GY2, borderThick, world.h - GY2);
+  } else {
+    context.fillRect(0, 0, borderThick, world.h);
+  }
+  // يمين
+  if (active('right')) {
+    context.fillRect(world.w - borderThick, 0, borderThick, GY1);
+    context.fillRect(world.w - borderThick, GY2, borderThick, world.h - GY2);
+  } else {
+    context.fillRect(world.w - borderThick, 0, borderThick, world.h);
+  }
+
+  // الفتحات السوداء - مكان دخول الكرة فقط
+  context.fillStyle = '#000000';
+  if (active('top')) context.fillRect(GX1, 0, GOAL_W, borderThick);
+  if (active('bottom')) context.fillRect(GX1, world.h - borderThick, GOAL_W, borderThick);
+  if (active('left')) context.fillRect(0, GY1, borderThick, GOAL_H);
+  if (active('right')) context.fillRect(world.w - borderThick, GY1, borderThick, GOAL_H);
+
+  // الساحة الداخلية بيضاء مع خطوط
+  const innerX = borderThick + innerMargin; const innerY = borderThick + innerMargin;
+  const innerW = world.w - (borderThick + innerMargin) * 2; const innerH = world.h - (borderThick + innerMargin) * 2;
+  const innerR = 12;
+  context.fillStyle = '#f5f5f0'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
+  // خط المنتصف ودوائر
+  context.strokeStyle = 'rgba(0,0,0,0.08)'; context.lineWidth = 1.5; context.setLineDash([8,8]);
+  context.beginPath(); context.moveTo(world.w/2, innerY); context.lineTo(world.w/2, innerY+innerH); context.stroke();
+  context.beginPath(); context.moveTo(innerX, world.h/2); context.lineTo(innerX+innerW, world.h/2); context.stroke();
+  context.setLineDash([]);
+  // دوائر المنتصف
+  context.strokeStyle = 'rgba(211,47,47,0.25)'; context.lineWidth = 2;
+  context.beginPath(); context.arc(world.w/2, world.h/2, 90, 0, Math.PI*2); context.stroke();
+  context.beginPath(); context.arc(innerX+innerW*0.25, world.h/2, 70, 0, Math.PI*2); context.stroke();
+  context.beginPath(); context.arc(innerX+innerW*0.75, world.h/2, 70, 0, Math.PI*2); context.stroke();
+
+  const drawGoalGlow = (x: number, y: number, w: number, h: number, col: string) => {
+    context.fillStyle = col + '18'; context.fillRect(x, y, w, h);
+    context.strokeStyle = col; context.lineWidth = 2; context.shadowColor = col; context.shadowBlur = 10; context.strokeRect(x, y, w, h); context.shadowBlur = 0;
+  };
+  if (active('top')) drawGoalGlow(GX1, 0, GOAL_W, borderThick, colors.top?? COLORS[1]);
+  if (active('bottom')) drawGoalGlow(GX1, world.h - borderThick, GOAL_W, borderThick, colors.bottom?? COLORS[0]);
+  if (active('left')) drawGoalGlow(0, GY1, borderThick, GOAL_H, colors.left?? COLORS[3]);
+  if (active('right')) drawGoalGlow(world.w - borderThick, GY1, borderThick, GOAL_H, colors.right?? COLORS[2]);
   if (active('top')) drawHatPaddle(state.paddles.top.x, state.paddles.top.y, colors.top?? COLORS[1]); if (active('bottom')) drawHatPaddle(state.paddles.bottom.x, state.paddles.bottom.y, colors.bottom?? COLORS[0]); if (active('left')) drawHatPaddle(state.paddles.left.x, state.paddles.left.y, colors.left?? COLORS[3]); if (active('right')) drawHatPaddle(state.paddles.right.x, state.paddles.right.y, colors.right?? COLORS[2]);
   if (countdown > 0) { context.save(); context.fillStyle = 'rgba(0,0,0,0.78)'; context.fillRect(0, 0, world.w, world.h); context.fillStyle = '#ff2233'; context.font = 'bold 120px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.shadowColor = '#ff2233'; context.shadowBlur = 28; context.fillText(String(countdown), world.w / 2, world.h / 2); context.shadowBlur = 0; context.restore(); }
   const screenRadius = 11 * Math.min(sx, sy); const rx = screenRadius / sx; const ry = screenRadius / sy;
@@ -1338,20 +1393,6 @@ function ResultsScreen({ players, scores, winner, wins, seriesWins, currentRound
   const [showFire, setShowFire] = useState(true);
   const sortedCurrent = [...players].sort((a:any,b:any)=>(scores[b.id]??0)-(scores[a.id]??0));
   const sortedAllTime = Object.entries(wins as Record<string,number>).sort((a:any,b:any)=>b[1]-a[1]).slice(0,20);
-  const getPlayerStats = (p:any) => {
-    const goals = scores[p.id] ?? 0;
-    const seriesW = (seriesWins as any)?.[p.id] ?? 0;
-    const isSeries = settings?.seriesType === 'series';
-    let won = 0, lost = 0;
-    if (isSeries) {
-      won = seriesW;
-      lost = Math.max(0, (currentRound - 1) - won + (winner ? (winner.id === p.id ? 0 : 1) : 0));
-    } else {
-      won = winner?.id === p.id ? 1 : 0;
-      lost = winner ? (winner.id === p.id ? 0 : 1) : 0;
-    }
-    return { goals, won, lost };
-  };
   useEffect(()=>{
     const canvas = canvasRef.current; if(!canvas) return; const c = canvas.getContext('2d'); if(!c) return;
     canvas.width = window.innerWidth; canvas.height = window.innerHeight;
@@ -1368,42 +1409,44 @@ function ResultsScreen({ players, scores, winner, wins, seriesWins, currentRound
       {showFire&&<><div style={{position:'fixed',inset:0,animation:'flash 0.6s ease 2',pointerEvents:'none',zIndex:20}}/><canvas ref={canvasRef} style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:15}}/></>}
       <header className="topbar"><Brand /></header>
       <section style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap:16, padding: 16, minHeight:'100%', position:'relative', zIndex:10 }}>
-        <div style={{ background: '#111', padding: 24, borderRadius: 24, textAlign: 'center', border: '2px solid #ffcf5a', width: '100%', maxWidth: 560, boxShadow: showFire?'0 0 40px #ffcf5a':'' }}>
-          <h1 style={{ color: '#ffcf5a', fontSize: '2rem', marginBottom: 12, fontWeight: 900 }}>
-            {settings?.seriesType==='series' ? (winner?.name ? `🏆 ${winner.name} بطل السلسلة!` : '🤝 تعادل السلسلة!') : (winner?.name ? `🏆 ${winner.name} فاز!` : 'انتهت')}
-          </h1>
-          <div style={{ background:'#0a0a0a', border:'1px solid #222', borderRadius:14, overflow:'hidden', marginTop:12 }}>
-            <div style={{ display:'grid', gridTemplateColumns:'2fr 0.7fr 0.7fr 0.8fr', background:'#1a1a1a', padding:'10px 12px', fontWeight:900, fontSize:'13px', color:'#ffcf5a', borderBottom:'1px solid #333' }}>
-              <span style={{textAlign:'right'}}>اللاعب</span>
-              <span style={{textAlign:'center'}}>فاز</span>
-              <span style={{textAlign:'center'}}>خسر</span>
-              <span style={{textAlign:'center'}}>الأهداف</span>
+        <div style={{ background: '#111', padding: 24, borderRadius: 24, textAlign: 'center', border: '2px solid #ffcf5a', width: '100%', maxWidth: 460, boxShadow: showFire?'0 0 40px #ffcf5a':'' }}>
+        <h1 style={{ color: '#ffcf5a', fontSize: '2.2rem', marginBottom: 8 }}>
+  {settings?.seriesType==='series' ? (
+    winner?.name ? `🏆 ${winner.name} بطل السلسلة!` : '🤝 تعادل السلسلة!'
+  ) : (
+    winner?.name ? `🏆 ${winner.name} ${isAr ? 'فاز!' : 'Wins!'}` : (isAr ? 'انتهت' : 'Game Over')
+  )}
+</h1>
+          {settings?.seriesType==='series' && seriesWins && (
+            <div style={{background:'#000',border:'1.5px solid #ffcf5a',borderRadius:12,padding:10,marginBottom:12}}>
+              <div style={{color:'#ffcf5a',fontWeight:900,fontSize:12,marginBottom:6}}>نتائج الجولات {Object.values(seriesWins as any).reduce((a:any,b:any)=>a+b,0)}/{settings.seriesRounds} • كراش</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'center'}}>
+                {players.map((p:any)=><div key={p.id} style={{background: p.id===winner?.id?'#2a2200':'#111',border:`1px solid ${p.color}`,borderRadius:8,padding:'6px 10px',display:'flex',alignItems:'center',gap:6}}><span style={{width:8,height:8,borderRadius:'50%',background:p.color}}/><span style={{color:'#fff',fontSize:12}}>{p.name}</span><b style={{color:p.color}}>{(seriesWins as any)[p.id]??0}</b></div>)}
+              </div>
+              {!winner && <div style={{marginTop:8,color:'#fff',fontSize:11,background:'#222',borderRadius:999,padding:'4px 10px',display:'inline-block'}}>تعادل {Object.values(seriesWins as any).join('-')} • تعد الجولات</div>}
             </div>
-            {sortedCurrent.map((p:any, idx:number)=>{
-              const st = getPlayerStats(p);
-              const isWinner = winner?.id === p.id;
-              return (
-                <div key={p.id} style={{ display:'grid', gridTemplateColumns:'2fr 0.7fr 0.7fr 0.8fr', alignItems:'center', background: isWinner ? '#2a2200' : (idx%2===0?'#111':'#0f0f0f'), borderBottom: idx < sortedCurrent.length-1 ? '1px solid #1e1e1e' : 'none', padding:'12px', borderLeft: `4px solid ${p.color}` }}>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}><span style={{width:10,height:10,borderRadius:'50%',background:p.color}}/><span style={{color:'#fff',fontWeight:700}}>{p.name}</span>{isWinner&&<span>👑</span>}</div>
-                  <span style={{textAlign:'center', color: st.won>0 ? '#4CAF50' : '#888', fontWeight:900}}>{st.won}</span>
-                  <span style={{textAlign:'center', color: st.lost>0 ? '#ff6b6b' : '#888', fontWeight:900}}>{st.lost}</span>
-                  <strong style={{textAlign:'center', color:p.color, fontSize:'18px'}}>{st.goals}</strong>
-                </div>
-              );
-            })}
+          )}
+          <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:16}}>
+            <b style={{color:'#fff'}}>ترتيب هذه المباراة</b>
+            {sortedCurrent.map((p:any, idx:number)=>(
+              <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',background: idx===0?'#2a2200':'#0a0a0a',border:`1px solid ${p.color}`,borderRadius:10,padding:'10px 12px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontWeight:900,width:20}}>{idx+1}</span><span style={{width:10,height:10,borderRadius:'50%',background:p.color}}/><span style={{color:'#fff',fontWeight:700}}>{p.name}</span>{winner?.id===p.id&&<span>👑</span>}</div>
+                <strong style={{color:p.color,fontSize:18}}>{scores[p.id]??0}</strong>
+              </div>
+            ))}
           </div>
           <div style={{display:'flex',gap:10,marginTop:18}}>
-            <button className="primary-cta" onClick={onAgain} style={{ flex: 1, height:44, borderRadius:12, background:'#ffcf5a', color:'#000', fontWeight:900, border:'2px solid #000' }}>مرة أخرى</button>
-            <button className="secondary-btn" onClick={onHome} style={{ flex: 1, height:44, borderRadius:12, background:'#222', color:'#fff', fontWeight:700, border:'1px solid #333' }}>الرئيسية</button>
+            <button className="primary-cta" onClick={onAgain} style={{ flex: 1 }}>{isAr? 'مرة أخرى' : 'Again'}</button>
+            <button className="secondary-btn" onClick={onHome} style={{ flex: 1 }}>{isAr? 'الرئيسية' : 'Home'}</button>
           </div>
         </div>
-        <div style={{ background: '#0a0a0a', border:'1px solid #222', borderRadius:16, padding:16, width:'100%', maxWidth:560 }}>
+        <div style={{ background: '#0a0a0a', border:'1px solid #222', borderRadius:16, padding:16, width:'100%', maxWidth:460 }}>
           <b style={{color:'#00e5ff'}}>📊 ترتيب الفائزين المحفوظ</b>
           <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:10}}>
-            {sortedAllTime.length===0&&<span style={{color:'#666'}}>لا يوجد فائزين بعد</span>}
+            {sortedAllTime.length===0&&<span style={{color:'#666'}}>{isAr?'لا يوجد فائزين بعد':'No winners yet'}</span>}
             {sortedAllTime.map(([name,count]:any, idx:number)=>(
               <div key={name} style={{display:'flex',justifyContent:'space-between',background:'#111',borderRadius:8,padding:'8px 12px'}}>
-                <span style={{color:'#fff'}}>{idx+1}. {name}</span><b style={{color:'#ffcf5a'}}>{count} فوز</b>
+                <span style={{color:'#fff'}}>{idx+1}. {name}</span><b style={{color:'#ffcf5a'}}>{count} {isAr?'فوز':'wins'}</b>
               </div>
             ))}
           </div>
@@ -1412,6 +1455,5 @@ function ResultsScreen({ players, scores, winner, wins, seriesWins, currentRound
     </main>
   );
 }
-
 
 export default App;

@@ -204,8 +204,8 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   });
   // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.68; // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
-  const goalGapH = worldH * 0.58; // أكبر
+  const goalGapW = worldW * 0.32; // مثل الصورة - فتحة سوداء 32% فقط // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
+  const goalGapH = worldH * 0.32; // مثل الصورة // أكبر
   
   const bezelPieces: any[] = [];
 
@@ -276,7 +276,7 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   outerTube.position.y = 26;
   group.add(outerTube);
   // الأهداف - تكبير كبير مثل الصورة المرفقة - مهمة جداً
-  const goalW = Math.max(680, worldW * 0.78); // أكبر من فوق الإطار - 2 - أكبر
+  const goalW = Math.min(360, Math.max(180, worldW * 0.32)); // أكبر من فوق الإطار - 2 - أكبر
   const goalH = 36;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
@@ -293,7 +293,7 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
   group.add(goalLightBottom);
   if (worldW >= 900) {
-    const sideGoalW = Math.max(320, worldH * 0.42);
+    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.32));
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, sideGoalW), goalMat);
     goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
     group.add(goalLeft);
@@ -339,8 +339,8 @@ function createArenaFrameModern(worldW: number, worldH: number) {
   };
   // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.68; // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
-  const goalGapH = worldH * 0.58; // أكبر
+  const goalGapW = worldW * 0.32; // مثل الصورة - فتحة سوداء 32% فقط // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
+  const goalGapH = worldH * 0.32; // مثل الصورة // أكبر
   
   const bezelPieces: any[] = [];
 
@@ -391,7 +391,7 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     group.add(glowMesh);
   });
   // الأهداف - تكبير كبير مثل الصورة المرفقة - تمت إضافتها الآن
-  const goalW = Math.max(720, worldW * 0.82); // أكبر من فوق الإطار - 2 - أكبر
+  const goalW = Math.min(360, Math.max(180, worldW * 0.32)); // فتحة سوداء 32% مثل الصورة // أكبر من فوق الإطار - 2 - أكبر
   const goalH = 32;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.2, metalness: 0.1, emissive: '#111111', emissiveIntensity: 0.15 });
   // هدف علوي - كبير مثل الصورة
@@ -410,7 +410,7 @@ function createArenaFrameModern(worldW: number, worldH: number) {
   goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
   group.add(goalLightBottom);
   if (worldW >= 800) {
-    const sideGoalW = Math.max(380, worldH * 0.48);
+    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.32)); // 32% مثل الصورة
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 6, goalH, sideGoalW), goalMat);
     goalLeft.position.set(-bezelThickness/2 - 3, bezelY+2, worldH/2);
     group.add(goalLeft);
@@ -1344,21 +1344,13 @@ export function GameScreen3D({
             }
 
             // اصطدام بالجدران (ليس الأهداف) - الأهداف كبيرة وظاهرة مثل الأسهم
-            const goalHalfW = Math.min(300, Math.max(140, world.w * 0.22)); // أكبر من فوق الإطار - 2 - أكبر بكثير
-            const sideGoalHalfW = Math.min(300, Math.max(140, world.h * 0.22)); // أكبر
+            const goalHalfW = Math.min(180, Math.max(90, world.w * 0.16)); // 16% نصف الفتحة - مثل الصورة السوداء
+            const sideGoalHalfW = Math.min(180, Math.max(90, world.h * 0.16)); // 16% مثل الصورة
             const leftBound = BALL_RADIUS;
             const rightBound = world.w - BALL_RADIUS;
             const topBound = BALL_RADIUS;
             const bottomBound = world.h - BALL_RADIUS;
             
-            // === إصلاح 2: أوقف اللعب كلياً بعد الفوز ===
-            if (celebrating) {
-              state.ball.vx = 0;
-              state.ball.vy = 0;
-              state.ballTarget.vx = 0;
-              state.ballTarget.vy = 0;
-            }
-
             // إصلاح 1: أطراف الهدف الكرة ترتد - معالجة الزوايا والحواف
             // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين فقط + ارتداد حواف الهدف
             if (state.ball.x < leftBound) {
@@ -1421,13 +1413,6 @@ export function GameScreen3D({
                 }
               }
             }
-            // === إصلاح نهائي: منع الاختراق ===
-            if (state.ball.x < BALL_RADIUS) state.ball.x = BALL_RADIUS;
-            if (state.ball.x > world.w - BALL_RADIUS) state.ball.x = world.w - BALL_RADIUS;
-            // فقط إذا خارج الهدف نمنع الاختراق العلوي/السفلي
-            if (state.ball.y < BALL_RADIUS && Math.abs(state.ball.x - world.w/2) > goalHalfW) state.ball.y = BALL_RADIUS;
-            if (state.ball.y > world.h - BALL_RADIUS && Math.abs(state.ball.x - world.w/2) > goalHalfW) state.ball.y = world.h - BALL_RADIUS;
-
             // ارتداد إضافي من زوايا قطع الإطار (حافة الفتحة العمودية)
             if (state.ball.y < topBound + 45) {
               const leftEdge = world.w/2 - goalHalfW;
