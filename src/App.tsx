@@ -919,42 +919,42 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             prev.y = paddle.y;
           });
           // === إصلاح الارتداد: هدف أصغر + جدار يرتد فعلاً ===
-          const BALL_R = 16;
+          const WALL_BOUNCE_R = 16; // كان BALL_R مكرر - تم التصحيح
           const goalW = Math.min(360, Math.max(220, w * 0.32)); // كان 820 - كبير جداً يغطي كل الجدار
           const goalH = Math.min(360, Math.max(220, h * 0.32));
           const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW, gy1 = (h - goalH) / 2, gy2 = gy1 + goalH;
           const EDGE_MARGIN = 24;
           // هدف علوي مع ارتداد حواف - إصلاح الاختراق
-          if (ball.y < BALL_R) {
+          if (ball.y < WALL_BOUNCE_R) {
             if (active('top') && ball.x >= gx1 && ball.x <= gx2) {
               onGoalRef.current(playerForSide('bottom')); resetBall('top');
             } else {
               // ارتداد من الجدار العلوي - حتى لو على حافة الهدف
               if (ball.x >= gx1 - EDGE_MARGIN && ball.x <= gx1 + 12) {
-                ball.x = gx1 - BALL_R - 6; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
+                ball.x = gx1 - WALL_BOUNCE_R - 6; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
               } else if (ball.x >= gx2 - 12 && ball.x <= gx2 + EDGE_MARGIN) {
-                ball.x = gx2 + BALL_R + 6; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
+                ball.x = gx2 + WALL_BOUNCE_R + 6; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
               } else {
                 ball.y = BALL_R; ball.vy = Math.abs(ball.vy) * 1.05;
               }
             }
           }
           // هدف سفلي
-          if (ball.y > h - BALL_R) {
+          if (ball.y > h - WALL_BOUNCE_R) {
             if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) {
               onGoalRef.current(playerForSide('top')); resetBall('bottom');
             } else {
               if (ball.x >= gx1 - EDGE_MARGIN && ball.x <= gx1 + 12) {
-                ball.x = gx1 - BALL_R - 6; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
+                ball.x = gx1 - WALL_BOUNCE_R - 6; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
               } else if (ball.x >= gx2 - 12 && ball.x <= gx2 + EDGE_MARGIN) {
-                ball.x = gx2 + BALL_R + 6; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
+                ball.x = gx2 + WALL_BOUNCE_R + 6; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
               } else {
                 ball.y = h - BALL_R; ball.vy = -Math.abs(ball.vy) * 1.05;
               }
             }
           }
           // هدف يسار
-          if (ball.x < BALL_R) {
+          if (ball.x < WALL_BOUNCE_R) {
             if (active('left') && ball.y >= gy1 && ball.y <= gy2) {
               onGoalRef.current(playerForSide('right')); resetBall('left');
             } else {
@@ -968,7 +968,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             }
           }
           // هدف يمين
-          if (ball.x > w - BALL_R) {
+          if (ball.x > w - WALL_BOUNCE_R) {
             if (active('right') && ball.y >= gy1 && ball.y <= gy2) {
               onGoalRef.current(playerForSide('left')); resetBall('right');
             } else {
