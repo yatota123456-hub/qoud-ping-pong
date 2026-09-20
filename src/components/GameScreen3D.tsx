@@ -1058,49 +1058,62 @@ export function GameScreen3D({
     scene.add(frame);
     
     const puckGroup = new THREE.Group();
-    // الكرة غامقة في الساحة البيضاء ومضيئة في الداكنة - إصلاح 1
+    // إصلاح: الساحة البيضاء الكرة داكنة لا مضيئة - 2
     const isWhiteArena = arenaStyle === 'classic';
     const puckMat = new THREE.MeshStandardMaterial({
-      color: isWhiteArena ? '#0a0a0a' : '#ffffff',
-      roughness: isWhiteArena ? 0.25 : 0.12,
-      metalness: isWhiteArena ? 0.3 : 0.15,
-      emissive: isWhiteArena ? '#ff2233' : '#00e5ff',
-      emissiveIntensity: isWhiteArena ? 0.25 : 1.4,
+      color: isWhiteArena ? '#111111' : '#ffffff',
+      roughness: isWhiteArena ? 0.35 : 0.12,
+      metalness: isWhiteArena ? 0.15 : 0.15,
+      emissive: isWhiteArena ? '#000000' : '#00e5ff',
+      emissiveIntensity: isWhiteArena ? 0 : 1.4,
     });
     const puckBase = new THREE.Mesh(new THREE.CylinderGeometry(17, 17, 13, 48), puckMat);
     puckBase.position.y = 6;
     puckGroup.add(puckBase);
-    const blueRingMat = new THREE.MeshStandardMaterial({
-      color: isWhiteArena ? '#ff2233' : '#00e5ff',
-      roughness: 0.08,
-      metalness: 0.1,
-      emissive: isWhiteArena ? '#ff2233' : '#00e5ff',
-      emissiveIntensity: isWhiteArena ? 0.4 : 1.8
-    });
-    const blueRing = new THREE.Mesh(new THREE.TorusGeometry(11, 2.4, 16, 48), blueRingMat);
-    blueRing.rotation.x = Math.PI / 2;
-    blueRing.position.y = 12.5;
-    puckGroup.add(blueRing);
-    const outerGlowMat = new THREE.MeshBasicMaterial({
-      color: isWhiteArena ? '#000000' : '#00e5ff',
-      transparent: true,
-      opacity: isWhiteArena ? 0.2 : 0.4
-    });
-    const outerGlow = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 1, 32), outerGlowMat);
-    outerGlow.position.y = 1;
-    puckGroup.add(outerGlow);
-    const puckGlowMat = new THREE.MeshBasicMaterial({
-      color: isWhiteArena ? '#ff2233' : '#00e5ff',
-      transparent: true,
-      opacity: isWhiteArena ? 0.25 : 0.55
-    });
-    const puckGlow = new THREE.Mesh(new THREE.CylinderGeometry(32, 32, 1, 32), puckGlowMat);
-    puckGlow.position.y = 0.5;
-    puckGroup.add(puckGlow);
     if (!isWhiteArena) {
+      const blueRingMat = new THREE.MeshStandardMaterial({
+        color: '#00e5ff',
+        roughness: 0.08,
+        metalness: 0.1,
+        emissive: '#00e5ff',
+        emissiveIntensity: 1.8
+      });
+      const blueRing = new THREE.Mesh(new THREE.TorusGeometry(11, 2.4, 16, 48), blueRingMat);
+      blueRing.rotation.x = Math.PI / 2;
+      blueRing.position.y = 12.5;
+      puckGroup.add(blueRing);
+      const outerGlowMat = new THREE.MeshBasicMaterial({
+        color: '#00e5ff',
+        transparent: true,
+        opacity: 0.4
+      });
+      const outerGlow = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 1, 32), outerGlowMat);
+      outerGlow.position.y = 1;
+      puckGroup.add(outerGlow);
+      const puckGlowMat = new THREE.MeshBasicMaterial({
+        color: '#00e5ff',
+        transparent: true,
+        opacity: 0.55
+      });
+      const puckGlow = new THREE.Mesh(new THREE.CylinderGeometry(32, 32, 1, 32), puckGlowMat);
+      puckGlow.position.y = 0.5;
+      puckGroup.add(puckGlow);
       const ballLight = new THREE.PointLight(0x00e5ff, 1.5, 220);
       ballLight.position.set(0, 22, 0);
       puckGroup.add(ballLight);
+    } else {
+      // ساحة بيضاء - حلقة داكنة بسيطة بدون توهج
+      const darkRingMat = new THREE.MeshStandardMaterial({
+        color: '#222222',
+        roughness: 0.5,
+        metalness: 0.1,
+        emissive: '#000000',
+        emissiveIntensity: 0
+      });
+      const darkRing = new THREE.Mesh(new THREE.TorusGeometry(11, 1.2, 16, 48), darkRingMat);
+      darkRing.rotation.x = Math.PI / 2;
+      darkRing.position.y = 12.5;
+      puckGroup.add(darkRing);
     }
     puckGroup.position.y = 18;
     scene.add(puckGroup);
@@ -1338,13 +1351,20 @@ export function GameScreen3D({
             const topBound = BALL_RADIUS;
             const bottomBound = world.h - BALL_RADIUS;
             
-            // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين فقط
+            // إصلاح 1: أطراف الهدف الكرة ترتد - معالجة الزوايا والحواف
+            // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين فقط + ارتداد حواف الهدف
             if (state.ball.x < leftBound) {
               if (needPlayers < 4 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
                 state.ball.x = leftBound;
                 state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
-                // تغيير مسار عشوائي بسيط لمنع التعلق
                 state.ball.vy += (Math.random() - 0.5) * 1.5;
+              } else {
+                // على حافة الهدف الجانبي - ارتداد من الحافة الجانبية للهدف
+                const edgeDist = Math.abs(state.ball.y - world.h/2) - sideGoalHalfW;
+                if (edgeDist < 40) {
+                  state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                  state.ball.vy = (state.ball.y > world.h/2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random()-0.5)*2;
+                }
               }
             }
             if (state.ball.x > rightBound) {
@@ -1352,14 +1372,30 @@ export function GameScreen3D({
                 state.ball.x = rightBound;
                 state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
                 state.ball.vy += (Math.random() - 0.5) * 1.5;
+              } else {
+                const edgeDist = Math.abs(state.ball.y - world.h/2) - sideGoalHalfW;
+                if (edgeDist < 40) {
+                  state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                  state.ball.vy = (state.ball.y > world.h/2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random()-0.5)*2;
+                }
               }
             }
-            // جدران فوق وتحت - مع استثناء الأهداف - الأهداف كبيرة الآن مثل الصورة
+            // جدران فوق وتحت - مع استثناء الأهداف + ارتداد قوي من أطراف الهدف
             if (state.ball.y < topBound) {
               if (Math.abs(state.ball.x - world.w/2) > goalHalfW) {
                 state.ball.y = topBound;
                 state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
                 state.ball.vx += (Math.random() - 0.5) * 1.5;
+              } else {
+                // حافة الهدف العلوي - ارتداد من الزاوية
+                const edgeDist = Math.abs(state.ball.x - world.w/2) - goalHalfW;
+                if (edgeDist < 45 && edgeDist > -10) {
+                  // الكرة على طرف الهدف - ارتداد زاوية قوي
+                  state.ball.y = topBound;
+                  state.ball.vy = Math.abs(state.ball.vy) * 0.9;
+                  state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
+                  if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * 4;
+                }
               }
             }
             if (state.ball.y > bottomBound) {
@@ -1367,6 +1403,39 @@ export function GameScreen3D({
                 state.ball.y = bottomBound;
                 state.ball.vy = -Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
                 state.ball.vx += (Math.random() - 0.5) * 1.5;
+              } else {
+                const edgeDist = Math.abs(state.ball.x - world.w/2) - goalHalfW;
+                if (edgeDist < 45 && edgeDist > -10) {
+                  state.ball.y = bottomBound;
+                  state.ball.vy = -Math.abs(state.ball.vy) * 0.9;
+                  state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
+                  if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * 4;
+                }
+              }
+            }
+            // ارتداد إضافي من زوايا قطع الإطار (حافة الفتحة العمودية)
+            if (state.ball.y < topBound + 45) {
+              const leftEdge = world.w/2 - goalHalfW;
+              const rightEdge = world.w/2 + goalHalfW;
+              if (Math.abs(state.ball.x - leftEdge) < BALL_RADIUS + 8) {
+                state.ball.x = leftEdge - (BALL_RADIUS + 10);
+                state.ball.vx = -Math.abs(state.ball.vx) * 0.95;
+              }
+              if (Math.abs(state.ball.x - rightEdge) < BALL_RADIUS + 8) {
+                state.ball.x = rightEdge + (BALL_RADIUS + 10);
+                state.ball.vx = Math.abs(state.ball.vx) * 0.95;
+              }
+            }
+            if (state.ball.y > bottomBound - 45) {
+              const leftEdge = world.w/2 - goalHalfW;
+              const rightEdge = world.w/2 + goalHalfW;
+              if (Math.abs(state.ball.x - leftEdge) < BALL_RADIUS + 8) {
+                state.ball.x = leftEdge - (BALL_RADIUS + 10);
+                state.ball.vx = -Math.abs(state.ball.vx) * 0.95;
+              }
+              if (Math.abs(state.ball.x - rightEdge) < BALL_RADIUS + 8) {
+                state.ball.x = rightEdge + (BALL_RADIUS + 10);
+                state.ball.vx = Math.abs(state.ball.vx) * 0.95;
               }
             }
 
@@ -1888,21 +1957,26 @@ export function GameScreen3D({
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-        {/* إصلاح 5: زر بدء الكرة من المضرب */}
-        {localReady && stateRef.current?.serving?.active && (
-          <div style={{ position: 'absolute', left: '50%', bottom: '22%', transform: 'translateX(-50%)', zIndex: 25, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-            <button onClick={()=>{ stateRef.current.serving.requested = true; }} style={{
-              background: 'linear-gradient(135deg, #00e5ff 0%, #1e90ff 100%)', color: '#000', fontWeight: 900, fontSize: 16,
-              padding: '14px 28px', borderRadius: 999, border: '2px solid #fff', cursor: 'pointer',
-              boxShadow: '0 8px 24px rgba(0,229,255,0.5)', animation: 'pulse 1.5s infinite'
-            }}>
-              ▶ اضغط للبدء
-            </button>
-            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 700, background: 'rgba(0,0,0,0.5)', padding: '4px 10px', borderRadius: 999 }}>
-              الكرة عند {stateRef.current?.serving?.side === 'bottom' ? 'مضربك' : stateRef.current?.serving?.side} - اضغط في أي مكان
-            </span>
-          </div>
-        )}
+        {/* إصلاح 3: اخفي اضغط في مكان لضرب الكرة يظهر فقط عند تأخر اللاعب بالضغط */}
+        {localReady && stateRef.current?.serving?.active && (() => {
+          const elapsed = performance.now() - (stateRef.current?.serving?.startTime || 0);
+          const showHint = elapsed > 2500; // يظهر فقط بعد 2.5 ثانية تأخر
+          if (!showHint) return null;
+          return (
+            <div style={{ position: 'absolute', left: '50%', bottom: '22%', transform: 'translateX(-50%)', zIndex: 25, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, animation: 'fadeIn 0.3s ease' }}>
+              <button onClick={()=>{ stateRef.current.serving.requested = true; }} style={{
+                background: 'linear-gradient(135deg, #00e5ff 0%, #1e90ff 100%)', color: '#000', fontWeight: 900, fontSize: 16,
+                padding: '14px 28px', borderRadius: 999, border: '2px solid #fff', cursor: 'pointer',
+                boxShadow: '0 8px 24px rgba(0,229,255,0.5)', animation: 'pulse 1.5s infinite'
+              }}>
+                ▶ اضغط للبدء
+              </button>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 700, background: 'rgba(0,0,0,0.5)', padding: '4px 10px', borderRadius: 999 }}>
+                اضغط في أي مكان لضرب الكرة
+              </span>
+            </div>
+          );
+        })()}
         {localReady && countdown > 0 && (
           <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.84)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '22px', pointerEvents: 'none' }}>
             <span style={{ fontSize: '132px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 40px rgba(255,34,51,0.9), 0 0 80px rgba(0,0,0,1)' }}>{countdown}</span>
@@ -2223,3 +2297,4 @@ export function GameScreen3D({
   );
 }
 const btnStyle: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#fff', borderRadius: 8, padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontWeight: 700, cursor: 'pointer', fontSize: '10px' };
+س
