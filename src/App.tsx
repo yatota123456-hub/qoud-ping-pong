@@ -990,7 +990,13 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
 
   const bindTouch = (direction: keyof typeof touchControls.current) => ({ onPointerDown: () => { touchControls.current[direction] = true; }, onPointerUp: () => { touchControls.current[direction] = false; }, onPointerLeave: () => { touchControls.current[direction] = false; } });
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (paused || celebrating) return; if (isServing) { requestLaunch(); return; }
+    if (paused || celebrating) return; 
+    // إصلاح 5: بدء الكرة من المضرب عند الضغط
+    if (isServing || servingRef.current.active) { 
+      requestLaunch(); 
+      servingRef.current.requested = true;
+      return; 
+    }
     (event.currentTarget as any).setPointerCapture?.(event.pointerId);
     const pt = getWorldFromClient(event.clientX, event.clientY);
     const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 195 : 70; // الإصبع أسفل المضرب ولا يغطيه - إصلاح جوال

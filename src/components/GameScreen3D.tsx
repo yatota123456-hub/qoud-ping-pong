@@ -452,28 +452,31 @@ function getArenaWorld(count: number, size: any = 'medium') {
 
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
   const isMobileNow = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
+  // إصلاح 1: الساحة متوسطة أمام الكاميرا عند بدء اللعبة - مسافة محسوبة من حجم الساحة لضمان التوسيط
+  const maxDim = Math.max(world.w, world.h);
   const PRESET_BY_SIZE: any = {
-    small:  { distance: 980, height: 680, fov: 52 },
-    medium: { distance: 1180, height: 760, fov: 50 },
-    large:  { distance: 1680, height: 1020, fov: 48 },
-    xlarge: { distance: 2080, height: 1220, fov: 46 },
+    small:  { distance: Math.max(980, maxDim * 1.15), height: 680, fov: 52 },
+    medium: { distance: Math.max(1180, maxDim * 1.12), height: 760, fov: 50 },
+    large:  { distance: Math.max(1680, maxDim * 1.18), height: 1020, fov: 48 },
+    xlarge: { distance: Math.max(2080, maxDim * 1.22), height: 1220, fov: 46 },
   };
   const base = PRESET_BY_SIZE[arenaSize] || PRESET_BY_SIZE.medium;
-  const mobileBoost = isMobileNow ? 1.18 : 1.0;
-  const heightBoost = isMobileNow ? 1.12 : 1.0;
+  const mobileBoost = isMobileNow ? 1.22 : 1.0;
+  const heightBoost = isMobileNow ? 1.15 : 1.0;
   const distance = base.distance * mobileBoost;
   const height = base.height * heightBoost;
   const basePresets = {
-    top: { angle: Math.PI, distance: 380, height: 1300, name: 'من الأعلى', nameEn: 'Top View' },
+    top: { angle: Math.PI, distance: 420, height: 1350, name: 'من الأعلى', nameEn: 'Top View' },
     bottom: { angle: 0, distance: distance, height: height, name: 'خلفك', nameEn: 'Behind You' },
-    topPlayer: { angle: Math.PI, distance: distance*0.55, height: height*0.75, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
-    iso: { angle: 0.52, distance: distance * 0.68, height: height * 0.82, name: 'مائل', nameEn: 'Isometric' },
-    sideLeft: { angle: -Math.PI / 2, distance: distance*0.68, height: height*0.62, name: 'يسار', nameEn: 'Left' },
-    sideRight: { angle: Math.PI / 2, distance: distance*0.68, height: height*0.62, name: 'يمين', nameEn: 'Right' },
+    topPlayer: { angle: Math.PI, distance: distance*0.58, height: height*0.78, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+    iso: { angle: 0.52, distance: distance * 0.72, height: height * 0.85, name: 'مائل', nameEn: 'Isometric' },
+    sideLeft: { angle: -Math.PI / 2, distance: distance*0.72, height: height*0.65, name: 'يسار', nameEn: 'Left' },
+    sideRight: { angle: Math.PI / 2, distance: distance*0.72, height: height*0.65, name: 'يمين', nameEn: 'Right' },
   };
   const adapted: any = {};
   for (const k in basePresets) {
     const b: any = (basePresets as any)[k];
+    // إصلاح 1: تأكد أن الكاميرا متوسطة تماماً أمام الساحة
     adapted[k] = { ...b, baseDistance: b.distance, baseHeight: b.height, scaleFactor: 1, isMobile: isMobileNow, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
   }
   return adapted;
@@ -505,7 +508,7 @@ export function GameScreen3D({
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
 
   useEffect(() => {
-    const savedCam = localStorage.getItem('qoud_camera_preset');
+    const savedCam = localStorage.getItem(`qoud_camera_preset_${settings.arenaSize || 'medium'}`);
     if (savedCam) {
       setSavedCamData(savedCam);
       setShowRestoreModal(true);
@@ -514,7 +517,7 @@ export function GameScreen3D({
 
   const restoreCamera = () => {
     try {
-      const saved = localStorage.getItem('qoud_camera_settings');
+      const saved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
       if (saved) {
         const s = JSON.parse(saved);
         cam.current = { ...cam.current, ...s, targetAngle: s.targetAngle ?? s.angle ?? cam.current.angle, targetDistance: s.targetDistance ?? s.distance ?? cam.current.distance, targetHeight: s.targetHeight ?? s.height ?? cam.current.height };
@@ -555,16 +558,19 @@ export function GameScreen3D({
     return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: 1 };
   }, [world, adaptivePresets, mySideForCam]);
 
-  const cam = useRef({...initialCam });
+  const cam = useRef({...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 });
   useEffect(() => {
-    const saved = localStorage.getItem('qoud_camera_settings');
+    const saved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
     if (saved) {
       try {
-        const settings = JSON.parse(saved);
-        cam.current = { ...cam.current, ...settings };
+        const s = JSON.parse(saved);
+        cam.current = { ...cam.current, ...s, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 };
       } catch {}
+    } else {
+      // لا حفظ - متوسطة تماماً
+      cam.current = { ...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 } as any;
     }
-  }, []);
+  }, [settings.arenaSize]);
 
   const saveCameraSettings = useCallback(() => {
     const settings = {
@@ -575,12 +581,12 @@ export function GameScreen3D({
       targetDistance: cam.current.targetDistance,
       targetHeight: cam.current.targetHeight,
     };
-    localStorage.setItem('qoud_camera_settings', JSON.stringify(settings));
+    localStorage.setItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`, JSON.stringify(settings));
   }, []);
 
   const resetCameraToDefault = useCallback(() => {
     cam.current = { ...initialCam };
-    localStorage.removeItem('qoud_camera_settings');
+    localStorage.removeItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
   }, [initialCam]);
 
   const threeRef = useRef<any>(null);
@@ -806,12 +812,12 @@ export function GameScreen3D({
     cam.current.targetDistance = p.distance;
     cam.current.targetHeight = p.height;
     setCurrentPreset(key);
-    try { localStorage.setItem('qoud_camera_settings', JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
+    try { localStorage.setItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`, JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
   }, [adaptivePresets]);
 
   const zoomCam = useCallback((dir: number) => {
     cam.current.targetDistance = Math.max(600, Math.min(2200, cam.current.targetDistance * (dir > 0? 0.88 : 1.15)));
-    try { localStorage.setItem('qoud_camera_settings', JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
+    try { localStorage.setItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`, JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
   }, []);
 
   const rotateCam = useCallback((dir: 'left' | 'right' | 'up' | 'down') => {
@@ -819,23 +825,34 @@ export function GameScreen3D({
     if (dir === 'right') cam.current.targetAngle += 0.35;
     if (dir === 'up') cam.current.targetHeight = Math.min(1800, cam.current.targetHeight + 100);
     if (dir === 'down') cam.current.targetHeight = Math.max(400, cam.current.targetHeight - 100);
-    try { localStorage.setItem('qoud_camera_settings', JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
+    try { localStorage.setItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`, JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
   }, []);
 
   useEffect(() => {
-    // لا نعيد تعيين الكاميرا إذا اللعب بدأ أو إذا هناك حفظ - إصلاح 3: الكاميرا تحفظ الإعدادات
-    const hasSaved = localStorage.getItem('qoud_camera_settings');
+    // إصلاح 1+4: الساحة متوسطة أمام الكاميرا + الحفظ لكل حجم
+    const hasSaved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
     if (hasSaved) {
       try {
         const s = JSON.parse(hasSaved);
-        cam.current = { ...cam.current, ...initialCam, ...s, targetAngle: s.targetAngle ?? s.angle ?? initialCam.angle, targetDistance: s.targetDistance ?? s.distance ?? initialCam.distance, targetHeight: s.targetHeight ?? s.height ?? initialCam.height };
+        // تأكد أن lookAt متوسطة دائماً للساحة الحالية - إصلاح 1
+        cam.current = { 
+          ...cam.current, 
+          ...initialCam, 
+          ...s, 
+          targetAngle: s.targetAngle ?? s.angle ?? initialCam.angle, 
+          targetDistance: s.targetDistance ?? s.distance ?? initialCam.distance, 
+          targetHeight: s.targetHeight ?? s.height ?? initialCam.height,
+          targetX: initialCam.targetX, // دائماً متوسطة
+          targetZ: initialCam.targetZ,
+          lookX: initialCam.lookX,
+          lookZ: initialCam.lookZ
+        };
         return;
       } catch {}
     }
-    if (!localReadyRef.current) {
-      cam.current = {...initialCam} as any;
-    }
-  }, [initialCam]);
+    // إذا لا يوجد حفظ لهذا الحجم - متوسطة تماماً أمام الكاميرا
+    cam.current = {...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2} as any;
+  }, [initialCam, settings.arenaSize, world.w, world.h]);
 
   useEffect(() => {
     const handleGameState = (data: any) => {
@@ -928,6 +945,14 @@ export function GameScreen3D({
     const mouse = new THREE.Vector2();
     const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
     const handlePointerMove = (e: PointerEvent) => {
+      // إصلاح 5: بدء الكرة من المضرب عند الضغط - حتى لو ثابتة
+      if (stateRef.current.serving.active) {
+        if (e.type === 'pointerdown') {
+          stateRef.current.serving.requested = true;
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+      }
       if (!e.isPrimary || !threeRef.current) return;
       if (e.target instanceof HTMLElement && e.target.closest('button')) return;
       hasDraggedRef.current = true;
@@ -1863,6 +1888,21 @@ export function GameScreen3D({
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
+        {/* إصلاح 5: زر بدء الكرة من المضرب */}
+        {localReady && stateRef.current?.serving?.active && (
+          <div style={{ position: 'absolute', left: '50%', bottom: '22%', transform: 'translateX(-50%)', zIndex: 25, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <button onClick={()=>{ stateRef.current.serving.requested = true; }} style={{
+              background: 'linear-gradient(135deg, #00e5ff 0%, #1e90ff 100%)', color: '#000', fontWeight: 900, fontSize: 16,
+              padding: '14px 28px', borderRadius: 999, border: '2px solid #fff', cursor: 'pointer',
+              boxShadow: '0 8px 24px rgba(0,229,255,0.5)', animation: 'pulse 1.5s infinite'
+            }}>
+              ▶ اضغط للبدء
+            </button>
+            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 700, background: 'rgba(0,0,0,0.5)', padding: '4px 10px', borderRadius: 999 }}>
+              الكرة عند {stateRef.current?.serving?.side === 'bottom' ? 'مضربك' : stateRef.current?.serving?.side} - اضغط في أي مكان
+            </span>
+          </div>
+        )}
         {localReady && countdown > 0 && (
           <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.84)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '22px', pointerEvents: 'none' }}>
             <span style={{ fontSize: '132px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 40px rgba(255,34,51,0.9), 0 0 80px rgba(0,0,0,1)' }}>{countdown}</span>
@@ -1911,9 +1951,21 @@ export function GameScreen3D({
         <button onClick={() => window.location.reload()} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: '#ff2d2d', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize:'11px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
           <ArrowLeft size={14} /> EXIT
         </button>
+        {/* إصلاح 3: زر كاميرا عائم للجوال - يظهر دائماً */}
+        <button onClick={()=>setShowCamMenu(v=>!v)} style={{
+          position: 'absolute', top: 12, right: 12, zIndex: 10006,
+          background: showCamMenu ? '#00e5ff' : 'rgba(10,10,12,0.9)', 
+          color: showCamMenu ? '#000' : '#fff',
+          border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: 12,
+          padding: '10px 14px', fontSize: 12, fontWeight: 900,
+          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)'
+        }}>
+          <Camera size={14}/> كاميرا
+        </button>
 
-        {/* شكل الساحة - على اليمين فوق الأيقونات صغير مع رسم الساحة عليه - شكل أ / ب - يختفي عند بدء اللعب */}
-        {!hideUI && !localReady && (
+        {/* إصلاح 2: ألغي شكل الساحة عند بدء اللعبة - shape - مخفي */}
+        {false && !hideUI && !localReady && (
           <div style={{
             position: 'absolute', right: 12, top: 12, zIndex: 10004,
             background: 'rgba(10,10,12,0.92)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
@@ -1922,40 +1974,13 @@ export function GameScreen3D({
           }}>
             <span style={{fontSize:9, fontWeight:900, color:'rgba(255,255,255,0.5)', letterSpacing:1}}>SHAPE</span>
             <div style={{display:'flex', gap:'6px'}}>
-              {/* شكل أ - القديم */}
-              <button onClick={()=>setArenaStyle('classic')} title="الشكل القديم - إطار أسود + نيون" style={{
-                width:36, height:52, borderRadius:8,
-                background: arenaStyle==='classic' ? '#00e5ff' : '#1e1e1e',
-                border: arenaStyle==='classic' ? '2px solid #00e5ff' : '1px solid #333',
-                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer',
-                position:'relative', overflow:'hidden', boxShadow: arenaStyle==='classic' ? '0 0 12px rgba(0,229,255,0.5)' : 'none'
-              }}>
-                <div style={{width:22, height:32, background:'#000', border:'1.5px solid #00e5ff', borderRadius:2, position:'relative'}}>
-                  <div style={{position:'absolute', inset:'2px', background:'#fff', opacity:0.9}}/>
-                  <div style={{position:'absolute', top:'50%', left:0, right:0, height:'1px', background:'#ff0000'}}/>
-                  <div style={{position:'absolute', top:-2, left:'50%', transform:'translateX(-50%)', width:10, height:3, background:'#000'}}/>
-                  <div style={{position:'absolute', bottom:-2, left:'50%', transform:'translateX(-50%)', width:10, height:3, background:'#000'}}/>
-                </div>
-                <span style={{fontSize:11, fontWeight:900, color: arenaStyle==='classic' ? '#000' : '#fff', marginTop:2}}>أ</span>
+              <button onClick={()=>setArenaStyle('classic')} style={{width:36, height:52, borderRadius:8, background: arenaStyle==='classic' ? '#00e5ff' : '#1e1e1e', border: arenaStyle==='classic' ? '2px solid #00e5ff' : '1px solid #333', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer'}}>
+                <span style={{fontSize:11, fontWeight:900, color: arenaStyle==='classic' ? '#000' : '#fff'}}>أ</span>
               </button>
-              {/* شكل ب - الجديد */}
-              <button onClick={()=>setArenaStyle('modern')} title="الشكل الجديد - إطار أحمر + HD" style={{
-                width:36, height:52, borderRadius:8,
-                background: arenaStyle==='modern' ? '#00e5ff' : '#1e1e1e',
-                border: arenaStyle==='modern' ? '2px solid #00e5ff' : '1px solid #333',
-                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer',
-                position:'relative', overflow:'hidden', boxShadow: arenaStyle==='modern' ? '0 0 12px rgba(0,229,255,0.5)' : 'none'
-              }}>
-                <div style={{width:22, height:32, background:'#ff1a1a', borderRadius:2, position:'relative', boxShadow:'0 1px 2px rgba(0,0,0,0.3)'}}>
-                  <div style={{position:'absolute', inset:'3px', background:'#fefefe', borderRadius:1}}/>
-                  <div style={{position:'absolute', top:'50%', left:'3px', right:'3px', height:'1px', background:'#ff0000', opacity:0.8}}/>
-                  <div style={{position:'absolute', top:-1, left:'50%', transform:'translateX(-50%)', width:8, height:2, background:'#000', borderRadius:1}}/>
-                  <div style={{position:'absolute', bottom:-1, left:'50%', transform:'translateX(-50%)', width:8, height:2, background:'#000', borderRadius:1}}/>
-                </div>
-                <span style={{fontSize:11, fontWeight:900, color: arenaStyle==='modern' ? '#000' : '#fff', marginTop:2}}>ب</span>
+              <button onClick={()=>setArenaStyle('modern')} style={{width:36, height:52, borderRadius:8, background: arenaStyle==='modern' ? '#00e5ff' : '#1e1e1e', border: arenaStyle==='modern' ? '2px solid #00e5ff' : '1px solid #333', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer'}}>
+                <span style={{fontSize:11, fontWeight:900, color: arenaStyle==='modern' ? '#000' : '#fff'}}>ب</span>
               </button>
             </div>
-            <span style={{fontSize:7, color:'rgba(255,255,255,0.35)', textAlign:'center', lineHeight:1.1}}>أ=قديم<br/>ب=جديد</span>
           </div>
         )}
 
@@ -1978,6 +2003,9 @@ export function GameScreen3D({
             alignItems: 'center',
             gap: 0,
             boxShadow: '0 16px 48px rgba(0,0,0,0.9)',
+            /* إصلاح 3: أزرار الكاميرا في الجوال تظهر */
+            touchAction: 'auto',
+            pointerEvents: 'auto',
           }}>
             {/* X في الأعلى مثل الرسمة */}
             <button onClick={()=>setShowCamMenu(false)} style={{
