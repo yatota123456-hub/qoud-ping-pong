@@ -1344,13 +1344,21 @@ export function GameScreen3D({
             }
 
             // اصطدام بالجدران (ليس الأهداف) - الأهداف كبيرة وظاهرة مثل الأسهم
-            const goalHalfW = Math.max(420, world.w * 0.48); // أكبر من فوق الإطار - 2 - أكبر بكثير
-            const sideGoalHalfW = Math.max(420, world.h * 0.48); // أكبر
+            const goalHalfW = Math.min(300, Math.max(140, world.w * 0.22)); // أكبر من فوق الإطار - 2 - أكبر بكثير
+            const sideGoalHalfW = Math.min(300, Math.max(140, world.h * 0.22)); // أكبر
             const leftBound = BALL_RADIUS;
             const rightBound = world.w - BALL_RADIUS;
             const topBound = BALL_RADIUS;
             const bottomBound = world.h - BALL_RADIUS;
             
+            // === إصلاح 2: أوقف اللعب كلياً بعد الفوز ===
+            if (celebrating) {
+              state.ball.vx = 0;
+              state.ball.vy = 0;
+              state.ballTarget.vx = 0;
+              state.ballTarget.vy = 0;
+            }
+
             // إصلاح 1: أطراف الهدف الكرة ترتد - معالجة الزوايا والحواف
             // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين فقط + ارتداد حواف الهدف
             if (state.ball.x < leftBound) {
@@ -1413,6 +1421,13 @@ export function GameScreen3D({
                 }
               }
             }
+            // === إصلاح نهائي: منع الاختراق ===
+            if (state.ball.x < BALL_RADIUS) state.ball.x = BALL_RADIUS;
+            if (state.ball.x > world.w - BALL_RADIUS) state.ball.x = world.w - BALL_RADIUS;
+            // فقط إذا خارج الهدف نمنع الاختراق العلوي/السفلي
+            if (state.ball.y < BALL_RADIUS && Math.abs(state.ball.x - world.w/2) > goalHalfW) state.ball.y = BALL_RADIUS;
+            if (state.ball.y > world.h - BALL_RADIUS && Math.abs(state.ball.x - world.w/2) > goalHalfW) state.ball.y = world.h - BALL_RADIUS;
+
             // ارتداد إضافي من زوايا قطع الإطار (حافة الفتحة العمودية)
             if (state.ball.y < topBound + 45) {
               const leftEdge = world.w/2 - goalHalfW;
