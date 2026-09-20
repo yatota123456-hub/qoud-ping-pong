@@ -204,8 +204,8 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   });
   // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.36; // عرض فتحة الهدف 36% مثل الصورة - نفس الأسود في الصورة
-  const goalGapH = worldH * 0.36;
+  const goalGapW = worldW * 0.68; // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
+  const goalGapH = worldH * 0.58; // أكبر
   
   const bezelPieces: any[] = [];
 
@@ -276,7 +276,7 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   outerTube.position.y = 26;
   group.add(outerTube);
   // الأهداف - تكبير كبير مثل الصورة المرفقة - مهمة جداً
-  const goalW = Math.max(380, worldW * 0.48); // تكبير كبير - كان 260
+  const goalW = Math.max(680, worldW * 0.78); // أكبر من فوق الإطار - 2 - أكبر
   const goalH = 36;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
@@ -339,8 +339,8 @@ function createArenaFrameModern(worldW: number, worldH: number) {
   };
   // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.36; // عرض فتحة الهدف 36% مثل الصورة - نفس الأسود في الصورة
-  const goalGapH = worldH * 0.36;
+  const goalGapW = worldW * 0.68; // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
+  const goalGapH = worldH * 0.58; // أكبر
   
   const bezelPieces: any[] = [];
 
@@ -391,7 +391,7 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     group.add(glowMesh);
   });
   // الأهداف - تكبير كبير مثل الصورة المرفقة - تمت إضافتها الآن
-  const goalW = Math.max(420, worldW * 0.52); // تكبير كبير مثل الصورة - كان 280
+  const goalW = Math.max(720, worldW * 0.82); // أكبر من فوق الإطار - 2 - أكبر
   const goalH = 32;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.2, metalness: 0.1, emissive: '#111111', emissiveIntensity: 0.15 });
   // هدف علوي - كبير مثل الصورة
@@ -513,6 +513,13 @@ export function GameScreen3D({
   }, []);
 
   const restoreCamera = () => {
+    try {
+      const saved = localStorage.getItem('qoud_camera_settings');
+      if (saved) {
+        const s = JSON.parse(saved);
+        cam.current = { ...cam.current, ...s, targetAngle: s.targetAngle ?? s.angle ?? cam.current.angle, targetDistance: s.targetDistance ?? s.distance ?? cam.current.distance, targetHeight: s.targetHeight ?? s.height ?? cam.current.height };
+      }
+    } catch {}
     setShowRestoreModal(false);
   };
 
@@ -669,9 +676,23 @@ export function GameScreen3D({
     countdown: 0,
     countdownStart: 0,
     countdownSide: null as Player['side'] | null,
-    serving: { active: false, side: 'bottom' as Player['side'], startTime: 0, requested: false },
+    serving: { active: (settings as any).start === 'paddle', side: 'bottom' as Player['side'], startTime: 0, requested: false }, // إصلاح 4: يبدأ من المضرب إذا اختيار من المضرب
     paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any
   });
+
+  // إطلاق الكرة من المضرب بالمسافة
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Space' || e.key === ' ') {
+        if (stateRef.current.serving.active) {
+          stateRef.current.serving.requested = true;
+          e.preventDefault();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const playersKey = useMemo(() => players.map(p => `${p.side}:${p.color}`).join(','), [players]);
 
@@ -785,10 +806,12 @@ export function GameScreen3D({
     cam.current.targetDistance = p.distance;
     cam.current.targetHeight = p.height;
     setCurrentPreset(key);
+    try { localStorage.setItem('qoud_camera_settings', JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
   }, [adaptivePresets]);
 
   const zoomCam = useCallback((dir: number) => {
     cam.current.targetDistance = Math.max(600, Math.min(2200, cam.current.targetDistance * (dir > 0? 0.88 : 1.15)));
+    try { localStorage.setItem('qoud_camera_settings', JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
   }, []);
 
   const rotateCam = useCallback((dir: 'left' | 'right' | 'up' | 'down') => {
@@ -796,10 +819,19 @@ export function GameScreen3D({
     if (dir === 'right') cam.current.targetAngle += 0.35;
     if (dir === 'up') cam.current.targetHeight = Math.min(1800, cam.current.targetHeight + 100);
     if (dir === 'down') cam.current.targetHeight = Math.max(400, cam.current.targetHeight - 100);
+    try { localStorage.setItem('qoud_camera_settings', JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
   }, []);
 
   useEffect(() => {
-    // لا نعيد تعيين الكاميرا إذا اللعب بدأ - يمنع تكبير الكانفاس واختفاء الأهداف
+    // لا نعيد تعيين الكاميرا إذا اللعب بدأ أو إذا هناك حفظ - إصلاح 3: الكاميرا تحفظ الإعدادات
+    const hasSaved = localStorage.getItem('qoud_camera_settings');
+    if (hasSaved) {
+      try {
+        const s = JSON.parse(hasSaved);
+        cam.current = { ...cam.current, ...initialCam, ...s, targetAngle: s.targetAngle ?? s.angle ?? initialCam.angle, targetDistance: s.targetDistance ?? s.distance ?? initialCam.distance, targetHeight: s.targetHeight ?? s.height ?? initialCam.height };
+        return;
+      } catch {}
+    }
     if (!localReadyRef.current) {
       cam.current = {...initialCam} as any;
     }
@@ -1001,46 +1033,50 @@ export function GameScreen3D({
     scene.add(frame);
     
     const puckGroup = new THREE.Group();
+    // الكرة غامقة في الساحة البيضاء ومضيئة في الداكنة - إصلاح 1
+    const isWhiteArena = arenaStyle === 'classic';
     const puckMat = new THREE.MeshStandardMaterial({
-      color: '#ffffff',
-      roughness: 0.12,
-      metalness: 0.15,
-      emissive: '#00e5ff',
-      emissiveIntensity: 1.4,
+      color: isWhiteArena ? '#0a0a0a' : '#ffffff',
+      roughness: isWhiteArena ? 0.25 : 0.12,
+      metalness: isWhiteArena ? 0.3 : 0.15,
+      emissive: isWhiteArena ? '#ff2233' : '#00e5ff',
+      emissiveIntensity: isWhiteArena ? 0.25 : 1.4,
     });
     const puckBase = new THREE.Mesh(new THREE.CylinderGeometry(17, 17, 13, 48), puckMat);
     puckBase.position.y = 6;
     puckGroup.add(puckBase);
     const blueRingMat = new THREE.MeshStandardMaterial({
-      color: '#00e5ff',
+      color: isWhiteArena ? '#ff2233' : '#00e5ff',
       roughness: 0.08,
       metalness: 0.1,
-      emissive: '#00e5ff',
-      emissiveIntensity: 1.8
+      emissive: isWhiteArena ? '#ff2233' : '#00e5ff',
+      emissiveIntensity: isWhiteArena ? 0.4 : 1.8
     });
     const blueRing = new THREE.Mesh(new THREE.TorusGeometry(11, 2.4, 16, 48), blueRingMat);
     blueRing.rotation.x = Math.PI / 2;
     blueRing.position.y = 12.5;
     puckGroup.add(blueRing);
     const outerGlowMat = new THREE.MeshBasicMaterial({
-      color: '#00e5ff',
+      color: isWhiteArena ? '#000000' : '#00e5ff',
       transparent: true,
-      opacity: 0.4
+      opacity: isWhiteArena ? 0.2 : 0.4
     });
     const outerGlow = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 1, 32), outerGlowMat);
     outerGlow.position.y = 1;
     puckGroup.add(outerGlow);
     const puckGlowMat = new THREE.MeshBasicMaterial({
-      color: '#00e5ff',
+      color: isWhiteArena ? '#ff2233' : '#00e5ff',
       transparent: true,
-      opacity: 0.55
+      opacity: isWhiteArena ? 0.25 : 0.55
     });
     const puckGlow = new THREE.Mesh(new THREE.CylinderGeometry(32, 32, 1, 32), puckGlowMat);
     puckGlow.position.y = 0.5;
     puckGroup.add(puckGlow);
-    const ballLight = new THREE.PointLight(0x00e5ff, 1.5, 220);
-    ballLight.position.set(0, 22, 0);
-    puckGroup.add(ballLight);
+    if (!isWhiteArena) {
+      const ballLight = new THREE.PointLight(0x00e5ff, 1.5, 220);
+      ballLight.position.set(0, 22, 0);
+      puckGroup.add(ballLight);
+    }
     puckGroup.position.y = 18;
     scene.add(puckGroup);
     const ball = puckGroup;
@@ -1175,8 +1211,29 @@ export function GameScreen3D({
             prev.z = curr.z;
           });
 
+          // === إذا من المضرب - الكرة تتبع المضرب ===
+          if (state.serving.active) {
+            const servingSide = state.serving.side;
+            const servingPaddle = state.paddles[servingSide];
+            if (servingPaddle) {
+              if (servingSide === 'bottom') { state.ball.x = servingPaddle.x; state.ball.y = servingPaddle.z - 60; }
+              else if (servingSide === 'top') { state.ball.x = servingPaddle.x; state.ball.y = servingPaddle.z + 60; }
+              else if (servingSide === 'left') { state.ball.x = servingPaddle.x + 60; state.ball.y = servingPaddle.z; }
+              else { state.ball.x = servingPaddle.x - 60; state.ball.y = servingPaddle.z; }
+              state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
+            }
+            if (state.serving.requested) {
+              state.serving.active = false;
+              const spd = getInitialSpeed() + 2;
+              if (servingSide === 'bottom') { state.ball.vx = (Math.random()-0.5)*spd; state.ball.vy = -Math.abs(spd)-1; }
+              else if (servingSide === 'top') { state.ball.vx = (Math.random()-0.5)*spd; state.ball.vy = Math.abs(spd)+1; }
+              else if (servingSide === 'left') { state.ball.vx = Math.abs(spd)+1; state.ball.vy = (Math.random()-0.5)*spd; }
+              else { state.ball.vx = -Math.abs(spd)-1; state.ball.vy = (Math.random()-0.5)*spd; }
+            }
+          }
+
           // تحديث موقع الكرة - فيزياء محلية مستقرة - فقط إذا انتهى العد
-          if (state.countdown === 0) {
+          if (state.countdown === 0 && !state.serving.active) {
             // إذا أوفلاين أو Host، نحن نتحكم بالفيزياء
             if (isOfflineMode || isHost) {
             // === AI للكمبيوتر في وضع 3D - نفس طريقة 2D ===
@@ -1249,8 +1306,8 @@ export function GameScreen3D({
             }
 
             // اصطدام بالجدران (ليس الأهداف) - الأهداف كبيرة وظاهرة مثل الأسهم
-            const goalHalfW = Math.max(340, world.w * 0.38); // تكبير كبير - 4 // يطابق نصف قطر 360 في الصورة - فتح حقيقي // تكبير أكثر ليطابق الشكل الظاهر - كان 210
-            const sideGoalHalfW = Math.max(340, world.h * 0.38);
+            const goalHalfW = Math.max(420, world.w * 0.48); // أكبر من فوق الإطار - 2 - أكبر بكثير
+            const sideGoalHalfW = Math.max(420, world.h * 0.48); // أكبر
             const leftBound = BALL_RADIUS;
             const rightBound = world.w - BALL_RADIUS;
             const topBound = BALL_RADIUS;
@@ -1352,10 +1409,41 @@ export function GameScreen3D({
               state.ball.vy = 0;
               state.ballTarget.vx = 0;
               state.ballTarget.vy = 0;
+              // === إصلاح 4: عند اختيار من المضرب - الكرة تبدأ من المضرب وبالترتيب ===
+              if ((settings as any).start === 'paddle') {
+                const order: Player['side'][] = (players.length >= 4 ? ['bottom','right','top','left'] : ['bottom','top']) as any;
+                let nextSide: Player['side'] = 'bottom';
+                if (goalScoredSide) {
+                  const lastIdx = order.indexOf(goalScoredSide as any);
+                  const nextIdx = (lastIdx + 1) % order.length;
+                  nextSide = order[nextIdx] || 'bottom';
+                }
+                state.serving.active = true;
+                state.serving.side = nextSide;
+                state.serving.startTime = now;
+                state.serving.requested = false;
+                // ضع الكرة عند المضرب
+                const paddle = state.paddles[nextSide];
+                if (paddle) {
+                  if (nextSide === 'bottom') { state.ball.x = paddle.x; state.ball.y = paddle.z - 60; }
+                  else if (nextSide === 'top') { state.ball.x = paddle.x; state.ball.y = paddle.z + 60; }
+                  else if (nextSide === 'left') { state.ball.x = paddle.x + 60; state.ball.y = paddle.z; }
+                  else { state.ball.x = paddle.x - 60; state.ball.y = paddle.z; }
+                  state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
+                }
+                state.ball.vx = 0; state.ball.vy = 0; state.ballTarget.vx = 0; state.ballTarget.vy = 0;
+                try { playGoalSound3D(); createGoalStars3D(state.ball.x, state.ball.y); shakeRef.current.intensity = 20; } catch {}
+                state.countdown = 0; setCountdown(0);
+                state.countdownSide = null; setCountdownSide('');
+                state.rally = 0; setRally(0);
+                if (onGoal) { onGoal(missedPlayer as any); }
+                if (isHost && !isOfflineMode) { socket.emit('goal-scored', { side: goalScoredSide }); }
+                return;
+              }
               try { playGoalSound3D(); createGoalStars3D(state.ball.x, state.ball.y); shakeRef.current.intensity = 20; } catch {}
               state.countdown = 3;
               state.countdownStart = now;
-              state.countdownSide = goalScoredSide; // لحساب اتجاه الكرة بعد العد
+              state.countdownSide = goalScoredSide;
               setCountdown(3);
               setCountdownSide(goalScoredSide);
               state.rally = 0;

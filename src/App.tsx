@@ -698,6 +698,47 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       const scorerSide = missedSide? opposite[missedSide] : null;
       const scorer = scorerSide? playerForSide(scorerSide) : null;
       try { playGoalSound(); spawnGoalStars(world.w/2, world.h/2); } catch {}
+      
+      // === إصلاح 4: عند اختيار من المضرب - الكرة تبدأ من المضرب وبالترتيب ===
+      if (settings.start === 'paddle') {
+        // حدد المضرب التالي بالترتيب - يبدأ من الخصم الذي استقبل الهدف ثم يدور
+        const order: Player['side'][] = players.length >= 4 ? ['bottom','right','top','left'] : ['bottom','top'];
+        let nextSide: Player['side'] = 'bottom';
+        if (missedSide) {
+          // الكرة تبدأ من صاحب الهدف المسجل ضده؟ أو بالترتيب - نستخدم الترتيب الدوري
+          const lastIdx = order.indexOf(missedSide as any);
+          const nextIdx = (lastIdx + 1) % order.length;
+          nextSide = order[nextIdx] || 'bottom';
+        } else {
+          // بداية المباراة - من الأسفل
+          nextSide = 'bottom';
+        }
+        // إذا الجانب غير موجود (مثلاً 2 لاعبين فقط)، استخدم bottom/top
+        if (!order.includes(nextSide)) nextSide = 'bottom';
+        
+        servingRef.current.active = true;
+        servingRef.current.side = nextSide;
+        servingRef.current.startTime = performance.now();
+        servingRef.current.requested = false;
+        setIsServing(true);
+        
+        // ضع الكرة عند المضرب مباشرة
+        const paddle = state.paddles[nextSide];
+        if (paddle) {
+          if (nextSide === 'bottom') { state.ball.x = paddle.x; state.ball.y = paddle.y - 50; }
+          else if (nextSide === 'top') { state.ball.x = paddle.x; state.ball.y = paddle.y + 50; }
+          else if (nextSide === 'left') { state.ball.x = paddle.x + 50; state.ball.y = paddle.y; }
+          else { state.ball.x = paddle.x - 50; state.ball.y = paddle.y; }
+          state.ballTarget.x = state.ball.x;
+          state.ballTarget.y = state.ball.y;
+        }
+        state.ball.vx = 0; state.ball.vy = 0;
+        state.countdown = 0; setCountdown(0);
+        state.rally = 0; setRally(0); state.speedMult = 1;
+        hasDraggedRef.current=false; noDragStartRef.current=performance.now();
+        return;
+      }
+      
       state.countdown = 3; state.countdownStart = performance.now(); state.countdownSide = scorerSide as any; setCountdown(3); setCountdownName(scorer? scorer.name : '');
       state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ballTarget.x = world.w/2; state.ballTarget.y = world.h/2; state.ball.vx = 0; state.ball.vy = 0; state.rally = 0; setRally(0); state.speedMult = 1; hasDraggedRef.current=false; noDragStartRef.current=performance.now(); if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     };
@@ -758,6 +799,35 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         if (isOfflineMode) {
           const ball = state.ball;
           const w = world.w, h = world.h;
+          
+          // === إذا من المضرب - الكرة تتبع المضرب حتى يطلب الإطلاق ===
+          if (servingRef.current.active) {
+            const servingSide = servingRef.current.side;
+            const servingPaddle = state.paddles[servingSide];
+            if (servingPaddle) {
+              if (servingSide === 'bottom') { ball.x = servingPaddle.x; ball.y = servingPaddle.y - 50; }
+              else if (servingSide === 'top') { ball.x = servingPaddle.x; ball.y = servingPaddle.y + 50; }
+              else if (servingSide === 'left') { ball.x = servingPaddle.x + 50; ball.y = servingPaddle.y; }
+              else { ball.x = servingPaddle.x - 50; ball.y = servingPaddle.y; }
+              ball.vx = 0; ball.vy = 0;
+              state.ballTarget.x = ball.x; state.ballTarget.y = ball.y;
+            }
+            // إطلاق عند طلب
+            if (servingRef.current.requested) {
+              servingRef.current.active = false;
+              setIsServing(false);
+              servingRef.current.requested = false;
+              const spd = getInitialSpeed() + 2;
+              if (servingSide === 'bottom') { ball.vx = (Math.random()-0.5)*spd; ball.vy = -Math.abs(spd); }
+              else if (servingSide === 'top') { ball.vx = (Math.random()-0.5)*spd; ball.vy = Math.abs(spd); }
+              else if (servingSide === 'left') { ball.vx = Math.abs(spd); ball.vy = (Math.random()-0.5)*spd; }
+              else { ball.vx = -Math.abs(spd); ball.vy = (Math.random()-0.5)*spd; }
+            } else {
+              draw(context, state, players, now, true, world, myAngle);
+              frame = requestAnimationFrame(tick);
+              return;
+            }
+          }
           const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
           const predX = ball.x + ball.vx * 12;
           const predY = ball.y + ball.vy * 12;
@@ -845,7 +915,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             prev.x = paddle.x;
             prev.y = paddle.y;
           });
-          const goalW = 520; // تكبير الأهداف أكثر لكل اللاعبين - 4
+          const goalW = 820; // أكبر من فوق الإطار على كل الساحات - 2 - أكبر بكثير
           const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW, gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
           if (ball.y < 18) { if (active('top') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); } else { ball.y = 18; ball.vy = Math.abs(ball.vy); } }
           if (ball.y > h - 18) { if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); } else { ball.y = h - 18; ball.vy = -Math.abs(ball.vy); } }
@@ -1164,27 +1234,24 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
   context.fillStyle = '#f3f5f7'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
   const colors = Object.fromEntries(players.map((player) => [player.side, player.color]));
   const active = (side: Player['side']) => { if (players.some((player) => player.side === side)) return true; const count = Math.max(2, players.length || 2); const req = count === 2 ? ['bottom','top'] : ['bottom','top','right','left']; return (req as string[]).includes(side); };
-  const GOAL_W = players.length === 2? 260 : 300; const GX1 = (world.w - GOAL_W) / 2; const GY1 = (world.h - GOAL_W) / 2;
+  const GOAL_W = players.length === 2? 560 : 680; // أكبر من فوق الإطار على كل الساحات - 2 const GX1 = (world.w - GOAL_W) / 2; const GY1 = (world.h - GOAL_W) / 2;
   const drawGoal = (x: number, y: number, w: number, h: number, col: string) => { context.fillStyle = '#000000'; context.fillRect(x, y, w, h); context.fillStyle = col + '33'; context.fillRect(x, y, w, h); context.strokeStyle = col; context.lineWidth = 2.5; context.shadowColor = col; context.shadowBlur = 12; context.strokeRect(x, y, w, h); context.shadowBlur = 0; };
   if (active('top')) drawGoal(GX1, 0, GOAL_W, borderOuter + 2, colors.top?? COLORS[1]); if (active('bottom')) drawGoal(GX1, world.h - (borderOuter + 2), GOAL_W, borderOuter + 2, colors.bottom?? COLORS[0]); if (active('left')) drawGoal(0, GY1, borderOuter + 2, GOAL_W, colors.left?? COLORS[3]); if (active('right')) drawGoal(world.w - (borderOuter + 2), GY1, borderOuter + 2, GOAL_W, colors.right?? COLORS[2]);
   const drawHatPaddle = (x: number, y: number, color: string) => { const size = PADDLE_SIZE; context.save(); const clampedX = Math.max(innerX + size / 2, Math.min(innerX + innerW - size / 2, x)); const clampedY = Math.max(innerY + size / 2, Math.min(innerY + innerH - size / 2, y)); context.translate(clampedX, clampedY); context.shadowColor = color; context.shadowBlur = 20; const img = getColoredPaddle(color, size); context.drawImage(img, -size / 2, -size / 2, size, size); context.restore(); };
   if (active('top')) drawHatPaddle(state.paddles.top.x, state.paddles.top.y, colors.top?? COLORS[1]); if (active('bottom')) drawHatPaddle(state.paddles.bottom.x, state.paddles.bottom.y, colors.bottom?? COLORS[0]); if (active('left')) drawHatPaddle(state.paddles.left.x, state.paddles.left.y, colors.left?? COLORS[3]); if (active('right')) drawHatPaddle(state.paddles.right.x, state.paddles.right.y, colors.right?? COLORS[2]);
   if (countdown > 0) { context.save(); context.fillStyle = 'rgba(0,0,0,0.78)'; context.fillRect(0, 0, world.w, world.h); context.fillStyle = '#ff2233'; context.font = 'bold 120px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.shadowColor = '#ff2233'; context.shadowBlur = 28; context.fillText(String(countdown), world.w / 2, world.h / 2); context.shadowBlur = 0; context.restore(); }
-  const screenRadius = 13 * Math.min(sx, sy); const rx = screenRadius / sx; const ry = screenRadius / sy;
-  // الكرة مضيئة مشعة للساحات المظلمة - 5
+  const screenRadius = 12 * Math.min(sx, sy); const rx = screenRadius / sx; const ry = screenRadius / sy;
+  // الكرة غامقة في الساحة البيضاء - 1
   context.save();
-  context.shadowColor = '#00e5ff'; context.shadowBlur = 32;
-  context.fillStyle = 'rgba(0,229,255,0.42)';
-  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*2.4, ry*2.4, 0, 0, Math.PI * 2); context.fill();
-  context.shadowColor = '#ffffff'; context.shadowBlur = 20;
-  context.fillStyle = '#00e5ff';
-  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*1.5, ry*1.5, 0, 0, Math.PI * 2); context.fill();
-  context.shadowColor = '#00e5ff'; context.shadowBlur = isServing? 44 : 36;
-  context.fillStyle = '#ffffff';
+  context.shadowColor = 'rgba(0,0,0,0.45)'; context.shadowBlur = 16;
+  context.fillStyle = '#0a0a0a';
+  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*1.15, ry*1.15, 0, 0, Math.PI * 2); context.fill();
+  context.shadowColor = '#ff2233'; context.shadowBlur = isServing? 28 : 20;
+  context.fillStyle = '#ff2233';
   context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx, ry, 0, 0, Math.PI * 2); context.fill();
   context.shadowBlur = 0;
-  context.fillStyle = 'rgba(255,255,255,0.96)';
-  context.beginPath(); context.ellipse(state.ball.x - rx*0.25, state.ball.y - ry*0.25, rx*0.4, ry*0.4, 0, 0, Math.PI * 2); context.fill();
+  context.fillStyle = 'rgba(255,255,255,0.9)';
+  context.beginPath(); context.ellipse(state.ball.x - rx*0.28, state.ball.y - ry*0.28, rx*0.38, ry*0.38, 0, 0, Math.PI * 2); context.fill();
   context.restore();
   try { updateAndDrawStars(context); } catch {}
   state.effects = state.effects.filter((effect) => now - effect.born < 900);
