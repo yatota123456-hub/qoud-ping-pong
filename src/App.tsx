@@ -11,13 +11,12 @@ type MatchMode = 'time' | 'goals';
 type Difficulty = 'easy' | 'normal' | 'hard';
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
 type ArenaSize = 'small' | 'medium' | 'large' | 'xlarge';
-type ArenaStyle = 'classic' | 'neon' | 'galaxy' | 'sunset';
-type Settings = { players: number; vsComputer: boolean; difficulty: Difficulty; start: StartMode; mode: MatchMode; duration: number; goal: number; speed: SpeedMode; ballSpeed: number; sound: boolean; graphics: '2d' | '3d'; arenaSize: ArenaSize; arenaStyle: ArenaStyle; seriesType: 'single' | 'series'; seriesRounds: number; };
+type Settings = { players: number; vsComputer: boolean; difficulty: Difficulty; start: StartMode; mode: MatchMode; duration: number; goal: number; speed: SpeedMode; ballSpeed: number; sound: boolean; graphics: '2d' | '3d'; arenaSize: ArenaSize; seriesType: 'single' | 'series'; seriesRounds: number; };
 type Scores = Record<string | number, number>;
 type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: Partial<Settings> };
 type Vec2 = { x: number; y: number };
 
-const ARENA_SCALES: Record<ArenaSize, number> = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
+const ARENA_SCALES: Record<ArenaSize, number> = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 }; // L-XL أكبر بكثير - 7
 const COLORS = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
 const SIDES: Player['side'][] = ['bottom', 'top', 'right', 'left'];
 const RECTANGULAR_WORLD = { w: 700, h: 1050 };
@@ -25,11 +24,12 @@ const SQUARE_WORLD = { w: 1000, h: 1000 };
 const ZONE = 100;
 const PADDLE_MOVE_ZONE = 220;
 const PADDLE_SIZE = 42;
-const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 10, sound: true, graphics: '2d', arenaSize: 'medium', arenaStyle: 'classic', seriesType: 'single', seriesRounds: 3 } as Settings;
+const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 10, sound: true, graphics: '2d', arenaSize: 'medium', seriesType: 'single', seriesRounds: 3 } as Settings;
 
 function randomRoom(existing: string[] = []) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
-  do { code = Array.from({ length: 6 }, () => Math.floor(Math.random()*10).toString()).join(''); } while (existing.includes(code));
+  do { code = Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join(''); } while (existing.includes(code));
   return code;
 }
 function loadWins(): Record<string, number> { try { return JSON.parse(localStorage.getItem('qoud-ping-pong-wins')?? '{}') as Record<string, number>; } catch { return {}; } }
@@ -177,10 +177,6 @@ useEffect(() => {
     setError(isArRef.current? 'منشئ الغرفة غادر' : 'Host left'); 
     setScreen('setup'); 
   };
-  const onPauseUpdate = (data: any) => {
-    const paused = typeof data === 'boolean' ? data : data?.paused;
-    if (typeof paused === 'boolean') setMatchPaused(paused);
-  };
   socket.on('room-update', onRoomUpdate);
   socket.on('game-started', onGameStarted);
   socket.on('match-finished', onMatchFinished);
@@ -188,9 +184,6 @@ useEffect(() => {
   socket.on('round-finished', onRoundFinished);
   socket.on('next-round', onNextRound);
   socket.on('series-started', onSeriesStarted);
-  socket.on('pause-update', onPauseUpdate);
-  socket.on('game-paused', onPauseUpdate);
-  socket.on('pause-state', onPauseUpdate);
   socket.on('error', onError);
   socket.on('connection-lost', onLost);
   socket.on('host-left', onHostLeft);
@@ -202,9 +195,6 @@ useEffect(() => {
     socket.off('round-finished', onRoundFinished);
     socket.off('next-round', onNextRound);
     socket.off('series-started', onSeriesStarted);
-    socket.off('pause-update', onPauseUpdate);
-    socket.off('game-paused', onPauseUpdate);
-    socket.off('pause-state', onPauseUpdate);
     socket.off('error', onError);
     socket.off('connection-lost', onLost);
     socket.off('host-left', onHostLeft);
@@ -230,26 +220,15 @@ useEffect(() => {
   };
   const makePlayers = useCallback(() => {
     const requested = settings.players;
-    const total = (settings.vsComputer && requested === 3) ? 4 : requested;
-    return Array.from({ length: total }, (_, index) => {
-      let isComputer = false;
-      if (settings.vsComputer) {
-        if (index === 0) isComputer = false;
-        else if (requested === 3 && index === 3) isComputer = true;
-        else if (index >= requested) isComputer = true;
-        else isComputer = computers[index] ?? true;
-      } else {
-        isComputer = false;
-      }
-      return {
-        id: String(index),
-        name: names[index]?.trim() || `لاعب ${index + 1}`,
-        color: COLORS[index],
-        side: SIDES[index],
-        computer: isComputer,
-      };
-    });
-  }, [names, settings.players, computers, settings.vsComputer]);
+    const total = requested === 3? 4 : requested;
+    return Array.from({ length: total }, (_, index) => ({
+      id: String(index),
+      name: names[index]?.trim() || `لاعب ${index + 1}`,
+      color: COLORS[index],
+      side: SIDES[index],
+      computer: index === 0? false : (requested === 3 && index === 3? true : (index >= requested? true : computers[index])),
+    }));
+  }, [names, settings.players, computers]);
 
   const enterWaiting = async () => {
     const trimmed = names.slice(0, settings.players).map(n => n.trim());
@@ -257,71 +236,28 @@ useEffect(() => {
     if (new Set(trimmed).size!== trimmed.length) { setError(isAr? 'الاسماء لازم مختلفة' : 'Names must be unique'); return; }
     localStorage.setItem('qoud-ping-pong-settings', JSON.stringify(settings));
     const allPlayers = makePlayers();
-    if (settings.vsComputer) {
-      setPlayers(allPlayers);
-      setScores(Object.fromEntries(allPlayers.map(p => [p.id, 0])));
-      setRoom('');
-      setIsHost(true);
-      setWinner(null);
-      setLastGoal(null);
-      setMatchPaused(false);
-      setCelebrating(null);
-      setSeriesWins({});
-      setCurrentRound(1);
-      setRoundWinner(null);
-      setMatchKey(k=>k+1);
-      setError('');
-      setScreen('game');
-      return;
-    }
     setIsConnectingRoom(true);
     try {
-      // توليد كود 6 أرقام وإرساله للسيرفر - إصلاح مشكلة 404
-      const generatedCode = randomRoom();
-      const colyseusRoom = await colyseus.create('qoud', {
-        code: generatedCode,
-        maxPlayers: allPlayers.length,
-        settings,
-        player: allPlayers[0],
-        computerPlayers: [],
-        name: allPlayers[0].name
-      });
-      socket.attach(colyseusRoom);
-      // انتظر حتى يصل كود الغرفة من السيرفر، وإلا استخدم الكود المولد
-      const serverCode = (colyseusRoom.state as any)?.code || generatedCode;
-      setRoom(serverCode);
-      setIsHost(true); setError(''); setScreen('waiting');
-      console.log('[QOUD] Room created with code:', serverCode);
+      const roomCode = randomRoom();
+      const colyseusRoom = await colyseus.create('qoud', { code: roomCode, maxPlayers: allPlayers.length, settings, player: allPlayers[0], computerPlayers: allPlayers.slice(1).filter(p=>p.computer), name: allPlayers[0].name, });
+      socket.attach(colyseusRoom); setRoom(roomCode); setIsHost(true); setError(''); setScreen('waiting');
     } catch (cause) { setError(cause instanceof Error? cause.message : (isAr? 'تعذر انشاء الغرفة' : 'Could not create room')); }
     finally { setIsConnectingRoom(false); }
   };
-    const joinByCode = async (customName?: string) => {
-    const code = joinCode.replace(/\D/g,'').slice(0, 6);
-    console.log('[QOUD] Trying to join code:', code);
-    if (code.length!== 6) { setError(isAr? 'الكود 6 أرقام - اكتب 6 أرقام كاملة' : 'Code must be 6 digits'); return; }
+  const joinByCode = async (customName?: string) => {
+    const code = joinCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    if (code.length!== 4) { setError(isAr? 'الكود 4 حروف' : 'Code 4 chars'); return; }
     const finalName = (customName || joinName || localStorage.getItem('qoud_name') || names[0] || 'لاعب').trim().slice(0, 15);
     if (finalName.length < 2) { setError(isAr? 'اكتب اسمك أولاً' : 'Write your name first'); return; }
     localStorage.setItem('qoud_name', finalName);
     setIsConnectingRoom(true);
     try {
-      // تحقق من وجود الغرفة أولاً
       const lookup = await fetch(`/api/rooms?code=${encodeURIComponent(code)}`);
-      if (!lookup.ok) {
-        const errText = await lookup.text().catch(()=> '');
-        console.error('[QOUD] Room lookup failed:', code, lookup.status, errText);
-        throw new Error(isAr? `الغرفة ${code} غير موجودة - تأكد من الكود` : `Room ${code} not found`);
-      }
-      const data = await lookup.json() as { roomId: string; code: string };
-      console.log('[QOUD] Found room:', data);
-      const colyseusRoom = await colyseus.joinById(data.roomId, { name: finalName });
-      socket.attach(colyseusRoom);
-      setRoom(data.code || code);
-      setIsHost(false); setError(''); setScreen('waiting');
-      console.log('[QOUD] Joined room:', data.code);
-    } catch (cause) {
-      console.error('[QOUD] Join failed:', cause);
-      setError(cause instanceof Error? cause.message : 'تعذر الانضمام - الغرفة غير موجودة');
-    }
+      if (!lookup.ok) throw new Error(isAr? 'الغرفة غير موجودة' : 'Room not found');
+      const { roomId } = await lookup.json() as { roomId: string };
+      const colyseusRoom = await colyseus.joinById(roomId, { name: finalName });
+      socket.attach(colyseusRoom); setRoom(code); setIsHost(false); setError(''); setScreen('waiting');
+    } catch (cause) { setError(cause instanceof Error? cause.message : 'تعذر الانضمام'); }
     finally { setIsConnectingRoom(false); }
   };
   const leaveWaiting = () => { void socket.leave(); setPlayers([]); setError(''); setScreen('setup'); };
@@ -429,13 +365,13 @@ useEffect(() => {
   }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers, settings.players, settings.vsComputer]);
 
   if (screen === 'waiting') {
-    return <WaitingRoom room={room} players={players} isHost={isHost} error={error} settings={settings} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
+    return <WaitingRoom room={room} players={players} isHost={isHost} error={error} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
   }
   if (screen === 'game') {
     if (settings.graphics === '3d') {
-      return <GameScreen3D key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} onGoal={goalScored} onTimeUp={() => {const top = [...players].filter(Boolean).sort((a, b) => (scores[b?.id]?? 0) - (scores[a?.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => { setMatchPaused((p:any)=>{ const np=!p; if(socket.connected){ try{ socket.emit('pause-toggle', { paused: np }); socket.emit('pause-state', { paused: np }); socket.emit('game-paused', { paused: np }); }catch{} } return np; }); }} onExit={leaveMatch} />;
+      return <GameScreen3D key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} onGoal={goalScored} onTimeUp={() => {const top = [...players].filter(Boolean).sort((a, b) => (scores[b?.id]?? 0) - (scores[a?.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
     }
-    return <GameScreen key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} roundWinner={roundWinner} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => { setMatchPaused((p:any)=>{ const np=!p; if(socket.connected){ try{ socket.emit('pause-toggle', { paused: np }); socket.emit('pause-state', { paused: np }); socket.emit('game-paused', { paused: np }); }catch{} } return np; }); }} onExit={leaveMatch} />;
+    return <GameScreen key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} roundWinner={roundWinner} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
   }
   if (screen === 'results') {
     return <ResultsScreen players={players} scores={scores} winner={winner} wins={wins} seriesWins={seriesWins} currentRound={currentRound} settings={settings} onAgain={startMatch} onHome={() => { void socket.leave(); setPlayers([]); setScreen('setup'); setSeriesWins({}); setCurrentRound(1); }} />;
@@ -503,15 +439,9 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           <div className="flex flex-col gap-2.5">
             {Array.from({ length: settings.players }, (_, i) => (
               <div key={i} className="grid grid-cols-[42px_1fr_34px] gap-2 items-center">
-                {settings.vsComputer ? (
-                  <button type="button" onClick={() => onToggleComputer(i)} className="w-10 h-7 rounded-full border-[2px] border-black bg-white flex items-center px-1 shrink-0">
-                    <div className="w-4 h-4 rounded-full border-[1.5px] border-black transition-all duration-200" style={{background: computers[i]? '#ff6b8b' : '#61e7c2', marginLeft: computers[i]? '18px':'0'}} />
-                  </button>
-                ) : (
-                  <div className="w-10 h-7 rounded-full border-[2px] border-black bg-[#61e7c2] flex items-center justify-center shrink-0">
-                    <span className="text-[10px] font-black">👤</span>
-                  </div>
-                )}
+                <button type="button" onClick={() => onToggleComputer(i)} className="w-10 h-7 rounded-full border-[2px] border-black bg-white flex items-center px-1 shrink-0">
+                  <div className="w-4 h-4 rounded-full border-[1.5px] border-black transition-all duration-200" style={{background: computers[i]? '#ff6b8b' : '#fff', marginLeft: computers[i]? '18px':'0'}} />
+                </button>
                 <input value={names[i]} onChange={(e) => onChangeName(i, e.target.value)} className="w-full h-10 rounded-full border-[2px] border-black bg-white px-4 font-bold text-[14px] outline-none" maxLength={14} />
                 <div className="w-8 h-8 rounded-full border-[2px] border-black grid place-items-center shrink-0" style={{background: COLORS[i]}}><span className="text-[10px]">●</span></div>
               </div>
@@ -522,20 +452,18 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
             <button onClick={() => onChangeSettings({ vsComputer: true })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>ضد الكمبيوتر</button>
           </div>
         </section>
-        {!settings.vsComputer && (
-      <section className="bg-black border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
+        <section className="bg-black border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="bg-[#ffcf5a] text-black text-[11px] font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
             <span className="font-black text-[14px] text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
           </div>
-          <div className="grid grid-cols-[1fr_110px_48px] gap-2">
-            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
-            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="000000" className="w-full h-11 rounded-full border border-white bg-white text-black text-center font-black text-[14px] tracking-[0.2em] outline-none" />
-            <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
+          <div className="grid grid-cols-[1fr_90px_48px] gap-2">
+            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border-[2px] border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
+            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4))} placeholder="BZYF" className="w-full h-11 rounded-full border-[2px] border-white bg-white text-black text-center font-black text-[15px] tracking-[0.2em] outline-none" />
+            <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border-[2px] border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
           </div>
-          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 6 أرقام ثم انضم - يظهر فقط في وضع الأصدقاء</div>
+          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 4 حروف ثم انضم</div>
         </section>
-      )}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2"><span className="bg-[#ffcf5a] border-[2px] border-black rounded-full px-3 h-7 text-[11px] font-black grid place-items-center">MODE 4</span><span className="font-black text-[14px]">السرعة</span></div>
@@ -604,53 +532,6 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           </div>
         </section>
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2"><span className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-[2.5px] border-black rounded-full px-3 h-7 text-[11px] font-black grid place-items-center">SHAPE</span><span className="font-black text-[14px]">🎨 شكل الساحة</span></div>
-            <div className="w-6 h-6 rounded-full border-[2px] border-black bg-white grid place-items-center text-[11px] font-black">★</div>
-          </div>
-          <div className="grid grid-cols-2 gap-2.5">
-            <button onClick={()=>onChangeSettings({arenaStyle:'classic'})} className={`relative h-[88px] rounded-[14px] border-[2.5px] border-black overflow-hidden transition-all ${settings.arenaStyle==='classic'?'ring-2 ring-black ring-offset-2':''}`}>
-              <div className="absolute inset-0 bg-[#f3f5f7]" />
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                <div className="w-12 h-12 rounded-lg bg-white border-2 border-black shadow-sm grid place-items-center"><div className="w-6 h-6 rounded-full bg-[#ff2d2d]" /></div>
-                <span className="text-[11px] font-black">كلاسيك</span>
-              </div>
-              <div className="absolute top-1.5 right-1.5 text-[10px] font-black px-2 h-5 rounded-full bg-white text-black border border-black grid place-items-center">خشب</div>
-              {settings.arenaStyle==='classic' && <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-black text-white rounded-full grid place-items-center text-[12px] font-black">✓</div>}
-            </button>
-            <button onClick={()=>onChangeSettings({arenaStyle:'neon'})} className={`relative h-[88px] rounded-[14px] border-[2.5px] border-black overflow-hidden transition-all ${settings.arenaStyle==='neon'?'ring-2 ring-black ring-offset-2':''}`}>
-              <div className="absolute inset-0 bg-black" />
-              <div className="absolute inset-0 opacity-60" style={{background: 'linear-gradient(45deg, #00e5ff 0%, #7c4dff 25%, #ff2d78 50%, #ffcf5a 75%, #00e5ff 100%)'}} />
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                <div className="w-12 h-12 rounded-lg bg-black border-2 border-[#00e5ff] shadow-[0_0_10px_#00e5ff] grid place-items-center"><div className="w-6 h-6 rounded-full bg-[#00e5ff] shadow-[0_0_8px_#00e5ff]" /></div>
-                <span className="text-[11px] font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">نيون</span>
-              </div>
-              <div className="absolute top-1.5 right-1.5 text-[10px] font-black px-2 h-5 rounded-full bg-[#00e5ff] text-black border border-black grid place-items-center">LED</div>
-              {settings.arenaStyle==='neon' && <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[12px] font-black">✓</div>}
-            </button>
-            <button onClick={()=>onChangeSettings({arenaStyle:'galaxy'})} className={`relative h-[88px] rounded-[14px] border-[2.5px] border-black overflow-hidden transition-all ${settings.arenaStyle==='galaxy'?'ring-2 ring-black ring-offset-2':''}`}>
-              <div className="absolute inset-0" style={{background: 'radial-gradient(ellipse at 30% 20%, #1a0b3e 0%, #2d1b69 25%, #0f0f23 70%)'}} />
-              <div className="absolute inset-0 opacity-80" style={{backgroundImage: 'radial-gradient(2px 2px at 20% 30%, #fff, transparent), radial-gradient(2px 2px at 40% 70%, #a78bfa, transparent)'}} />
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                <div className="w-12 h-12 rounded-lg bg-[#1a0b3e] border-2 border-[#a78bfa] shadow-[0_0_12px_#a78bfa] grid place-items-center"><div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#a78bfa] to-[#c084fc] shadow-[0_0_10px_#a78bfa]" /></div>
-                <span className="text-[11px] font-black text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">مجرة ✨</span>
-              </div>
-              <div className="absolute top-1.5 right-1.5 text-[10px] font-black px-2 h-5 rounded-full bg-gradient-to-r from-[#7c3aed] to-[#a78bfa] text-white border border-black grid place-items-center">جديد</div>
-              {settings.arenaStyle==='galaxy' && <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[12px] font-black">✓</div>}
-            </button>
-            <button onClick={()=>onChangeSettings({arenaStyle:'sunset'})} className={`relative h-[88px] rounded-[14px] border-[2.5px] border-black overflow-hidden transition-all ${settings.arenaStyle==='sunset'?'ring-2 ring-black ring-offset-2':''}`}>
-              <div className="absolute inset-0" style={{background: 'linear-gradient(135deg, #ff7e5f 0%, #feb47b 25%, #ff6a88 50%, #ff8a5b 75%, #ffc371 100%)'}} />
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#ff7e5f] to-[#feb47b] border-2 border-white shadow-[0_0_12px_rgba(255,126,95,0.6)] grid place-items-center"><div className="w-6 h-6 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]" /></div>
-                <span className="text-[11px] font-black text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">غروب 🌅</span>
-              </div>
-              <div className="absolute top-1.5 right-1.5 text-[10px] font-black px-2 h-5 rounded-full bg-gradient-to-r from-[#ff7e5f] to-[#feb47b] text-white border border-black grid place-items-center">جديد</div>
-              {settings.arenaStyle==='sunset' && <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-white text-black rounded-full grid place-items-center text-[12px] font-black">✓</div>}
-            </button>
-          </div>
-          <div className="text-[11px] font-bold bg-black text-white rounded-full px-3 h-7 grid place-items-center text-center">المضيف فقط يختار الشكل • المنضمون لا يمكنهم التغيير</div>
-        </section>
-        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between"><span className="font-black text-[14px]">طريقة الفوز</span><div className="w-6 h-6 rounded-full border-[2px] border-black bg-white grid place-items-center text-[11px] font-black">3</div></div>
           <div className="grid grid-cols-2 gap-2">
             <button onClick={()=>onChangeSettings({mode:'time'})} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] ${settings.mode==='time'?'bg-black text-white':'bg-white text-black'}`}>⏱ وقت</button>
@@ -691,24 +572,15 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
   );
 }
 
-function WaitingRoom({ room, players, isHost, error, onBack, onStart, onRefresh, settings }: any) {
+function WaitingRoom({ room, players, isHost, error, onBack, onStart, onRefresh }: any) {
   const [copied, setCopied] = useState(false); const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
   const copyCode = async () => { try { await navigator.clipboard.writeText(room); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
-  const arenaStyle = settings?.arenaStyle || 'classic';
-  const styleNames: any = { classic: 'كلاسيك 🪵', neon: 'نيون LED', galaxy: 'مجرة ✨', sunset: 'غروب 🌅' };
-  const styleColors: any = { classic: '#f3f5f7', neon: '#000', galaxy: 'linear-gradient(135deg, #1a0b3e, #2d1b69)', sunset: 'linear-gradient(135deg, #ff7e5f, #feb47b)' };
   return (
     <main className="min-h-screen w-full bg-[#e9dfb1] flex justify-center p-4" dir={isAr? 'rtl' : 'ltr'}>
       <div className="w-full max-w-[480px] flex flex-col gap-3">
         <div className="flex justify-between"><Brand /><button onClick={onBack} className="w-10 h-10 rounded-full border-[2.5px] border-black bg-white grid place-items-center"><ArrowLeft size={18} strokeWidth={2.5} /></button></div>
         <div className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-4">
           <div className="flex justify-between items-center"><h1 className="font-black text-[18px]">الكل جاهز؟</h1><button onClick={copyCode} className="border-[2.5px] border-black rounded-full px-4 h-9 bg-black text-white font-black text-[13px]">{room} {copied?'✓':'📋'}</button></div>
-          <div className="mt-3 flex items-center gap-2 bg-black text-white rounded-full px-3 h-8 w-fit">
-            <span className="text-[11px] font-black">الشكل:</span>
-            <span className="w-4 h-4 rounded-full border border-white" style={{background: styleColors[arenaStyle]}} />
-            <span className="text-[12px] font-bold">{styleNames[arenaStyle] || arenaStyle}</span>
-            {!isHost && <span className="text-[10px] opacity-60 mr-1">• المضيف اختار</span>}
-          </div>
           {error && <div className="mt-3 bg-[#ff2d2d] text-white border-[2.5px] border-black rounded-[12px] p-2.5 font-black text-[13px] text-center">{error}</div>}
           <div className="mt-3 flex flex-wrap gap-2">
   {players.filter(Boolean).map((p:any,i:number)=>(
@@ -823,17 +695,9 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const active = (side: Player['side']) => { return requiredSides.includes(side); };
     const opposite: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
     const resetBall = (missedSide?: Player['side']) => {
-      let scorerSide = missedSide? opposite[missedSide] : null;
-      // تناوب الإرسال: لا يبدأ من نفس المضرب مرتين حتى لو 4 لاعبين
-      const lastServe = (state as any).lastServeSide || 'bottom';
-      if (scorerSide && scorerSide === lastServe) {
-        const allSides = requiredSides.filter(s => s !== lastServe);
-        if (allSides.length > 0) {
-          scorerSide = allSides[Math.floor(Math.random() * allSides.length)] as Player['side'];
-        }
-      }
-      if (scorerSide) (state as any).lastServeSide = scorerSide;
+      const scorerSide = missedSide? opposite[missedSide] : null;
       const scorer = scorerSide? playerForSide(scorerSide) : null;
+      try { playGoalSound(); spawnGoalStars(world.w/2, world.h/2); } catch {}
       state.countdown = 3; state.countdownStart = performance.now(); state.countdownSide = scorerSide as any; setCountdown(3); setCountdownName(scorer? scorer.name : '');
       state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ballTarget.x = world.w/2; state.ballTarget.y = world.h/2; state.ball.vx = 0; state.ball.vy = 0; state.rally = 0; setRally(0); state.speedMult = 1; hasDraggedRef.current=false; noDragStartRef.current=performance.now(); if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     };
@@ -842,7 +706,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       const delta = Math.min((now - state.last) / 16.67, 2); state.last = now;
       // --- إيقاف اللعبة في البداية: نرسم فقط بدون تحريك ---
       if (!localReadyRef.current) {
-        draw(context, state, players, now, false, world, myAngle, settings.arenaStyle);
+        draw(context, state, players, now, false, world, myAngle);
         frame = requestAnimationFrame(tick);
         return;
       }
@@ -851,7 +715,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         state.ball.y += state.ball.vy * 0.28 * delta;
         if (state.ball.x < 30 || state.ball.x > world.w-30) state.ball.vx *= -1;
         if (state.ball.y < 30 || state.ball.y > world.h-30) state.ball.vy *= -1;
-        draw(context, state, players, now, false, world, myAngle, settings.arenaStyle);
+        draw(context, state, players, now, false, world, myAngle);
         frame = requestAnimationFrame(tick);
         return;
       }
@@ -886,7 +750,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             }
           }
           if (state.countdown > 0) {
-            draw(context, state, players, now, false, world, myAngle, settings.arenaStyle);
+            draw(context, state, players, now, false, world, myAngle);
             frame = requestAnimationFrame(tick);
             return;
           }
@@ -894,64 +758,94 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         if (isOfflineMode) {
           const ball = state.ball;
           const w = world.w, h = world.h;
-          const BALL_R = 16, PADDLE_R = 32, HIT_DIST = BALL_R + PADDLE_R + 4;
-          const predX = ball.x + ball.vx * 8;
-          const predY = ball.y + ball.vy * 8;
-          const diffMax = settings.difficulty === 'easy' ? 1.0 : settings.difficulty === 'hard' ? 3.0 : 2.0;
+          const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
+          const predX = ball.x + ball.vx * 12;
+          const predY = ball.y + ball.vy * 12;
+          const diffMax = settings.difficulty === 'easy' ? 1.8 : settings.difficulty === 'hard' ? 4.5 : 3.2;
           const chase = (cur: number, target: number) => {
             const diff = target - cur;
             if (Math.abs(diff) < 1) return cur;
-            return cur + Math.max(-diffMax, Math.min(diffMax, diff * 0.12)) * delta;
+            return cur + Math.max(-diffMax, Math.min(diffMax, diff * 0.16)) * delta;
           };
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side) || side === mySide) return;
             const p = state.paddles[side];
-            if (side === 'top' || side === 'bottom') p.x = Math.max(60, Math.min(w - 60, chase(p.x, predX)));
-            else p.y = Math.max(60, Math.min(h - 60, chase(p.y, predY)));
+            // الكمبيوتر يتحرك في كل الجهات - أفقي وعمودي - إصلاح 2
+            if (side === 'top') {
+              p.x = Math.max(60, Math.min(w - 60, chase(p.x, predX)));
+              p.y = Math.max(40, Math.min(220, chase(p.y, predY)));
+            } else if (side === 'bottom') {
+              p.x = Math.max(60, Math.min(w - 60, chase(p.x, predX)));
+              p.y = Math.max(h - 220, Math.min(h - 40, chase(p.y, predY)));
+            } else if (side === 'left') {
+              p.y = Math.max(60, Math.min(h - 60, chase(p.y, predY)));
+              p.x = Math.max(40, Math.min(220, chase(p.x, predX)));
+            } else {
+              p.y = Math.max(60, Math.min(h - 60, chase(p.y, predY)));
+              p.x = Math.max(w - 220, Math.min(w - 40, chase(p.x, predX)));
+            }
             state.targetPaddles[side].x = p.x;
             state.targetPaddles[side].y = p.y;
           });
           ball.x += ball.vx * delta * 0.5;
           ball.y += ball.vy * delta * 0.5;
+          // === فيزياء محسنة: ارتداد بقوة حسب سرعة واتجاه المضرب ===
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side)) return;
             const paddle = state.paddles[side];
+            const prev = state.prevPaddles[side];
+            const pvx = (paddle.x - prev.x) / (delta || 1);
+            const pvy = (paddle.y - prev.y) / (delta || 1);
+            const paddleSpeed = Math.hypot(pvx, pvy);
+            
             const dx = ball.x - paddle.x, dy = ball.y - paddle.y, d = Math.hypot(dx, dy);
-            const HIT_DIST_BIG = 52; // مسافة أكبر لضمان عدم التفويت
-            if (d < HIT_DIST_BIG && d > 0.5) {
+            if (d < HIT_DIST && d > 0.5) {
               const nx = dx / d, ny = dy / d;
-              ball.x = paddle.x + nx * (HIT_DIST_BIG + 3);
-              ball.y = paddle.y + ny * (HIT_DIST_BIG + 3);
-              const curSpd = Math.hypot(ball.vx, ball.vy);
-              const targetSpd = Math.max(curSpd, getInitialSpeed()) + 1.0;
-              // ارتداد قوي حسب اتجاه حركة المضرب + موضع الضربة - لكل اللاعبين
-              const paddleMoveX = paddle.x - (state as any).prevPaddles?.[side]?.x || 0;
-              const paddleMoveY = paddle.y - (state as any).prevPaddles?.[side]?.y || 0;
-              // حفظ موضع سابق لحساب السرعة
-              if (!(state as any).prevPaddles) (state as any).prevPaddles = {};
-              if (!(state as any).prevPaddles[side]) (state as any).prevPaddles[side] = {x: paddle.x, y: paddle.y};
+              ball.x = paddle.x + nx * (HIT_DIST + 2);
+              ball.y = paddle.y + ny * (HIT_DIST + 2);
               
-              if (side === 'bottom') {
-                ball.vy = -Math.abs(targetSpd);
-                ball.vx = (ball.x - paddle.x) * 0.42 + paddleMoveX * 0.55; // اتجاه حركة المضرب يؤثر
-              } else if (side === 'top') {
-                ball.vy = Math.abs(targetSpd);
-                ball.vx = (ball.x - paddle.x) * 0.42 + paddleMoveX * 0.55;
-              } else if (side === 'left') {
-                ball.vx = Math.abs(targetSpd);
-                ball.vy = (ball.y - paddle.y) * 0.42 + paddleMoveY * 0.55;
+              // انعكاس مع سرعة المضرب - ارتداد بقوة حسب اتجاهه وسرعته
+              const dot = ball.vx * nx + ball.vy * ny;
+              let newVx = ball.vx - 2 * dot * nx;
+              let newVy = ball.vy - 2 * dot * ny;
+              
+              // إضافة قوة دفع المضرب بقوة (70% من سرعة المضرب)
+              newVx += pvx * 0.85;
+              newVy += pvy * 0.85;
+              
+              // تأثير مكان الضرب على المضرب
+              const hitOffset = side === 'bottom' || side === 'top' 
+                ? (ball.x - paddle.x) / PADDLE_R 
+                : (ball.y - paddle.y) / PADDLE_R;
+              if (side === 'bottom' || side === 'top') {
+                newVx += hitOffset * 4.5;
               } else {
-                ball.vx = -Math.abs(targetSpd);
-                ball.vy = (ball.y - paddle.y) * 0.42 + paddleMoveY * 0.55;
+                newVy += hitOffset * 4.5;
               }
-              if (Math.abs(ball.vx) < 1.2 && (side === 'bottom' || side === 'top')) ball.vx = (Math.random() > 0.5 ? 1 : -1) * 1.8;
-              if (Math.abs(ball.vy) < 1.2 && (side === 'left' || side === 'right')) ball.vy = (Math.random() > 0.5 ? 1 : -1) * 1.8;
-              // تحديث الموضع السابق
-              (state as any).prevPaddles[side] = {x: paddle.x, y: paddle.y};
+              
+              // زيادة السرعة حسب سرعة المضرب - كلما كان المضرب أسرع ارتدت الكرة بقوة أكبر
+              const curSpd = Math.hypot(newVx, newVy);
+              const speedBoost = 1.08 + state.rally * 0.025 + paddleSpeed * 0.045;
+              const baseSpeed = Math.max(curSpd * speedBoost, getInitialSpeed() + 2 + paddleSpeed * 0.12);
+              const finalSpeed = Math.min(baseSpeed, 14 + paddleSpeed * 0.1);
+              
+              const ang = Math.atan2(newVy, newVx);
+              // منع الزاوية الأفقية
+              let finalAng = ang;
+              if (Math.abs(Math.sin(finalAng)) < 0.28) {
+                finalAng += (Math.random() > 0.5 ? 1 : -1) * 0.4;
+              }
+              
+              ball.vx = Math.cos(finalAng) * finalSpeed;
+              ball.vy = Math.sin(finalAng) * finalSpeed;
+              
+              try { playHitSound(Math.min(1, (state.rally + paddleSpeed*0.2)/10)); } catch {}
               state.rally++; setRally(state.rally);
             }
+            prev.x = paddle.x;
+            prev.y = paddle.y;
           });
-          const goalW = 300;
+          const goalW = 520; // تكبير الأهداف أكثر لكل اللاعبين - 4
           const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW, gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
           if (ball.y < 18) { if (active('top') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); } else { ball.y = 18; ball.vy = Math.abs(ball.vy); } }
           if (ball.y > h - 18) { if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); } else { ball.y = h - 18; ball.vy = -Math.abs(ball.vy); } }
@@ -960,41 +854,57 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
           cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
         } else {
-          // === وضع الأصدقاء أونلاين - السيرفر مسؤول وحيد عن الكرة (إصلاح عدم الاستقرار) ===
-          // لا نحسب فيزياء محلية للكرة هنا - فقط interpolation من السيرفر
-          const ball = state.ball;
-          
-          // إذا السيرفر أرسل بيانات، نستخدمها مباشرة مع lerp سلس
-          if (state.ballTarget.x !== 0 || state.ballTarget.y !== 0) {
-            const lerp = 0.25; // أسرع لتقليل التأخير المرئي
-            ball.x += (state.ballTarget.x - ball.x) * lerp;
-            ball.y += (state.ballTarget.y - ball.y) * lerp;
-            ball.vx += (state.ballTarget.vx - ball.vx) * 0.2;
-            ball.vy += (state.ballTarget.vy - ball.vy) * 0.2;
-          } else {
-            // أول مرة - انسخ مباشرة
-            ball.x = state.ballTarget.x || ball.x;
-            ball.y = state.ballTarget.y || ball.y;
+          const SUBSTEPS = 4;
+          const stepDelta = delta / SUBSTEPS;
+          for (let i = 0; i < SUBSTEPS; i++) {
+            state.ball.x += state.ball.vx * stepDelta;
+            state.ball.y += state.ball.vy * stepDelta;
+            const HIT_DIST = 40;
+            (['top','bottom','right','left'] as const).forEach(side => {
+              if (!active(side)) return;
+              const paddle = state.paddles[side];
+              const prev = state.prevPaddles[side];
+              const pvx = (paddle.x - prev.x) / (delta || 1);
+              const pvy = (paddle.y - prev.y) / (delta || 1);
+              const paddleSpeed = Math.hypot(pvx, pvy);
+              
+              const dx = state.ball.x - paddle.x;
+              const dy = state.ball.y - paddle.y;
+              const dist = Math.hypot(dx, dy);
+              if (dist < HIT_DIST && dist > 0.5) {
+                const nx = dx / dist, ny = dy / dist;
+                const overlap = HIT_DIST - dist + 1;
+                state.ball.x += nx * overlap;
+                state.ball.y += ny * overlap;
+                
+                // ارتداد بقوة حسب سرعة المضرب - حتى في الأونلاين
+                const dot = state.ball.vx * nx + state.ball.vy * ny;
+                let newVx = state.ball.vx - 2 * dot * nx + pvx * 0.75;
+                let newVy = state.ball.vy - 2 * dot * ny + pvy * 0.75;
+                
+                const speedBoost = 1.05 + paddleSpeed * 0.04;
+                let spd = Math.hypot(newVx, newVy) * speedBoost;
+                spd = Math.max(spd, getInitialSpeed() + 1);
+                const ang = Math.atan2(newVy, newVx);
+                state.ball.vx = Math.cos(ang) * spd;
+                state.ball.vy = Math.sin(ang) * spd;
+              }
+              prev.x = paddle.x;
+              prev.y = paddle.y;
+            });
           }
-          
-          // تنبؤ بسيط فقط إذا تأخر السيرفر أكثر من 150ms
-          const lastT = ballBuffer.current[ballBuffer.current.length - 1]?.t || 0;
-          if (performance.now() - lastT > 150 && (ball.vx !== 0 || ball.vy !== 0)) {
-            ball.x += ball.vx * delta * 0.35;
-            ball.y += ball.vy * delta * 0.35;
-          }
-          
-          // تحريك المضارب
+          state.ball.x += (state.ballTarget.x - state.ball.x) * 0.1;
+          state.ball.y += (state.ballTarget.y - state.ball.y) * 0.1;
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side)) return;
             const target = state.targetPaddles[side]; const current = state.paddles[side];
-            const lf = side === mySide ? 0.55 : 0.40; // أسرع للخصوم لعدم التفويت
+            const lf = side === mySide ? 0.5 : 0.22;
             current.x += (target.x - current.x) * lf;
             current.y += (target.y - current.y) * lf;
           });
         }
       }
-      draw(context, state, players, now, false, world, myAngle, settings.arenaStyle);
+      draw(context, state, players, now, false, world, myAngle);
       if (pausedRef.current || gameEndedRef.current) { frame = requestAnimationFrame(tick); return; }
       frame = requestAnimationFrame(tick);
     };
@@ -1013,13 +923,12 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     if (paused || celebrating) return; if (isServing) { requestLaunch(); return; }
     (event.currentTarget as any).setPointerCapture?.(event.pointerId);
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 190 : 60; // زيادة المسافة ليظهر المضرب ولا يغطيه الإصبع
-    let tx=pt.x, ty=pt.y; 
-    // دائما الإصبع أسفل المضرب (جنوب) ليظهر المضرب ولا يغطيه الإصبع - لكل الجهات
-    if(mySide==='bottom') ty=pt.y-OFFSET; // إصبع أسفل المضرب
-    else if(mySide==='top') ty=pt.y-OFFSET; // حتى العلوي إصبعه أسفل المضرب (بين المضرب والوسط) ليظهر
-    else if(mySide==='left') { tx=pt.x; ty=pt.y-OFFSET; } // إصبع أسفل
-    else if(mySide==='right') { tx=pt.x; ty=pt.y-OFFSET; } // إصبع أسفل لكل الجهات
+    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 195 : 70; // الإصبع أسفل المضرب ولا يغطيه - إصلاح جوال
+    let tx=pt.x, ty=pt.y;
+    if(mySide==='bottom') ty=pt.y-OFFSET;
+    else if(mySide==='top') ty=pt.y-OFFSET;
+    else if(mySide==='left') { tx=pt.x; ty=pt.y-OFFSET; }
+    else if(mySide==='right') { tx=pt.x; ty=pt.y-OFFSET; }
     hasDraggedRef.current=true; if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     drag.current = { side: mySide, x: tx, y: ty };
     stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
@@ -1028,13 +937,12 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (!drag.current.side) return;
     const pt = getWorldFromClient(event.clientX, event.clientY);
-    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 190 : 60; // زيادة المسافة ليظهر المضرب ولا يغطيه الإصبع
-    let tx=pt.x, ty=pt.y; 
-    // دائما الإصبع أسفل المضرب (جنوب) ليظهر المضرب ولا يغطيه الإصبع - لكل الجهات
-    if(mySide==='bottom') ty=pt.y-OFFSET; // إصبع أسفل المضرب
-    else if(mySide==='top') ty=pt.y-OFFSET; // حتى العلوي إصبعه أسفل المضرب (بين المضرب والوسط) ليظهر
-    else if(mySide==='left') { tx=pt.x; ty=pt.y-OFFSET; } // إصبع أسفل
-    else if(mySide==='right') { tx=pt.x; ty=pt.y-OFFSET; } // إصبع أسفل لكل الجهات
+    const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 195 : 70; // الإصبع أسفل المضرب ولا يغطيه - إصلاح جوال
+    let tx=pt.x, ty=pt.y;
+    if(mySide==='bottom') ty=pt.y-OFFSET;
+    else if(mySide==='top') ty=pt.y-OFFSET;
+    else if(mySide==='left') { tx=pt.x; ty=pt.y-OFFSET; }
+    else if(mySide==='right') { tx=pt.x; ty=pt.y-OFFSET; }
     drag.current.x = tx; drag.current.y = ty;
     stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
     socket.sendPaddleTarget(tx, ty);
@@ -1101,13 +1009,34 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       )}
 
       {localReady && countdown > 0 && (
-        <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.75)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, pointerEvents: 'none' }}>
-          <span style={{ fontSize: '110px', fontWeight: 900, color: '#ff2233', textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>
-          {countdownSide && (<span style={{ background: '#222', color: '#fff', padding: '8px 18px', borderRadius: 999, fontWeight: 800 }}>{players.find((p: any) => p.side === countdownSide)?.name || ''} سجل!</span>)}
+        <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.84)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, pointerEvents: 'none', gap: '22px' }}>
+          <span style={{ fontSize: '132px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 40px rgba(255,34,51,0.9), 0 0 80px rgba(0,0,0,1)' }}>{countdown}</span>
+          {countdownSide && (
+            <span style={{ 
+              background: 'linear-gradient(135deg, #ff2233 0%, #ff6b6b 100%)', 
+              color: '#fff', padding: '13px 28px', borderRadius: 999, 
+              fontWeight: 900, fontSize: '17px',
+              boxShadow: '0 8px 28px rgba(255,34,51,0.65)',
+              border: '2px solid rgba(255,255,255,0.32)',
+              display: 'flex', alignItems: 'center', gap: '10px'
+            }}>
+              ⚽ {(() => {
+                const opposite: any = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
+                const scorerSide = opposite[countdownSide] || countdownSide;
+                const scorer = players.find((p: any) => p.side === scorerSide);
+                return scorer ? `${scorer.name} سجل هدف!` : 'هدف!';
+              })()}
+            </span>
+          )}
         </div>
       )}
-      {localReady && lastGoal && !celebrating && (
-        <div style={{ position: 'absolute', top: '48%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.92)', color: '#fff', padding: '12px 22px', borderRadius: 12, fontWeight: 900, zIndex: 11 }}>هدف! {lastGoal}</div>
+      {localReady && lastGoal && !celebrating && countdown === 0 && (
+        <div style={{ 
+          position: 'absolute', top: '42%', left: '50%', transform: 'translate(-50%,-50%)', 
+          background: 'linear-gradient(135deg, rgba(255,34,51,0.96) 0%, rgba(255,100,100,0.96) 100%)', 
+          color: '#fff', padding: '16px 30px', borderRadius: 16, fontWeight: 900, fontSize: '19px',
+          zIndex: 11, boxShadow: '0 10px 36px rgba(255,34,51,0.7)', border: '2px solid rgba(255,255,255,0.3)'
+        }}>⚽ هدف! {lastGoal}</div>
       )}
       {celebrating && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>
@@ -1137,7 +1066,88 @@ function getColoredPaddle(color: string, size: number = 42): HTMLCanvasElement {
   grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.2, color); grad.addColorStop(1, color); ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(size / 2, size / 0.52, size * 0.30, 0, Math.PI * 2); ctx.fill();
   return c;
 }
-function draw(context: CanvasRenderingContext2D, state: any, players: Player[], now: number, isServing: boolean, world = RECTANGULAR_WORLD, myAngle=0, arenaStyle: string = 'classic') {
+
+// === نظام الأصوات - اصطدام وجمهور - 3 ===
+let audioCtx: AudioContext | null = null;
+function getAudioCtx() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)(); } catch { return null; }
+  }
+  return audioCtx;
+}
+function playHitSound(power: number = 0.5) {
+  const ctx = getAudioCtx(); if (!ctx) return;
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 620 + power * 380;
+    gain.gain.value = 0.2 + power * 0.14;
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.14);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.14);
+  } catch {}
+}
+function playGoalSound() {
+  const ctx = getAudioCtx(); if (!ctx) return;
+  try {
+    for (let i=0;i<4;i++) {
+      setTimeout(() => {
+        try {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.value = 180 + Math.random()*320;
+          gain.gain.value = 0.3;
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.9);
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.start(); osc.stop(ctx.currentTime + 0.9);
+        } catch {}
+      }, i*110);
+    }
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.frequency.value = 920;
+    osc2.frequency.exponentialRampToValueAtTime(1450, ctx.currentTime + 0.38);
+    gain2.gain.value = 0.36;
+    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.72);
+    osc2.connect(gain2); gain2.connect(ctx.destination);
+    osc2.start(); osc2.stop(ctx.currentTime + 0.72);
+  } catch {}
+}
+let goalStars: Array<{x:number,y:number,vx:number,vy:number,life:number,size:number,color:string}> = [];
+function spawnGoalStars(x:number, y:number) {
+  for (let i=0;i<28;i++) {
+    const ang = (Math.PI*2 * i / 28) + Math.random()*0.4;
+    const spd = 3.5 + Math.random()*7;
+    goalStars.push({
+      x, y, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+      life: 1, size: 5 + Math.random()*7,
+      color: ['#ffcf5a','#ff6b8b','#61e7c2','#00e5ff','#ffffff'][Math.floor(Math.random()*5)]
+    });
+  }
+}
+function updateAndDrawStars(ctx: CanvasRenderingContext2D) {
+  for (let i=goalStars.length-1;i>=0;i--) {
+    const s = goalStars[i];
+    s.x += s.vx; s.y += s.vy; s.vy += 0.16; s.vx *= 0.99; s.life -= 0.018;
+    if (s.life <=0) { goalStars.splice(i,1); continue; }
+    ctx.globalAlpha = s.life;
+    ctx.fillStyle = s.color; ctx.shadowColor = s.color; ctx.shadowBlur = 14;
+    ctx.beginPath();
+    const spikes = 5; const outer = s.size; const inner = s.size*0.5;
+    for (let j=0;j<spikes*2;j++) {
+      const r = j%2===0 ? outer : inner;
+      const a = (Math.PI*2 * j / (spikes*2)) - Math.PI/2;
+      if (j===0) ctx.moveTo(s.x + Math.cos(a)*r, s.y + Math.sin(a)*r);
+      else ctx.lineTo(s.x + Math.cos(a)*r, s.y + Math.sin(a)*r);
+    }
+    ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  }
+}
+
+
+function draw(context: CanvasRenderingContext2D, state: any, players: Player[], now: number, isServing: boolean, world = RECTANGULAR_WORLD, myAngle=0) {
   const canvas = context.canvas as HTMLCanvasElement; const sx = canvas.width / world.w; const sy = canvas.height / world.h;
   context.save(); context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height); context.restore();
   context.save(); context.translate(world.w/2, world.h/2); context.rotate(myAngle); context.translate(-world.w/2, -world.h/2);
@@ -1147,49 +1157,11 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
   context.fillStyle = '#0c0c0c'; rr(0, 0, world.w, world.h, outerRadius); context.fill();
   const ledX = borderOuter - 6; const ledY = borderOuter - 6; const ledW = world.w - (borderOuter - 6) * 2; const ledH = world.h - (borderOuter - 6) * 2; const ledR = outerRadius - 10;
   let ledGrad: CanvasGradient;
-  if (arenaStyle === 'galaxy') {
-    ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH);
-    ledGrad.addColorStop(0, '#7c3aed'); ledGrad.addColorStop(0.3, '#a78bfa'); ledGrad.addColorStop(0.6, '#c084fc'); ledGrad.addColorStop(1, '#7c3aed');
-  } else if (arenaStyle === 'sunset') {
-    ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH);
-    ledGrad.addColorStop(0, '#ff7e5f'); ledGrad.addColorStop(0.3, '#feb47b'); ledGrad.addColorStop(0.6, '#ff6a88'); ledGrad.addColorStop(1, '#ff7e5f');
-  } else if (typeof (context as any).createConicGradient === 'function') { 
-    ledGrad = (context as any).createConicGradient(-Math.PI * 0.78, world.w / 2, world.h / 2); 
-    ledGrad.addColorStop(0.00, '#00e5ff'); ledGrad.addColorStop(0.20, '#7c4dff'); ledGrad.addColorStop(0.40, '#ff2d78'); ledGrad.addColorStop(0.60, '#ff7a28'); ledGrad.addColorStop(0.80, '#ffcf5a'); ledGrad.addColorStop(1.00, '#00e5ff'); 
-  } else { 
-    ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH); 
-    ledGrad.addColorStop(0, '#00e5ff'); ledGrad.addColorStop(0.5, '#ff2d78'); ledGrad.addColorStop(1, '#ff8a2a'); 
-  }
-  context.save(); 
-  context.shadowBlur = arenaStyle === 'neon' ? 35 : arenaStyle === 'galaxy' ? 25 : arenaStyle === 'sunset' ? 20 : 35; 
-  context.shadowColor = arenaStyle === 'galaxy' ? '#a78bfa' : arenaStyle === 'sunset' ? '#ff7e5f' : '#00e5ff'; 
-  context.strokeStyle = ledGrad; context.lineWidth = 12; context.lineCap = 'round'; rr(ledX, ledY, ledW, ledH, ledR); context.stroke(); context.restore();
+  if (typeof (context as any).createConicGradient === 'function') { ledGrad = (context as any).createConicGradient(-Math.PI * 0.78, world.w / 2, world.h / 2); ledGrad.addColorStop(0.00, '#00e5ff'); ledGrad.addColorStop(0.20, '#7c4dff'); ledGrad.addColorStop(0.40, '#ff2d78'); ledGrad.addColorStop(0.60, '#ff7a28'); ledGrad.addColorStop(0.80, '#ffcf5a'); ledGrad.addColorStop(1.00, '#00e5ff'); } else { ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH); ledGrad.addColorStop(0, '#00e5ff'); ledGrad.addColorStop(0.5, '#ff2d78'); ledGrad.addColorStop(1, '#ff8a2a'); }
+  context.save(); context.shadowBlur = 35; context.shadowColor = '#00e5ff'; context.strokeStyle = ledGrad; context.lineWidth = 12; context.lineCap = 'round'; rr(ledX, ledY, ledW, ledH, ledR); context.stroke(); context.restore();
   context.strokeStyle = 'rgba(255,255,255,0.95)'; context.lineWidth = 4; rr(ledX, ledY, ledW, ledH, ledR); context.stroke();
   const innerX = borderOuter + borderInner; const innerY = borderOuter + borderInner; const innerW = world.w - (borderOuter + borderInner) * 2; const innerH = world.h - (borderOuter + borderInner) * 2; const innerR = outerRadius - 18;
-  // خلفيات مختلفة حسب الشكل
-  if (arenaStyle === 'galaxy') {
-    const bgGrad = context.createRadialGradient(world.w/2, world.h/2, 0, world.w/2, world.h/2, Math.max(innerW, innerH));
-    bgGrad.addColorStop(0, '#1a0b3e'); bgGrad.addColorStop(0.4, '#2d1b69'); bgGrad.addColorStop(1, '#0f0f23');
-    context.fillStyle = bgGrad; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
-    // نجوم
-    context.fillStyle = 'rgba(255,255,255,0.8)';
-    for (let i=0; i<30; i++) {
-      const x = innerX + Math.random()*innerW; const y = innerY + Math.random()*innerH;
-      context.beginPath(); context.arc(x,y,Math.random()*1.5+0.5,0,Math.PI*2); context.fill();
-    }
-  } else if (arenaStyle === 'sunset') {
-    const bgGrad = context.createLinearGradient(innerX, innerY, innerX, innerY+innerH);
-    bgGrad.addColorStop(0, '#ffecd2'); bgGrad.addColorStop(0.3, '#fcb69f'); bgGrad.addColorStop(0.7, '#ff8a5b'); bgGrad.addColorStop(1, '#ff7e5f');
-    context.fillStyle = bgGrad; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
-  } else if (arenaStyle === 'neon') {
-    context.fillStyle = '#0a0a0a'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
-    // شبكة نيون
-    context.strokeStyle = 'rgba(0,229,255,0.15)'; context.lineWidth = 0.5;
-    for (let x=innerX; x<innerX+innerW; x+=40) { context.beginPath(); context.moveTo(x,innerY); context.lineTo(x,innerY+innerH); context.stroke(); }
-    for (let y=innerY; y<innerY+innerH; y+=40) { context.beginPath(); context.moveTo(innerX,y); context.lineTo(innerX+innerW,y); context.stroke(); }
-  } else {
-    context.fillStyle = '#f3f5f7'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
-  }
+  context.fillStyle = '#f3f5f7'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
   const colors = Object.fromEntries(players.map((player) => [player.side, player.color]));
   const active = (side: Player['side']) => { if (players.some((player) => player.side === side)) return true; const count = Math.max(2, players.length || 2); const req = count === 2 ? ['bottom','top'] : ['bottom','top','right','left']; return (req as string[]).includes(side); };
   const GOAL_W = players.length === 2? 260 : 300; const GX1 = (world.w - GOAL_W) / 2; const GY1 = (world.h - GOAL_W) / 2;
@@ -1198,8 +1170,23 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
   const drawHatPaddle = (x: number, y: number, color: string) => { const size = PADDLE_SIZE; context.save(); const clampedX = Math.max(innerX + size / 2, Math.min(innerX + innerW - size / 2, x)); const clampedY = Math.max(innerY + size / 2, Math.min(innerY + innerH - size / 2, y)); context.translate(clampedX, clampedY); context.shadowColor = color; context.shadowBlur = 20; const img = getColoredPaddle(color, size); context.drawImage(img, -size / 2, -size / 2, size, size); context.restore(); };
   if (active('top')) drawHatPaddle(state.paddles.top.x, state.paddles.top.y, colors.top?? COLORS[1]); if (active('bottom')) drawHatPaddle(state.paddles.bottom.x, state.paddles.bottom.y, colors.bottom?? COLORS[0]); if (active('left')) drawHatPaddle(state.paddles.left.x, state.paddles.left.y, colors.left?? COLORS[3]); if (active('right')) drawHatPaddle(state.paddles.right.x, state.paddles.right.y, colors.right?? COLORS[2]);
   if (countdown > 0) { context.save(); context.fillStyle = 'rgba(0,0,0,0.78)'; context.fillRect(0, 0, world.w, world.h); context.fillStyle = '#ff2233'; context.font = 'bold 120px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.shadowColor = '#ff2233'; context.shadowBlur = 28; context.fillText(String(countdown), world.w / 2, world.h / 2); context.shadowBlur = 0; context.restore(); }
-  const screenRadius = 11 * Math.min(sx, sy); const rx = screenRadius / sx; const ry = screenRadius / sy;
-  context.save(); context.shadowColor = '#ff1a2e'; context.shadowBlur = isServing? 32 : 22; context.fillStyle = '#ff2233'; context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx, ry, 0, 0, Math.PI * 2); context.fill(); context.restore();
+  const screenRadius = 13 * Math.min(sx, sy); const rx = screenRadius / sx; const ry = screenRadius / sy;
+  // الكرة مضيئة مشعة للساحات المظلمة - 5
+  context.save();
+  context.shadowColor = '#00e5ff'; context.shadowBlur = 32;
+  context.fillStyle = 'rgba(0,229,255,0.42)';
+  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*2.4, ry*2.4, 0, 0, Math.PI * 2); context.fill();
+  context.shadowColor = '#ffffff'; context.shadowBlur = 20;
+  context.fillStyle = '#00e5ff';
+  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*1.5, ry*1.5, 0, 0, Math.PI * 2); context.fill();
+  context.shadowColor = '#00e5ff'; context.shadowBlur = isServing? 44 : 36;
+  context.fillStyle = '#ffffff';
+  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx, ry, 0, 0, Math.PI * 2); context.fill();
+  context.shadowBlur = 0;
+  context.fillStyle = 'rgba(255,255,255,0.96)';
+  context.beginPath(); context.ellipse(state.ball.x - rx*0.25, state.ball.y - ry*0.25, rx*0.4, ry*0.4, 0, 0, Math.PI * 2); context.fill();
+  context.restore();
+  try { updateAndDrawStars(context); } catch {}
   state.effects = state.effects.filter((effect) => now - effect.born < 900);
   state.effects.forEach((effect: any) => { const progress = (now - effect.born) / 900; const erx = (16 + progress * 58); const ery = (16 + progress * 58) * sx / sy; context.save(); context.globalAlpha = 1 - progress; context.strokeStyle = effect.color; context.lineWidth = 3; context.beginPath(); context.ellipse(effect.x, effect.y, erx, ery, 0, 0, Math.PI * 2); context.stroke(); context.restore(); });
   context.restore();

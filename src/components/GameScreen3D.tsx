@@ -8,48 +8,20 @@ type Player = { id: number | string; name: string; color: string; side: 'top' | 
 type Settings = any;
 type Scores = Record<string | number, number>;
 
-function createAirHockeySurface(worldW: number, worldH: number, arenaStyle: string = 'classic') {
+function createAirHockeySurface(worldW: number, worldH: number) {
   const canvas = document.createElement('canvas');
   canvas.width = 2048;
   canvas.height = 4096;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  // خلفية حسب الشكل - 4 أشكال جميلة
-  if (arenaStyle === 'galaxy') {
-    const bgGrad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width);
-    bgGrad.addColorStop(0, '#1a0b3e'); bgGrad.addColorStop(0.4, '#2d1b69'); bgGrad.addColorStop(1, '#0f0f23');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // نجوم مجرة
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    for (let i=0; i<200; i++) {
-      const x = Math.random()*canvas.width; const y = Math.random()*canvas.height;
-      const r = Math.random()*2+0.5;
-      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
-    }
-  } else if (arenaStyle === 'sunset') {
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    bgGrad.addColorStop(0, '#ffecd2'); bgGrad.addColorStop(0.3, '#fcb69f'); bgGrad.addColorStop(0.7, '#ff8a5b'); bgGrad.addColorStop(1, '#ff7e5f');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  } else if (arenaStyle === 'neon') {
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // شبكة نيون
-    ctx.strokeStyle = 'rgba(0,229,255,0.08)';
-    ctx.lineWidth = 1;
-    for (let x=0; x<canvas.width; x+=80) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
-    for (let y=0; y<canvas.height; y+=80) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
-  } else {
-    ctx.fillStyle = '#fefefe';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    grad.addColorStop(0, 'rgba(0,0,0,0.02)');
-    grad.addColorStop(0.5, 'rgba(255,255,255,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.03)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
+  ctx.fillStyle = '#fefefe';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, 'rgba(0,0,0,0.02)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.03)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = 'rgba(10,10,10,0.85)';
   const dotSize = 2.2;
   const spacing = 32;
@@ -469,7 +441,7 @@ function createArenaFrame(worldW: number, worldH: number, style: 'classic' | 'mo
 }
 
 function getArenaWorld(count: number, size: any = 'medium') {
-  const ARENA_SCALES: any = { small: 0.8, medium: 1.0, large: 1.25, xlarge: 1.5 };
+  const ARENA_SCALES: any = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 };
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
   // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين يكون مستطيل - تصحيح حسب طلب المستخدم
@@ -479,30 +451,30 @@ function getArenaWorld(count: number, size: any = 'medium') {
 }
 
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
-  const isMobileNow = false;
+  const isMobileNow = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
   const PRESET_BY_SIZE: any = {
-    small:  { distance: 1180, height: 820 },
-    medium: { distance: 1380, height: 900 },
-    large:  { distance: 1580, height: 980 },
-    xlarge: { distance: 1780, height: 1060 },
+    small:  { distance: 980, height: 680, fov: 52 },
+    medium: { distance: 1180, height: 760, fov: 50 },
+    large:  { distance: 1680, height: 1020, fov: 48 },
+    xlarge: { distance: 2080, height: 1220, fov: 46 },
   };
   const base = PRESET_BY_SIZE[arenaSize] || PRESET_BY_SIZE.medium;
-  const mobileBoost = isMobileNow ? 1.12 : 1.0;
-  const heightBoost = isMobileNow ? 1.08 : 1.0;
+  const mobileBoost = isMobileNow ? 1.18 : 1.0;
+  const heightBoost = isMobileNow ? 1.12 : 1.0;
   const distance = base.distance * mobileBoost;
   const height = base.height * heightBoost;
   const basePresets = {
-    top: { angle: Math.PI, distance: 400, height: 1400, name: 'من الأعلى', nameEn: 'Top View' },
+    top: { angle: Math.PI, distance: 380, height: 1300, name: 'من الأعلى', nameEn: 'Top View' },
     bottom: { angle: 0, distance: distance, height: height, name: 'خلفك', nameEn: 'Behind You' },
-    topPlayer: { angle: Math.PI, distance: 650, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
-    iso: { angle: 0.6, distance: distance * 0.72, height: height * 0.88, name: 'مائل', nameEn: 'Isometric' },
-    sideLeft: { angle: -Math.PI / 2, distance: 800, height: 500, name: 'يسار', nameEn: 'Left' },
-    sideRight: { angle: Math.PI / 2, distance: 800, height: 500, name: 'يمين', nameEn: 'Right' },
+    topPlayer: { angle: Math.PI, distance: distance*0.55, height: height*0.75, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+    iso: { angle: 0.52, distance: distance * 0.68, height: height * 0.82, name: 'مائل', nameEn: 'Isometric' },
+    sideLeft: { angle: -Math.PI / 2, distance: distance*0.68, height: height*0.62, name: 'يسار', nameEn: 'Left' },
+    sideRight: { angle: Math.PI / 2, distance: distance*0.68, height: height*0.62, name: 'يمين', nameEn: 'Right' },
   };
   const adapted: any = {};
   for (const k in basePresets) {
     const b: any = (basePresets as any)[k];
-    adapted[k] = { ...b, baseDistance: b.distance, baseHeight: b.height, scaleFactor: 1, isMobile: isMobileNow };
+    adapted[k] = { ...b, baseDistance: b.distance, baseHeight: b.height, scaleFactor: 1, isMobile: isMobileNow, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
   }
   return adapted;
 }
@@ -534,31 +506,14 @@ export function GameScreen3D({
 
   useEffect(() => {
     const savedCam = localStorage.getItem('qoud_camera_preset');
-    // لا نعرض المودال تلقائيا - المستخدم يستخدم زر تحميل في قائمة الكاميرا
     if (savedCam) {
       setSavedCamData(savedCam);
-      // setShowRestoreModal(true); // معطل - التحميل يدوي عبر زر تحميل
+      setShowRestoreModal(true);
     }
   }, []);
 
   const restoreCamera = () => {
-    const saved = localStorage.getItem('qoud_camera_preset') || localStorage.getItem('qoud_camera_settings');
-    if (saved) {
-      try {
-        const s = JSON.parse(saved);
-        cam.current.angle = s.angle ?? cam.current.angle;
-        cam.current.targetAngle = s.targetAngle ?? s.angle ?? cam.current.targetAngle;
-        cam.current.distance = s.distance ?? cam.current.distance;
-        cam.current.targetDistance = s.targetDistance ?? s.distance ?? cam.current.targetDistance;
-        cam.current.height = s.height ?? cam.current.height;
-        cam.current.targetHeight = s.targetHeight ?? s.height ?? cam.current.targetHeight;
-        if (s.targetX !== undefined) cam.current.targetX = s.targetX;
-        if (s.targetZ !== undefined) cam.current.targetZ = s.targetZ;
-      } catch {}
-    }
     setShowRestoreModal(false);
-    setCamSaved(true);
-    setTimeout(()=>setCamSaved(false), 2000);
   };
 
   const { i18n } = useTranslation();
@@ -604,8 +559,6 @@ export function GameScreen3D({
     }
   }, []);
 
-  const [camSaved, setCamSaved] = useState(false);
-  
   const saveCameraSettings = useCallback(() => {
     const settings = {
       angle: cam.current.angle,
@@ -614,45 +567,8 @@ export function GameScreen3D({
       targetAngle: cam.current.targetAngle,
       targetDistance: cam.current.targetDistance,
       targetHeight: cam.current.targetHeight,
-      targetX: cam.current.targetX,
-      targetZ: cam.current.targetZ,
-      lookX: cam.current.lookX,
-      lookZ: cam.current.lookZ,
-      savedAt: Date.now()
     };
     localStorage.setItem('qoud_camera_settings', JSON.stringify(settings));
-    localStorage.setItem('qoud_camera_preset', JSON.stringify(settings));
-    setCamSaved(true);
-    setShowCamMenu(false);
-    setTimeout(()=>setCamSaved(false), 2500);
-  }, []);
-
-  const loadCameraSettings = useCallback(() => {
-    const saved = localStorage.getItem('qoud_camera_settings') || localStorage.getItem('qoud_camera_preset');
-    if (saved) {
-      try {
-        const s = JSON.parse(saved);
-        cam.current.angle = s.angle ?? cam.current.angle;
-        cam.current.targetAngle = s.targetAngle ?? s.angle ?? cam.current.targetAngle;
-        cam.current.distance = s.distance ?? cam.current.distance;
-        cam.current.targetDistance = s.targetDistance ?? s.distance ?? cam.current.targetDistance;
-        cam.current.height = s.height ?? cam.current.height;
-        cam.current.targetHeight = s.targetHeight ?? s.height ?? cam.current.targetHeight;
-        if (s.targetX !== undefined) cam.current.targetX = s.targetX;
-        if (s.targetZ !== undefined) cam.current.targetZ = s.targetZ;
-        if (s.lookX !== undefined) cam.current.lookX = s.lookX;
-        if (s.lookZ !== undefined) cam.current.lookZ = s.lookZ;
-        setCamSaved(true);
-        setShowCamMenu(false);
-        setTimeout(()=>setCamSaved(false), 2000);
-        return true;
-      } catch {}
-    }
-    return false;
-  }, []);
-
-  const hasSavedCam = useCallback(() => {
-    return !!localStorage.getItem('qoud_camera_settings') || !!localStorage.getItem('qoud_camera_preset');
   }, []);
 
   const resetCameraToDefault = useCallback(() => {
@@ -662,6 +578,67 @@ export function GameScreen3D({
 
   const threeRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext|null>(null);
+
+  const playHitSound3D = (power: number = 0.5) => {
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = audioCtxRef.current; if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 680 + power * 380;
+      gain.gain.value = 0.2 + power * 0.14;
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.14);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + 0.14);
+    } catch {}
+  };
+  const playGoalSound3D = () => {
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = audioCtxRef.current; if (!ctx) return;
+      for (let i=0;i<4;i++) {
+        setTimeout(() => {
+          try {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.value = 180 + Math.random()*320;
+            gain.gain.value = 0.3;
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.9);
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.start(); osc.stop(ctx.currentTime + 0.9);
+          } catch {}
+        }, i*100);
+      }
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.frequency.value = 900;
+      osc2.frequency.exponentialRampToValueAtTime(1450, ctx.currentTime + 0.4);
+      gain2.gain.value = 0.38;
+      gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.75);
+      osc2.connect(gain2); gain2.connect(ctx.destination);
+      osc2.start(); osc2.stop(ctx.currentTime + 0.75);
+    } catch {}
+  };
+  const createGoalStars3D = (x: number, z: number) => {
+    if (!threeRef.current) return;
+    const { hitGroup } = threeRef.current;
+    for (let i=0;i<24;i++) {
+      const starGeo = new THREE.SphereGeometry(3 + Math.random()*2.5, 8, 8);
+      const starMat = new THREE.MeshBasicMaterial({
+        color: ['#ffcf5a','#ff6b8b','#61e7c2','#00e5ff','#ffffff'][Math.floor(Math.random()*5)],
+        transparent: true, opacity: 1
+      });
+      const star = new THREE.Mesh(starGeo, starMat);
+      star.position.set(x + (Math.random()-0.5)*24, 34 + Math.random()*22, z + (Math.random()-0.5)*24);
+      const vel = { x: (Math.random()-0.5)*13, y: 5 + Math.random()*9, z: (Math.random()-0.5)*13 };
+      hitGroup.add(star);
+      hitEffectsRef.current.push({ mesh: star, vel, life: 1, decay: 0.02 + Math.random()*0.016, type: 'star' });
+    }
+  };
+
+
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
   const lastBallEmitRef = useRef(0);
@@ -823,17 +800,8 @@ export function GameScreen3D({
 
   useEffect(() => {
     // لا نعيد تعيين الكاميرا إذا اللعب بدأ - يمنع تكبير الكانفاس واختفاء الأهداف
-    // ولا نعيد تعيينها إذا هناك حفظ سابق - نحافظ على تعديل المستخدم
-    const hasSaved = localStorage.getItem('qoud_camera_settings');
-    if (!localReadyRef.current && !hasSaved) {
+    if (!localReadyRef.current) {
       cam.current = {...initialCam} as any;
-    } else if (hasSaved) {
-      try {
-        const s = JSON.parse(hasSaved);
-        cam.current = { ...cam.current, ...initialCam, ...s, targetAngle: s.targetAngle ?? s.angle ?? initialCam.angle, targetDistance: s.targetDistance ?? s.distance ?? initialCam.distance, targetHeight: s.targetHeight ?? s.height ?? initialCam.height };
-      } catch {
-        if (!localReadyRef.current) cam.current = {...initialCam} as any;
-      }
     }
   }, [initialCam]);
 
@@ -935,7 +903,7 @@ export function GameScreen3D({
       if(hintTextRef.current) hintTextRef.current.style.display='none';
       const mySide = getMySide();
       const isTouch = (e as any).pointerType === 'touch' || (e as any).pointerType === 'pen';
-      const OFFSET = isTouch? 195 : 75; // زيادة كبيرة - الإصبع أسفل المضرب ولا يغطيه أبدا
+      const OFFSET = isTouch? 195 : 75; // الإصبع أسفل المضرب ولا يغطيه أبدا - إصلاح 7
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1016,7 +984,7 @@ export function GameScreen3D({
     renderer.toneMappingExposure = 1.1;
     mount.appendChild(renderer.domElement);
     const tableGroup = new THREE.Group();
-    const surfaceTexture = createAirHockeySurface(world.w, world.h, settings.arenaStyle || 'classic');
+    const surfaceTexture = createAirHockeySurface(world.w, world.h);
     const tableMaterial = new THREE.MeshStandardMaterial({ 
       color: '#ffffff', 
       map: surfaceTexture || undefined, 
@@ -1034,32 +1002,45 @@ export function GameScreen3D({
     
     const puckGroup = new THREE.Group();
     const puckMat = new THREE.MeshStandardMaterial({
-      color: '#0a0a0a',
-      roughness: 0.25,
-      metalness: 0.3,
+      color: '#ffffff',
+      roughness: 0.12,
+      metalness: 0.15,
+      emissive: '#00e5ff',
+      emissiveIntensity: 1.4,
     });
-    const puckBase = new THREE.Mesh(new THREE.CylinderGeometry(14, 14, 10, 48), puckMat);
-    puckBase.position.y = 5;
+    const puckBase = new THREE.Mesh(new THREE.CylinderGeometry(17, 17, 13, 48), puckMat);
+    puckBase.position.y = 6;
     puckGroup.add(puckBase);
     const blueRingMat = new THREE.MeshStandardMaterial({
-      color: '#0a84ff',
-      roughness: 0.15,
-      metalness: 0.2,
-      emissive: '#0a84ff',
-      emissiveIntensity: 0.6
+      color: '#00e5ff',
+      roughness: 0.08,
+      metalness: 0.1,
+      emissive: '#00e5ff',
+      emissiveIntensity: 1.8
     });
-    const blueRing = new THREE.Mesh(new THREE.TorusGeometry(8, 1.8, 16, 32), blueRingMat);
+    const blueRing = new THREE.Mesh(new THREE.TorusGeometry(11, 2.4, 16, 48), blueRingMat);
     blueRing.rotation.x = Math.PI / 2;
-    blueRing.position.y = 10.5;
+    blueRing.position.y = 12.5;
     puckGroup.add(blueRing);
-    const puckGlowMat = new THREE.MeshBasicMaterial({
-      color: '#000000',
+    const outerGlowMat = new THREE.MeshBasicMaterial({
+      color: '#00e5ff',
       transparent: true,
       opacity: 0.4
     });
-    const puckGlow = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 1, 32), puckGlowMat);
+    const outerGlow = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 1, 32), outerGlowMat);
+    outerGlow.position.y = 1;
+    puckGroup.add(outerGlow);
+    const puckGlowMat = new THREE.MeshBasicMaterial({
+      color: '#00e5ff',
+      transparent: true,
+      opacity: 0.55
+    });
+    const puckGlow = new THREE.Mesh(new THREE.CylinderGeometry(32, 32, 1, 32), puckGlowMat);
     puckGlow.position.y = 0.5;
     puckGroup.add(puckGlow);
+    const ballLight = new THREE.PointLight(0x00e5ff, 1.5, 220);
+    ballLight.position.set(0, 22, 0);
+    puckGroup.add(ballLight);
     puckGroup.position.y = 18;
     scene.add(puckGroup);
     const ball = puckGroup;
@@ -1108,8 +1089,8 @@ export function GameScreen3D({
     const PADDLE_RADIUS = 36;
     const BALL_RADIUS = 14;
     const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
-    const MIN_SPEED = 4.5;
-    const MAX_SPEED = 12;
+    const MIN_SPEED = 5.0;
+    const MAX_SPEED = 16; // زيادة للسماح بارتداد بقوة حسب سرعة المضرب
     const WALL_BOUNCE_DAMP = 0.95;
 
     const tick = (now: number) => {
@@ -1196,8 +1177,8 @@ export function GameScreen3D({
 
           // تحديث موقع الكرة - فيزياء محلية مستقرة - فقط إذا انتهى العد
           if (state.countdown === 0) {
-            // فقط أوفلاين يتحكم بالفيزياء محلياً - أونلاين السيرفر مسؤول (إصلاح عدم الاستقرار)
-            if (isOfflineMode) {
+            // إذا أوفلاين أو Host، نحن نتحكم بالفيزياء
+            if (isOfflineMode || isHost) {
             // === AI للكمبيوتر في وضع 3D - نفس طريقة 2D ===
             if (isOfflineMode) {
               const predX = state.ball.x + state.ball.vx * 10;
@@ -1215,12 +1196,19 @@ export function GameScreen3D({
                 const isComputerSide = (isVsComputer && side !== getMySide()) || (playerForSide && playerForSide.computer);
                 if (!isComputerSide) return;
                 const tp = state.targetPaddles[side];
-                if (side === 'top' || side === 'bottom') {
-                  const newX = chase(state.paddles[side].x, predX, delta);
-                  tp.x = Math.max(60, Math.min(world.w - 60, newX));
+                // الكمبيوتر يتحرك في كل الجهات - أفقي وعمودي - إصلاح 2
+                if (side === 'top') {
+                  tp.x = Math.max(60, Math.min(world.w - 60, chase(state.paddles[side].x, predX, delta)));
+                  tp.z = Math.max(40, Math.min(220, chase(state.paddles[side].z, predY, delta)));
+                } else if (side === 'bottom') {
+                  tp.x = Math.max(60, Math.min(world.w - 60, chase(state.paddles[side].x, predX, delta)));
+                  tp.z = Math.max(world.h - 220, Math.min(world.h - 40, chase(state.paddles[side].z, predY, delta)));
+                } else if (side === 'left') {
+                  tp.z = Math.max(60, Math.min(world.h - 60, chase(state.paddles[side].z, predY, delta)));
+                  tp.x = Math.max(40, Math.min(220, chase(state.paddles[side].x, predX, delta)));
                 } else {
-                  const newZ = chase(state.paddles[side].z, predY, delta);
-                  tp.z = Math.max(60, Math.min(world.h - 60, newZ));
+                  tp.z = Math.max(60, Math.min(world.h - 60, chase(state.paddles[side].z, predY, delta)));
+                  tp.x = Math.max(world.w - 220, Math.min(world.w - 40, chase(state.paddles[side].x, predX, delta)));
                 }
               });
             }
@@ -1261,8 +1249,8 @@ export function GameScreen3D({
             }
 
             // اصطدام بالجدران (ليس الأهداف) - الأهداف كبيرة وظاهرة مثل الأسهم
-            const goalHalfW = Math.max(160, world.w * 0.18); // يطابق نصف قطر 360 في الصورة - فتح حقيقي // تكبير أكثر ليطابق الشكل الظاهر - كان 210
-            const sideGoalHalfW = Math.max(160, world.h * 0.18);
+            const goalHalfW = Math.max(340, world.w * 0.38); // تكبير كبير - 4 // يطابق نصف قطر 360 في الصورة - فتح حقيقي // تكبير أكثر ليطابق الشكل الظاهر - كان 210
+            const sideGoalHalfW = Math.max(340, world.h * 0.38);
             const leftBound = BALL_RADIUS;
             const rightBound = world.w - BALL_RADIUS;
             const topBound = BALL_RADIUS;
@@ -1364,18 +1352,10 @@ export function GameScreen3D({
               state.ball.vy = 0;
               state.ballTarget.vx = 0;
               state.ballTarget.vy = 0;
-              // تناوب الإرسال - لا يبدأ من نفس المضرب مرتين حتى لو 4
-              let nextServeSide = goalScoredSide;
-              const lastServe = (state as any).lastServeSide;
-              if (lastServe && nextServeSide === lastServe) {
-                const allSides = sidesForCount.filter(s => s !== lastServe) as Player['side'][];
-                if (allSides.length > 0) nextServeSide = allSides[Math.floor(Math.random() * allSides.length)];
-              }
-              (state as any).lastServeSide = nextServeSide;
-              
+              try { playGoalSound3D(); createGoalStars3D(state.ball.x, state.ball.y); shakeRef.current.intensity = 20; } catch {}
               state.countdown = 3;
               state.countdownStart = now;
-              state.countdownSide = nextServeSide; // لحساب اتجاه الكرة بعد العد - متناوب
+              state.countdownSide = goalScoredSide; // لحساب اتجاه الكرة بعد العد
               setCountdown(3);
               setCountdownSide(goalScoredSide);
               state.rally = 0;
@@ -1441,30 +1421,36 @@ export function GameScreen3D({
               state.ball.x += nx * overlap;
               state.ball.y += ny * overlap;
 
-              // حساب الارتداد مع سرعة المضرب - مثل Air Hockey الحقيقي
-              const paddleSpeedFactor = 0.62; // زيادة قوية حسب طلب المستخدم - اتجاه المضرب
+              // === فيزياء محسنة: ارتداد بقوة حسب سرعة واتجاه المضرب - إصلاح مطلوب ===
+              const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
+              const paddleSpeedFactor = 0.85; // كان 0.35 - الآن 0.85 لارتداد أقوى
               const ballVelDotNormal = state.ball.vx * nx + state.ball.vy * ny;
               
-              // ارتداد مع إضافة سرعة المضرب
+              // ارتداد مع إضافة سرعة المضرب بقوة كبيرة - الكرة ترتد بقوة حسب اتجاهه وسرعته
               let newVx = state.ball.vx - 2 * ballVelDotNormal * nx + pVel.vx * paddleSpeedFactor;
               let newVy = state.ball.vy - 2 * ballVelDotNormal * ny + pVel.vy * paddleSpeedFactor;
 
-              // تأثير مكان الضرب على المضرب - يغير المسار
+              // تأثير مكان الضرب على المضرب - يغير المسار بقوة أكبر
               const hitOffset = side === 'bottom' || side === 'top' 
-                ? (state.ball.x - paddle.x) / PADDLE_RADIUS // -1 إلى 1
+                ? (state.ball.x - paddle.x) / PADDLE_RADIUS
                 : (state.ball.y - paddle.z) / PADDLE_RADIUS;
               
               if (side === 'bottom' || side === 'top') {
-                newVx += hitOffset * 4.2; // تأثير حافة أقوى // ضرب الحافة يغير المسار أفقياً
+                newVx += hitOffset * 5.5; // كان 3.5 - الآن 5.5
+                // إضافة دفع إضافي حسب سرعة المضرب الأفقية
+                newVx += pVel.vx * 0.25;
               } else {
-                newVy += hitOffset * 4.2;
+                newVy += hitOffset * 5.5;
+                newVy += pVel.vy * 0.25;
               }
 
-              // زيادة السرعة قليلاً مع كل ضربة - Rally
-              const speedBoost = 1.05 + state.rally * 0.02;
+              // زيادة السرعة بقوة حسب سرعة المضرب - كلما كان المضرب أسرع ارتدت الكرة بقوة أكبر
+              const speedBoost = 1.12 + state.rally * 0.03 + paddleSpeed * 0.06;
               let newSpeed = Math.hypot(newVx, newVy) * speedBoost;
-              newSpeed = Math.min(newSpeed, MAX_SPEED);
-              newSpeed = Math.max(newSpeed, MIN_SPEED);
+              // سرعة إضافية بناء على سرعة المضرب
+              newSpeed += paddleSpeed * 0.18;
+              newSpeed = Math.min(newSpeed, MAX_SPEED + paddleSpeed * 0.15);
+              newSpeed = Math.max(newSpeed, MIN_SPEED + paddleSpeed * 0.05);
               
               const angle = Math.atan2(newVy, newVx);
               // منع الزاوية الأفقية تماماً
@@ -1477,6 +1463,7 @@ export function GameScreen3D({
               state.ball.vx = Math.cos(finalAngle) * newSpeed;
               state.ball.vy = Math.sin(finalAngle) * newSpeed;
 
+              try { playHitSound3D(Math.min(1, state.rally/12)); } catch {}
               state.rally++;
               setRally(state.rally);
               
@@ -1512,18 +1499,8 @@ export function GameScreen3D({
               current.x = target.x;
               current.z = target.z;
             } else {
-              // === وضع الأصدقاء أونلاين - السيرفر مسؤول عن الكرة ===
-              // لا نحسب فيزياء الكرة محلياً - فقط نستقبل من السيرفر
-              if (!isOfflineMode) {
-                // interpolation للكرة من السيرفر
-                const lerp = 0.28;
-                state.ball.x += (state.ballTarget.x - state.ball.x) * lerp;
-                state.ball.y += (state.ballTarget.y - state.ball.y) * lerp;
-                state.ball.vx += (state.ballTarget.vx - state.ball.vx) * 0.22;
-                state.ball.vy += (state.ballTarget.vy - state.ball.vy) * 0.22;
-              }
               // مضارب الخصم - lerp سريع لتقليل الـ lag
-              const PADDLE_LERP = isOfflineMode ? 1 : 0.48;
+              const PADDLE_LERP = isOfflineMode ? 1 : 0.45; // كان 0.3 - الآن أسرع
               current.x += (target.x - current.x) * PADDLE_LERP;
               current.z += (target.z - current.z) * PADDLE_LERP;
             }
@@ -1538,6 +1515,22 @@ export function GameScreen3D({
         if (paddles['left']) paddles['left'].position.set(state.paddles.left.x, 12, state.paddles.left.z);
         if (paddles['right']) paddles['right'].position.set(state.paddles.right.x, 12, state.paddles.right.z);
 
+        if (hitEffectsRef.current.length > 0) {
+          for (let i=hitEffectsRef.current.length-1;i>=0;i--) {
+            const eff = hitEffectsRef.current[i];
+            if (eff.type === 'star') {
+              eff.mesh.position.x += eff.vel.x;
+              eff.mesh.position.y += eff.vel.y;
+              eff.mesh.position.z += eff.vel.z;
+              eff.vel.y -= 0.28;
+              eff.vel.x *= 0.99; eff.vel.z *= 0.99;
+              eff.life -= eff.decay;
+              eff.mesh.material.opacity = eff.life;
+              eff.mesh.scale.setScalar(1 + (1-eff.life)*0.6);
+              if (eff.life <=0) { threeRef.current.hitGroup.remove(eff.mesh); hitEffectsRef.current.splice(i,1); }
+            }
+          }
+        }
         if(!hasDraggedRef.current && hintDotRef.current && hintTextRef.current && mountRef.current && localReadyRef.current){
           const elapsed = now - noDragStartRef.current;
           if(elapsed>3000 && state.countdown===0 &&!pausedRef.current &&!gameEndedRef.current){
@@ -1728,17 +1721,13 @@ export function GameScreen3D({
             {/* أزرار التحكم */}
             <div style={{display:'flex', alignItems:'center', gap:'6px', padding:'0 8px 0 0'}}>
               <button onClick={()=>setShowCamMenu(v=>!v)} style={{
-                background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.12)', 
-                color: showCamMenu ? '#000' : 'rgba(255,255,255,0.9)',
-                border: showCamMenu ? '1px solid #00e5ff' : '1px solid rgba(255,255,255,0.2)', 
-                borderRadius:'8px',
-                padding:'8px 12px', fontSize:'12px', fontWeight:800, cursor:'pointer',
-                display:'flex', alignItems:'center', gap:'5px',
-                minHeight:'36px', minWidth:'70px',
-                boxShadow: showCamMenu ? '0 0 12px rgba(0,229,255,0.5)' : 'none',
-                WebkitTapHighlightColor: 'transparent'
+                background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.08)', 
+                color: showCamMenu ? '#000' : 'rgba(255,255,255,0.7)',
+                border:'1px solid rgba(255,255,255,0.1)', borderRadius:'6px',
+                padding:'6px 10px', fontSize:'11px', fontWeight:800, cursor:'pointer',
+                display:'flex', alignItems:'center', gap:'4px'
               }}>
-                <Camera size={14}/> {showCamMenu ? 'إخفاء' : 'كاميرا'}
+                <Camera size={12}/> {showCamMenu ? 'إخفاء' : 'كاميرا'}
               </button>
               <button onClick={onPause} style={{
                 background: paused ? '#ff2d2d' : 'rgba(255,255,255,0.08)', 
@@ -1787,11 +1776,23 @@ export function GameScreen3D({
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
         {localReady && countdown > 0 && (
-          <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.72)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '12px', pointerEvents: 'none' }}>
-            <span style={{ fontSize: '120px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 25px rgba(0,0,0,0.9)' }}>{countdown}</span>
+          <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.84)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '22px', pointerEvents: 'none' }}>
+            <span style={{ fontSize: '132px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 40px rgba(255,34,51,0.9), 0 0 80px rgba(0,0,0,1)' }}>{countdown}</span>
             {countdownSide && (
-              <span style={{ fontSize: '18px', fontWeight: 800, color: '#fff', background: '#222', padding: '6px 16px', borderRadius: 999 }}>
-                {getNameForSide(countdownSide as Player['side'])} {isAr ? 'سجل!' : 'Scored!'}
+              <span style={{ 
+                fontSize: '17px', fontWeight: 900, color: '#fff', 
+                background: 'linear-gradient(135deg, #ff2233 0%, #ff6b6b 100%)', 
+                padding: '13px 28px', borderRadius: 999,
+                boxShadow: '0 8px 28px rgba(255,34,51,0.65)',
+                border: '2px solid rgba(255,255,255,0.32)',
+                display: 'flex', alignItems: 'center', gap: '10px'
+              }}>
+                ⚽ {(() => {
+                  const opp: any = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
+                  const scorerSide = opp[countdownSide] || countdownSide;
+                  const name = getNameForSide(scorerSide as Player['side']);
+                  return name ? `${name} سجل هدف!` : 'هدف!';
+                })()}
               </span>
             )}
           </div>
@@ -1803,7 +1804,7 @@ export function GameScreen3D({
             <button onClick={onPause} style={{ padding: '12px 28px', borderRadius: '999px', background: '#00e5ff', color: '#000', fontWeight: 900, border: 'none', cursor: 'pointer' }}>{isAr ? 'متابعة' : 'Resume'}</button>
           </div>
         )}
-        {localReady && lastGoal && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
+        {localReady && lastGoal && countdown === 0 && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
         {celebrating && (
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>
             <div style={{ fontSize: '48px', fontWeight: 900, color: '#ffcf5a', textShadow: '0 0 20px #ffcf5a' }}>{celebrating.name} {isAr? 'فاز بالجولة' : 'wins the round'}!</div>
@@ -1870,53 +1871,6 @@ export function GameScreen3D({
           </div>
         )}
 
-        
-      {/* زر كاميرا عائم للجوال - يظهر دائما */}
-      {!hideUI && (
-        <button onClick={()=>setShowCamMenu(v=>!v)} style={{
-          position:'fixed',
-          bottom:'88px',
-          right:'12px',
-          width:'56px',
-          height:'56px',
-          borderRadius:'50%',
-          background: showCamMenu ? '#00e5ff' : 'rgba(0,0,0,0.75)',
-          backdropFilter:'blur(12px)',
-          WebkitBackdropFilter:'blur(12px)',
-          border: showCamMenu ? '2px solid #00e5ff' : '2px solid rgba(255,255,255,0.2)',
-          color: showCamMenu ? '#000' : '#fff',
-          display:'grid',
-          placeItems:'center',
-          cursor:'pointer',
-          zIndex:10004,
-          boxShadow: showCamMenu ? '0 0 20px rgba(0,229,255,0.6), 0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.5)',
-          transition:'all 0.2s'
-        }}>
-          <Camera size={22} />
-        </button>
-      )}
-
-      {/* رسالة حفظ الكاميرا */}
-      {camSaved && (
-        <div style={{
-          position:'fixed',
-          bottom:'160px',
-          left:'50%',
-          transform:'translateX(-50%)',
-          background:'#00e5ff',
-          color:'#000',
-          padding:'10px 20px',
-          borderRadius:'999px',
-          fontWeight:900,
-          fontSize:'13px',
-          zIndex:10006,
-          boxShadow:'0 4px 20px rgba(0,229,255,0.5)',
-          animation:'fadeIn 0.3s'
-        }}>
-          ✓ تم حفظ الكاميرا - ستبدأ بها اللعبة
-        </div>
-      )}
-
         {showCamMenu && !hideUI && (
           <div style={{ 
             position: 'absolute', 
@@ -1960,29 +1914,14 @@ export function GameScreen3D({
                 div::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
               `}</style>
 
-              {/* Save - سماوي - يحفظ ويغلق */}
-              <button onClick={saveCameraSettings} title="حفظ الكاميرا وإغلاق" style={{
+              {/* Save - سماوي */}
+              <button onClick={saveCameraSettings} title="حفظ الكاميرا" style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#00e5ff', border:'2px solid #000', borderRadius:12,
                 display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
                 cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(0,229,255,0.4)', gap:2
               }}>
-                <Save size={16} color="#000" strokeWidth={2.5}/>
-                <span style={{fontSize:9, fontWeight:900, color:'#000'}}>حفظ</span>
-              </button>
-
-              {/* Load - أخضر فاتح - يحمل المحفوظ */}
-              <button onClick={loadCameraSettings} title="تحميل الكاميرا المحفوظة" style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background: hasSavedCam() ? '#a7f3d0' : '#e5e7eb', border:'2px solid #000', borderRadius:12,
-                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor: hasSavedCam() ? 'pointer' : 'not-allowed', 
-                boxShadow: hasSavedCam() ? '0 2px 0 #000, 0 4px 12px rgba(167,243,208,0.4)' : '0 2px 0 #000', 
-                gap:2,
-                opacity: hasSavedCam() ? 1 : 0.5
-              }}>
-                <Video size={14} color="#000" strokeWidth={2.5}/>
-                <span style={{fontSize:9, fontWeight:900, color:'#000'}}>تحميل</span>
+                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Save</span>
               </button>
 
               {/* Rest / Reset - برتقالي */}
