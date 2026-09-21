@@ -851,6 +851,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             }
           }
           const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
+          // منع التصادم المتكرر مع نفس المضرب
+          if (!(state as any).lastHit) (state as any).lastHit = { side: null, time: 0 };
+          const lastHit = (state as any).lastHit;
+
           const predX = ball.x + ball.vx * 12;
           const predY = ball.y + ball.vy * 12;
           const diffMax = settings.difficulty === 'easy' ? 1.8 : settings.difficulty === 'hard' ? 4.5 : 3.2;
@@ -862,7 +866,6 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side) || side === mySide) return;
             const p = state.paddles[side];
-            // حركة الكمبيوتر - تبقى داخل الساحة فقط
             if (side === 'top') {
               p.x = Math.max(80, Math.min(w - 80, chase(p.x, predX)));
               p.y = Math.max(50, Math.min(200, chase(p.y, predY)));
@@ -879,120 +882,126 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             state.targetPaddles[side].x = p.x;
             state.targetPaddles[side].y = p.y;
           });
-          ball.x += ball.vx * delta * 0.5;
-          ball.y += ball.vy * delta * 0.5;
-          // === فيزياء محسنة: ارتداد بقوة حسب سرعة واتجاه المضرب ===
-          (['top','bottom','right','left'] as const).forEach(side => {
-            if (!active(side)) return;
-            const paddle = state.paddles[side];
-            const prev = state.prevPaddles[side];
-            const pvx = (paddle.x - prev.x) / (delta || 1);
-            const pvy = (paddle.y - prev.y) / (delta || 1);
-            const paddleSpeed = Math.hypot(pvx, pvy);
-            
-            const dx = ball.x - paddle.x, dy = ball.y - paddle.y, d = Math.hypot(dx, dy);
-            if (d < HIT_DIST && d > 0.5) {
-              const nx = dx / d, ny = dy / d;
-              ball.x = paddle.x + nx * (HIT_DIST + 2);
-              ball.y = paddle.y + ny * (HIT_DIST + 2);
+
+          // حركة الكرة مع تقسيم خطوات لمنع الاختراق والتهنيق
+          const SUBSTEPS_OFF = 3;
+          const stepDelta = delta / SUBSTEPS_OFF;
+          let hitThisFrame: string | null = null;
+          for (let s = 0; s < SUBSTEPS_OFF; s++) {
+            ball.x += ball.vx * stepDelta * 0.5;
+            ball.y += ball.vy * stepDelta * 0.5;
+
+            // تصادم المضارب - يعمل من كل الجهات حتى من تحت المضرب
+            (['top','bottom','right','left'] as const).forEach(side => {
+              if (!active(side)) return;
+              // منع التصادم المتكرر بنفس المضرب خلال 80ms
+              if (lastHit.side === side && (now - lastHit.time) < 80) return;
+              const paddle = state.paddles[side];
+              const prev = state.prevPaddles[side];
+              const pvx = (paddle.x - prev.x) / (delta || 1);
+              const pvy = (paddle.y - prev.y) / (delta || 1);
+              const paddleSpeed = Math.hypot(pvx, pvy);
               
-              // انعكاس مع سرعة المضرب - ارتداد بقوة حسب اتجاهه وسرعته
-              const dot = ball.vx * nx + ball.vy * ny;
-              let newVx = ball.vx - 2 * dot * nx;
-              let newVy = ball.vy - 2 * dot * ny;
-              
-              // إضافة قوة دفع المضرب بقوة (70% من سرعة المضرب)
-              newVx += pvx * 0.85;
-              newVy += pvy * 0.85;
-              
-              // تأثير مكان الضرب على المضرب
-              const hitOffset = side === 'bottom' || side === 'top' 
-                ? (ball.x - paddle.x) / PADDLE_R 
-                : (ball.y - paddle.y) / PADDLE_R;
-              if (side === 'bottom' || side === 'top') {
-                newVx += hitOffset * 4.5;
+              const dx = ball.x - paddle.x, dy = ball.y - paddle.y, d = Math.hypot(dx, dy);
+              if (d < HIT_DIST && d > 0.5) {
+                const nx = dx / d, ny = dy / d;
+                // ادفع الكرة خارج المضرب بقوة
+                ball.x = paddle.x + nx * (HIT_DIST + 3);
+                ball.y = paddle.y + ny * (HIT_DIST + 3);
+                
+                const dot = ball.vx * nx + ball.vy * ny;
+                let newVx = ball.vx - 2 * dot * nx;
+                let newVy = ball.vy - 2 * dot * ny;
+                
+                // قوة دفع المضرب - حتى من تحت
+                newVx += pvx * 0.75;
+                newVy += pvy * 0.75;
+                
+                const hitOffset = side === 'bottom' || side === 'top' 
+                  ? (ball.x - paddle.x) / PADDLE_R 
+                  : (ball.y - paddle.y) / PADDLE_R;
+                if (side === 'bottom' || side === 'top') {
+                  newVx += hitOffset * 3.5;
+                } else {
+                  newVy += hitOffset * 3.5;
+                }
+                
+                const curSpd = Math.hypot(newVx, newVy);
+                // حد السرعة لمنع التهنيق
+                const speedBoost = 1.06 + state.rally * 0.02 + Math.min(paddleSpeed * 0.03, 0.4);
+                const baseSpeed = Math.max(curSpd * speedBoost, getInitialSpeed() + 1.5);
+                const finalSpeed = Math.min(baseSpeed, 11); // حد أقصى 11 لمنع التهنيق
+                
+                const ang = Math.atan2(newVy, newVx);
+                let finalAng = ang;
+                if (Math.abs(Math.sin(finalAng)) < 0.25) {
+                  finalAng += (Math.random() > 0.5 ? 1 : -1) * 0.35;
+                }
+                
+                ball.vx = Math.cos(finalAng) * finalSpeed;
+                ball.vy = Math.sin(finalAng) * finalSpeed;
+                
+                try { playHitSound(Math.min(1, (state.rally + paddleSpeed*0.15)/10)); } catch {}
+                state.rally++; setRally(state.rally);
+                lastHit.side = side; lastHit.time = now;
+                hitThisFrame = side;
+              }
+              prev.x = paddle.x;
+              prev.y = paddle.y;
+            });
+
+            // === اهداف بدون جدار - مع منع الارتداد اذا ضرب المضرب نفس الإطار ===
+            const BORDER = 28;
+            const goalW = Math.min(580, Math.max(320, w * 0.60));
+            const goalH = Math.min(580, Math.max(320, h * 0.60));
+            const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
+            const gy1 = (h - goalH) / 2, gy2 = gy1 + goalH;
+
+            // علوي
+            if (ball.y <= BORDER + BALL_R) {
+              if (ball.x >= gx1 && ball.x <= gx2 && active('top')) {
+                if (ball.y < 8) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
               } else {
-                newVy += hitOffset * 4.5;
+                if (hitThisFrame !== 'top' && ball.y < BORDER + BALL_R) {
+                  ball.y = BORDER + BALL_R;
+                  ball.vy = Math.abs(ball.vy) * 1.02;
+                }
               }
-              
-              // زيادة السرعة حسب سرعة المضرب - كلما كان المضرب أسرع ارتدت الكرة بقوة أكبر
-              const curSpd = Math.hypot(newVx, newVy);
-              const speedBoost = 1.08 + state.rally * 0.025 + paddleSpeed * 0.045;
-              const baseSpeed = Math.max(curSpd * speedBoost, getInitialSpeed() + 2 + paddleSpeed * 0.12);
-              const finalSpeed = Math.min(baseSpeed, 14 + paddleSpeed * 0.1);
-              
-              const ang = Math.atan2(newVy, newVx);
-              // منع الزاوية الأفقية
-              let finalAng = ang;
-              if (Math.abs(Math.sin(finalAng)) < 0.28) {
-                finalAng += (Math.random() > 0.5 ? 1 : -1) * 0.4;
-              }
-              
-              ball.vx = Math.cos(finalAng) * finalSpeed;
-              ball.vy = Math.sin(finalAng) * finalSpeed;
-              
-              try { playHitSound(Math.min(1, (state.rally + paddleSpeed*0.2)/10)); } catch {}
-              state.rally++; setRally(state.rally);
             }
-            prev.x = paddle.x;
-            prev.y = paddle.y;
-          });
-          // === الاهداف بدون جدار - تدخل مباشرة من الفتحة السوداء ===
-          const BORDER = 28;
-          const goalW = Math.min(580, Math.max(320, w * 0.60)); // 60% فتحة بدون جدار
-          const goalH = Math.min(580, Math.max(320, h * 0.60));
-          const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
-          const gy1 = (h - goalH) / 2, gy2 = gy1 + goalH;
-
-          // علوي - لا يوجد جدار في الفتحة
-          if (ball.y <= BORDER + BALL_R) {
-            if (ball.x >= gx1 && ball.x <= gx2 && active('top')) {
-              // داخل الفتحة - لا جدار - اتركه يدخل
-              if (ball.y < 8) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
-              // لا نرتد هنا
-            } else {
-              // خارج الفتحة - يوجد جدار احمر - ارتد
-              if (ball.y < BORDER + BALL_R) {
-                ball.y = BORDER + BALL_R;
-                ball.vy = Math.abs(ball.vy) * 1.02;
+            // سفلي
+            if (ball.y >= h - BORDER - BALL_R) {
+              if (ball.x >= gx1 && ball.x <= gx2 && active('bottom')) {
+                if (ball.y > h - 8) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
+              } else {
+                if (hitThisFrame !== 'bottom' && ball.y > h - BORDER - BALL_R) {
+                  ball.y = h - BORDER - BALL_R;
+                  ball.vy = -Math.abs(ball.vy) * 1.02;
+                }
+              }
+            }
+            // يسار
+            if (ball.x <= BORDER + BALL_R) {
+              if (ball.y >= gy1 && ball.y <= gy2 && active('left')) {
+                if (ball.x < 8) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
+              } else {
+                if (hitThisFrame !== 'left' && ball.x < BORDER + BALL_R) {
+                  ball.x = BORDER + BALL_R;
+                  ball.vx = Math.abs(ball.vx) * 1.02;
+                }
+              }
+            }
+            // يمين
+            if (ball.x >= w - BORDER - BALL_R) {
+              if (ball.y >= gy1 && ball.y <= gy2 && active('right')) {
+                if (ball.x > w - 8) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
+              } else {
+                if (hitThisFrame !== 'right' && ball.x > w - BORDER - BALL_R) {
+                  ball.x = w - BORDER - BALL_R;
+                  ball.vx = -Math.abs(ball.vx) * 1.02;
+                }
               }
             }
           }
-          // سفلي - لا يوجد جدار في الفتحة
-          if (ball.y >= h - BORDER - BALL_R) {
-            if (ball.x >= gx1 && ball.x <= gx2 && active('bottom')) {
-              if (ball.y > h - 8) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
-            } else {
-              if (ball.y > h - BORDER - BALL_R) {
-                ball.y = h - BORDER - BALL_R;
-                ball.vy = -Math.abs(ball.vy) * 1.02;
-              }
-            }
-          }
-          // يسار - لا يوجد جدار في الفتحة
-          if (ball.x <= BORDER + BALL_R) {
-            if (ball.y >= gy1 && ball.y <= gy2 && active('left')) {
-              if (ball.x < 8) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
-            } else {
-              if (ball.x < BORDER + BALL_R) {
-                ball.x = BORDER + BALL_R;
-                ball.vx = Math.abs(ball.vx) * 1.02;
-              }
-            }
-          }
-          // يمين - لا يوجد جدار في الفتحة
-          if (ball.x >= w - BORDER - BALL_R) {
-            if (ball.y >= gy1 && ball.y <= gy2 && active('right')) {
-              if (ball.x > w - 8) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
-            } else {
-              if (ball.x > w - BORDER - BALL_R) {
-                ball.x = w - BORDER - BALL_R;
-                ball.vx = -Math.abs(ball.vx) * 1.02;
-              }
-            }
-          }
-
-
           const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
           cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
           // احصر مضرب اللاعب داخل الساحة البيضاء فقط - لا يخرج

@@ -670,6 +670,7 @@ export function GameScreen3D({
 
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
+  const lastHitRef = useRef({ side: null as any, time: 0 });
   const lastBallEmitRef = useRef(0);
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
@@ -1404,7 +1405,7 @@ export function GameScreen3D({
 
             // تسجيل الأهداف
 
-             // إصلاح مشكلة الاختراق بدون تسجيل
+             - إصلاح مشكلة الاختراق بدون تسجيل
             const goalScoredSide = (() => {
               // هدف علوي
               if (state.ball.y < 8) {
@@ -1613,6 +1614,7 @@ export function GameScreen3D({
               try { playHitSound3D(Math.min(1, state.rally/12)); } catch {}
               state.rally++;
               setRally(state.rally);
+                (state as any).lastHit = { side, time: now };
               
               // إرسال للشبكة إذا Host
               if (isHost && !isOfflineMode) {
