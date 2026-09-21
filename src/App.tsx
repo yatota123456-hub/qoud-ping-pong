@@ -824,7 +824,14 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           
           // === إذا من المضرب - الكرة تتبع المضرب حتى يطلب الإطلاق ===
           if (servingRef.current.active) {
-            const servingSide = servingRef.current.side;
+      const elapsed = performance.now() - (servingRef.current.startTime || 0);
+      if (servingRef.current.side !== mySide && elapsed > 600) {
+        servingRef.current.requested = true;
+      }
+      if (elapsed > 3000) {
+        servingRef.current.requested = true;
+      }
+      const servingSide = servingRef.current.side;
             const servingPaddle = state.paddles[servingSide];
             if (servingPaddle) {
               if (servingSide === 'bottom') { ball.x = servingPaddle.x; ball.y = servingPaddle.y - 50; }

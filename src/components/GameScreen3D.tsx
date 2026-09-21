@@ -670,7 +670,6 @@ export function GameScreen3D({
 
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
-  const lastHitRef = useRef({ side: null as any, time: 0 });
   const lastBallEmitRef = useRef(0);
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
@@ -1266,9 +1265,19 @@ export function GameScreen3D({
             prev.z = curr.z;
           });
 
-          // === إذا من المضرب - الكرة تتبع المضرب ===
+          // === إذا من المضرب - الكرة تتبع المضرب - مع إصلاح التعليق ===
           if (state.serving.active) {
             const servingSide = state.serving.side;
+            // إصلاح التعليق: ضد الكمبيوتر يطلق تلقائياً بعد 600ms
+            const elapsedServing = now - (state.serving.startTime || 0);
+            const isServingComputer = isVsComputer && servingSide !== getMySide();
+            if (isServingComputer && elapsedServing > 600) {
+              state.serving.requested = true;
+            }
+            // حتى في طور الأصدقاء، إذا تأخر أكثر من 3 ثواني يطلق تلقائياً لمنع التعليق
+            if (elapsedServing > 3000) {
+              state.serving.requested = true;
+            }
             const servingPaddle = state.paddles[servingSide];
             if (servingPaddle) {
               if (servingSide === 'bottom') { state.ball.x = servingPaddle.x; state.ball.y = servingPaddle.z - 60; }
@@ -1404,8 +1413,7 @@ export function GameScreen3D({
             }
 
             // تسجيل الأهداف
-
-             // إصلاح مشكلة الاختراق بدون تسجيل
+              // إصلاح مشكلة الاختراق بدون تسجيل
             const goalScoredSide = (() => {
               // هدف علوي
               if (state.ball.y < 8) {
@@ -1743,7 +1751,7 @@ export function GameScreen3D({
       {!localReady && (
         <div style={{
           position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 9997, display: 'flex', gap: '12px', alignItems: 'center',
+          zIndex: 9995, display: 'flex', gap: '12px', alignItems: 'center',
           background: 'rgba(15,15,20,0.88)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
           border: '1px solid rgba(255,255,255,0.15)', borderRadius: '999px', padding: '10px 18px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.6)', pointerEvents: 'auto'
@@ -1993,7 +2001,7 @@ export function GameScreen3D({
         </button>
         {/* إصلاح 3: زر كاميرا عائم للجوال - يظهر دائماً */}
         <button onClick={()=>setShowCamMenu(v=>!v)} style={{
-          position: 'absolute', top: 12, right: 12, zIndex: 10006,
+          position: 'absolute', top: 12, right: 12, zIndex: 10008,
           background: showCamMenu ? '#00e5ff' : 'rgba(10,10,12,0.9)', 
           color: showCamMenu ? '#000' : '#fff',
           border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: 12,
