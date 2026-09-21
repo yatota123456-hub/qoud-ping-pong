@@ -1405,7 +1405,7 @@ export function GameScreen3D({
 
             // تسجيل الأهداف
 
-             - إصلاح مشكلة الاختراق بدون تسجيل
+             // إصلاح مشكلة الاختراق بدون تسجيل
             const goalScoredSide = (() => {
               // هدف علوي
               if (state.ball.y < 8) {
@@ -1614,7 +1614,6 @@ export function GameScreen3D({
               try { playHitSound3D(Math.min(1, state.rally/12)); } catch {}
               state.rally++;
               setRally(state.rally);
-                (state as any).lastHit = { side, time: now };
               
               // إرسال للشبكة إذا Host
               if (isHost && !isOfflineMode) {
