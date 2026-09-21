@@ -417,53 +417,20 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           <h1 className="font-black text-[26px] leading-[1.05] tracking-tight">صمم مباراتك<br/>البطولية</h1>
         </div>
         {error && <div className="bg-[#ff2d2d] text-white border-[2.5px] border-black rounded-[14px] p-3 font-black text-[13px] text-center">{error}</div>}
+
+        {/* 1- نموذج 2D / 3D فقط */}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="font-black text-[14px]">نموذج اللعبة</span>
+            <span className="bg-black text-white text-[11px] font-black px-3 h-7 rounded-full grid place-items-center">MODEL</span>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <button onClick={() => onChangeSettings({ graphics: '2d' })} className={`h-11 rounded-full border-[2.5px] border-black font-black text-[14px] transition-colors ${settings.graphics==='2d'?'bg-black text-white':'bg-white text-black'}`}>2D LED</button>
             <button onClick={() => onChangeSettings({ graphics: '3d' })} className={`h-11 rounded-full border-[2.5px] border-black font-black text-[14px] transition-colors ${settings.graphics==='3d'?'bg-black text-white':'bg-white text-black'}`}>3D LED</button>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="font-black text-[14px]">عدد اللاعبين</span>
-            <div className="flex items-center gap-1.5 bg-black text-white rounded-full px-1.5 h-9 border-[2.5px] border-black">
-              <button onClick={() => onChangeSettings({ players: Math.min(4, settings.players + 1) })} className="w-7 h-7 grid place-items-center rounded-full hover:bg-white/10 transition"><Plus size={16} strokeWidth={3} /></button>
-              <span className="w-7 text-center font-black text-[15px]">{settings.players}</span>
-              <button onClick={() => onChangeSettings({ players: Math.max(2, settings.players - 1) })} className="w-7 h-7 grid place-items-center rounded-full hover:bg-white/10 transition"><Minus size={16} strokeWidth={3} /></button>
-            </div>
-          </div>
         </section>
-        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="bg-black text-white text-[11px] font-black px-3 h-7 rounded-full grid place-items-center tracking-wide">PLAYERS {settings.players}</span>
-            <span className="font-black text-[14px]">من حول الطاولة؟</span>
-          </div>
-          <div className="flex flex-col gap-2.5">
-            {Array.from({ length: settings.players }, (_, i) => (
-              <div key={i} className="grid grid-cols-[42px_1fr_34px] gap-2 items-center">
-                <button type="button" onClick={() => onToggleComputer(i)} className="w-10 h-7 rounded-full border-[2px] border-black bg-white flex items-center px-1 shrink-0">
-                  <div className="w-4 h-4 rounded-full border-[1.5px] border-black transition-all duration-200" style={{background: computers[i]? '#ff6b8b' : '#fff', marginLeft: computers[i]? '18px':'0'}} />
-                </button>
-                <input value={names[i]} onChange={(e) => onChangeName(i, e.target.value)} className="w-full h-10 rounded-full border-[2px] border-black bg-white px-4 font-bold text-[14px] outline-none" maxLength={14} />
-                <div className="w-8 h-8 rounded-full border-[2px] border-black grid place-items-center shrink-0" style={{background: COLORS[i]}}><span className="text-[10px]">●</span></div>
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => onChangeSettings({ vsComputer: false })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${!settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>مع الأصدقاء</button>
-            <button onClick={() => onChangeSettings({ vsComputer: true })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>ضد الكمبيوتر</button>
-          </div>
-        </section>
-        <section className="bg-black border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="bg-[#ffcf5a] text-black text-[11px] font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
-            <span className="font-black text-[14px] text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
-          </div>
-          <div className="grid grid-cols-[1fr_90px_48px] gap-2">
-            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border-[2px] border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
-            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4))} placeholder="BZYF" className="w-full h-11 rounded-full border-[2px] border-white bg-white text-black text-center font-black text-[15px] tracking-[0.2em] outline-none" />
-            <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border-[2px] border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
-          </div>
-          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 4 حروف ثم انضم</div>
-        </section>
+
+        {/* 2- السرعة */}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2"><span className="bg-[#ffcf5a] border-[2px] border-black rounded-full px-3 h-7 text-[11px] font-black grid place-items-center">MODE 4</span><span className="font-black text-[14px]">السرعة</span></div>
@@ -499,6 +466,8 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
             </div>
           )}
         </section>
+
+        {/* 3- نظام الجولات */}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2"><span className="bg-black text-white border border-black rounded-full px-3 h-7 text-[11px] font-black grid place-items-center">SERIES</span><span className="font-black text-[14px]">نظام الجولات</span></div>
@@ -518,10 +487,11 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
               </div>
               <input type="range" min={2} max={10} step={1} value={settings.seriesRounds} onChange={e=>onChangeSettings({seriesRounds:Number(e.target.value)})} className="w-full" />
               <div className="flex justify-between text-[11px] font-black opacity-50"><span>2 جولات</span><span>10 جولات</span></div>
-              <div className="text-[11px] font-bold bg-black text-white rounded-full px-3 h-7 grid place-items-center text-center">الأكثر فوزا هو البطل • {settings.seriesRounds%2===0?'تعادل ممكن':'لا يوجد تعادل'}</div>
             </div>
           )}
         </section>
+
+        {/* 4- حجم الساحة */}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between"><span className="font-black text-[14px]">📐 حجم الساحة</span><div className="w-6 h-6 rounded-full border-[2px] border-black bg-white grid place-items-center text-[11px] font-black">2</div></div>
           <div className="grid grid-cols-4 gap-2">
@@ -531,6 +501,8 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
             <button onClick={()=>onChangeSettings({arenaSize:'xlarge'})} className={`h-10 rounded-full border-[2px] border-black font-black text-[13px] ${settings.arenaSize==='xlarge'?'bg-black text-white':'bg-white text-black'}`}>XL</button>
           </div>
         </section>
+
+        {/* 5- طريقة الفوز */}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
           <div className="flex items-center justify-between"><span className="font-black text-[14px]">طريقة الفوز</span><div className="w-6 h-6 rounded-full border-[2px] border-black bg-white grid place-items-center text-[11px] font-black">3</div></div>
           <div className="grid grid-cols-2 gap-2">
@@ -545,7 +517,6 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
                 <button onClick={()=>onChangeSettings({duration: Math.min(1800, settings.duration+30)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Plus size={14} strokeWidth={2.5} /></button>
               </div>
               <input type="range" min={30} max={1800} step={30} value={settings.duration} onChange={e=>onChangeSettings({duration:Number(e.target.value)})} className="w-full" />
-              <div className="flex justify-between text-[11px] font-black opacity-50"><span>30 ثانية</span><span>30 دقيقة</span></div>
             </div>
           ) : (
             <div className="animate-[fadeIn_.2s] flex flex-col gap-2">
@@ -555,22 +526,65 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
                 <button onClick={()=>onChangeSettings({goal: Math.min(100, settings.goal+1)})} className="w-8 h-8 rounded-full border-[2px] border-black bg-white grid place-items-center"><Plus size={14} strokeWidth={2.5} /></button>
               </div>
               <input type="range" min={2} max={100} step={1} value={settings.goal} onChange={e=>onChangeSettings({goal:Number(e.target.value)})} className="w-full" />
-              <div className="flex justify-between text-[11px] font-black opacity-50"><span>2</span><span>100 هدف</span></div>
             </div>
           )}
         </section>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="h-9 rounded-full border-[2px] border-black bg-white flex items-center justify-center gap-1 font-black text-[11px]"><span className="w-2 h-2 bg-[#ff2d2d] rounded-full" /> كود الغرفة</div>
-          <div className="h-9 rounded-full border-[2px] border-black bg-white flex items-center justify-center font-black text-[11px]">{settings.ballSpeed} / 20 سرعة</div>
-          <div className="h-9 rounded-full border-[2px] border-black bg-white flex items-center justify-center font-black text-[11px]">LED طاولة خشب</div>
-        </div>
-        <button onClick={onCreate} className="h-[52px] rounded-[16px] border-[2.5px] border-black bg-black text-[#f6f0d2] font-black text-[16px] active:scale-[0.98] transition hover:bg-[#1a1a1a]">انشئ غرفة و سرعة {settings.ballSpeed} • 50</button>
+
+        {/* 6- عدد اللاعبين + من حول الطاولة + ضد الكمبيوتر/الأصدقاء - في الأخير */}
+        <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="font-black text-[14px]">عدد اللاعبين</span>
+            <div className="flex items-center gap-1.5 bg-black text-white rounded-full px-1.5 h-9 border-[2.5px] border-black">
+              <button onClick={() => onChangeSettings({ players: Math.min(4, settings.players + 1) })} className="w-7 h-7 grid place-items-center rounded-full hover:bg-white/10 transition"><Plus size={16} strokeWidth={3} /></button>
+              <span className="w-7 text-center font-black text-[15px]">{settings.players}</span>
+              <button onClick={() => onChangeSettings({ players: Math.max(2, settings.players - 1) })} className="w-7 h-7 grid place-items-center rounded-full hover:bg-white/10 transition"><Minus size={16} strokeWidth={3} /></button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="bg-black text-white text-[11px] font-black px-3 h-7 rounded-full grid place-items-center tracking-wide">PLAYERS {settings.players}</span>
+            <span className="font-black text-[14px]">من حول الطاولة؟</span>
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {Array.from({ length: settings.players }, (_, i) => (
+              <div key={i} className="grid grid-cols-[42px_1fr_34px] gap-2 items-center">
+                <button type="button" onClick={() => onToggleComputer(i)} className="w-10 h-7 rounded-full border-[2px] border-black bg-white flex items-center px-1 shrink-0">
+                  <div className="w-4 h-4 rounded-full border-[1.5px] border-black transition-all duration-200" style={{background: computers[i]? '#ff6b8b' : '#fff', marginLeft: computers[i]? '18px':'0'}} />
+                </button>
+                <input value={names[i]} onChange={(e) => onChangeName(i, e.target.value)} className="w-full h-10 rounded-full border-[2px] border-black bg-white px-4 font-bold text-[14px] outline-none" maxLength={14} />
+                <div className="w-8 h-8 rounded-full border-[2px] border-black grid place-items-center shrink-0" style={{background: COLORS[i]}}><span className="text-[10px]">●</span></div>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => onChangeSettings({ vsComputer: false })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${!settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>مع الأصدقاء</button>
+            <button onClick={() => onChangeSettings({ vsComputer: true })} className={`h-11 rounded-full border-[2px] border-black font-black text-[13px] transition-colors ${settings.vsComputer?'bg-black text-white':'bg-white text-black'}`}>ضد الكمبيوتر</button>
+          </div>
+        </section>
+
+        {/* 7- انضمام للغرف - في الأخير */}
+        <section className="bg-black border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="bg-[#ffcf5a] text-black text-[11px] font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
+            <span className="font-black text-[14px] text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
+          </div>
+          <div className="grid grid-cols-[1fr_90px_48px] gap-2">
+            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border-[2px] border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
+            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4))} placeholder="BZYF" className="w-full h-11 rounded-full border-[2px] border-white bg-white text-black text-center font-black text-[15px] tracking-[0.2em] outline-none" />
+            <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border-[2px] border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
+          </div>
+          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 4 حروف ثم انضم</div>
+        </section>
+
+        <button onClick={onCreate} className="h-[52px] rounded-[16px] border-[2.5px] border-black bg-black text-[#f6f0d2] font-black text-[16px] active:scale-[0.98] transition hover:bg-[#1a1a1a]">بدء اللعب • انشئ غرفة</button>
         <div className="text-center text-[11px] font-black opacity-50">طاولة LED - تصميم البطولة</div>
         <div className="h-6" />
       </div>
     </main>
   );
 }
+
+
+
 
 function WaitingRoom({ room, players, isHost, error, onBack, onStart, onRefresh }: any) {
   const [copied, setCopied] = useState(false); const { t, i18n } = useTranslation(); const isAr = i18n.language?.startsWith('ar')?? true;
@@ -698,6 +712,47 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       const scorerSide = missedSide? opposite[missedSide] : null;
       const scorer = scorerSide? playerForSide(scorerSide) : null;
       try { playGoalSound(); spawnGoalStars(world.w/2, world.h/2); } catch {}
+      
+      // === إصلاح 4: عند اختيار من المضرب - الكرة تبدأ من المضرب وبالترتيب ===
+      if (settings.start === 'paddle') {
+        // حدد المضرب التالي بالترتيب - يبدأ من الخصم الذي استقبل الهدف ثم يدور
+        const order: Player['side'][] = players.length >= 4 ? ['bottom','right','top','left'] : ['bottom','top'];
+        let nextSide: Player['side'] = 'bottom';
+        if (missedSide) {
+          // الكرة تبدأ من صاحب الهدف المسجل ضده؟ أو بالترتيب - نستخدم الترتيب الدوري
+          const lastIdx = order.indexOf(missedSide as any);
+          const nextIdx = (lastIdx + 1) % order.length;
+          nextSide = order[nextIdx] || 'bottom';
+        } else {
+          // بداية المباراة - من الأسفل
+          nextSide = 'bottom';
+        }
+        // إذا الجانب غير موجود (مثلاً 2 لاعبين فقط)، استخدم bottom/top
+        if (!order.includes(nextSide)) nextSide = 'bottom';
+        
+        servingRef.current.active = true;
+        servingRef.current.side = nextSide;
+        servingRef.current.startTime = performance.now();
+        servingRef.current.requested = false;
+        setIsServing(true);
+        
+        // ضع الكرة عند المضرب مباشرة
+        const paddle = state.paddles[nextSide];
+        if (paddle) {
+          if (nextSide === 'bottom') { state.ball.x = paddle.x; state.ball.y = paddle.y - 50; }
+          else if (nextSide === 'top') { state.ball.x = paddle.x; state.ball.y = paddle.y + 50; }
+          else if (nextSide === 'left') { state.ball.x = paddle.x + 50; state.ball.y = paddle.y; }
+          else { state.ball.x = paddle.x - 50; state.ball.y = paddle.y; }
+          state.ballTarget.x = state.ball.x;
+          state.ballTarget.y = state.ball.y;
+        }
+        state.ball.vx = 0; state.ball.vy = 0;
+        state.countdown = 0; setCountdown(0);
+        state.rally = 0; setRally(0); state.speedMult = 1;
+        hasDraggedRef.current=false; noDragStartRef.current=performance.now();
+        return;
+      }
+      
       state.countdown = 3; state.countdownStart = performance.now(); state.countdownSide = scorerSide as any; setCountdown(3); setCountdownName(scorer? scorer.name : '');
       state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ballTarget.x = world.w/2; state.ballTarget.y = world.h/2; state.ball.vx = 0; state.ball.vy = 0; state.rally = 0; setRally(0); state.speedMult = 1; hasDraggedRef.current=false; noDragStartRef.current=performance.now(); if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     };
@@ -758,6 +813,35 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         if (isOfflineMode) {
           const ball = state.ball;
           const w = world.w, h = world.h;
+          
+          // === إذا من المضرب - الكرة تتبع المضرب حتى يطلب الإطلاق ===
+          if (servingRef.current.active) {
+            const servingSide = servingRef.current.side;
+            const servingPaddle = state.paddles[servingSide];
+            if (servingPaddle) {
+              if (servingSide === 'bottom') { ball.x = servingPaddle.x; ball.y = servingPaddle.y - 50; }
+              else if (servingSide === 'top') { ball.x = servingPaddle.x; ball.y = servingPaddle.y + 50; }
+              else if (servingSide === 'left') { ball.x = servingPaddle.x + 50; ball.y = servingPaddle.y; }
+              else { ball.x = servingPaddle.x - 50; ball.y = servingPaddle.y; }
+              ball.vx = 0; ball.vy = 0;
+              state.ballTarget.x = ball.x; state.ballTarget.y = ball.y;
+            }
+            // إطلاق عند طلب
+            if (servingRef.current.requested) {
+              servingRef.current.active = false;
+              setIsServing(false);
+              servingRef.current.requested = false;
+              const spd = getInitialSpeed() + 2;
+              if (servingSide === 'bottom') { ball.vx = (Math.random()-0.5)*spd; ball.vy = -Math.abs(spd); }
+              else if (servingSide === 'top') { ball.vx = (Math.random()-0.5)*spd; ball.vy = Math.abs(spd); }
+              else if (servingSide === 'left') { ball.vx = Math.abs(spd); ball.vy = (Math.random()-0.5)*spd; }
+              else { ball.vx = -Math.abs(spd); ball.vy = (Math.random()-0.5)*spd; }
+            } else {
+              draw(context, state, players, now, true, world, myAngle);
+              frame = requestAnimationFrame(tick);
+              return;
+            }
+          }
           const BALL_R = 14, PADDLE_R = 26, HIT_DIST = BALL_R + PADDLE_R;
           const predX = ball.x + ball.vx * 12;
           const predY = ball.y + ball.vy * 12;
@@ -770,19 +854,19 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           (['top','bottom','right','left'] as const).forEach(side => {
             if (!active(side) || side === mySide) return;
             const p = state.paddles[side];
-            // الكمبيوتر يتحرك في كل الجهات - أفقي وعمودي - إصلاح 2
+            // حركة الكمبيوتر - تبقى داخل الساحة فقط
             if (side === 'top') {
-              p.x = Math.max(60, Math.min(w - 60, chase(p.x, predX)));
-              p.y = Math.max(40, Math.min(220, chase(p.y, predY)));
+              p.x = Math.max(80, Math.min(w - 80, chase(p.x, predX)));
+              p.y = Math.max(50, Math.min(200, chase(p.y, predY)));
             } else if (side === 'bottom') {
-              p.x = Math.max(60, Math.min(w - 60, chase(p.x, predX)));
-              p.y = Math.max(h - 220, Math.min(h - 40, chase(p.y, predY)));
+              p.x = Math.max(80, Math.min(w - 80, chase(p.x, predX)));
+              p.y = Math.max(h - 200, Math.min(h - 50, chase(p.y, predY)));
             } else if (side === 'left') {
-              p.y = Math.max(60, Math.min(h - 60, chase(p.y, predY)));
-              p.x = Math.max(40, Math.min(220, chase(p.x, predX)));
+              p.y = Math.max(80, Math.min(h - 80, chase(p.y, predY)));
+              p.x = Math.max(50, Math.min(200, chase(p.x, predX)));
             } else {
-              p.y = Math.max(60, Math.min(h - 60, chase(p.y, predY)));
-              p.x = Math.max(w - 220, Math.min(w - 40, chase(p.x, predX)));
+              p.y = Math.max(80, Math.min(h - 80, chase(p.y, predY)));
+              p.x = Math.max(w - 200, Math.min(w - 50, chase(p.x, predX)));
             }
             state.targetPaddles[side].x = p.x;
             state.targetPaddles[side].y = p.y;
@@ -845,14 +929,80 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             prev.x = paddle.x;
             prev.y = paddle.y;
           });
-          const goalW = 520; // تكبير الأهداف أكثر لكل اللاعبين - 4
-          const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW, gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
-          if (ball.y < 18) { if (active('top') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); } else { ball.y = 18; ball.vy = Math.abs(ball.vy); } }
-          if (ball.y > h - 18) { if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); } else { ball.y = h - 18; ball.vy = -Math.abs(ball.vy); } }
-          if (ball.x < 18) { if (active('left') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('right')); resetBall('left'); } else { ball.x = 18; ball.vx = Math.abs(ball.vx); } }
-          if (ball.x > w - 18) { if (active('right') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('left')); resetBall('right'); } else { ball.x = w - 18; ball.vx = -Math.abs(ball.vx); } }
+          // === إصلاح: اهداف كبيرة 52% + ارتداد صحيح من الجدار الاحمر فقط ===
+          const BORDER = 28; // سماكة الإطار الأحمر
+          const WALL_R = 16; // نصف قطر الارتداد
+          const goalW = Math.min(520, Math.max(280, w * 0.52)); // اهداف كبيرة 52%
+          const goalH = Math.min(520, Math.max(280, h * 0.52));
+          const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
+          const gy1 = (h - goalH) / 2, gy2 = gy1 + goalH;
+          const EDGE = 26;
+
+          // --- جدران علوية وسفلية ---
+          // علوي
+          if (ball.y < BORDER) {
+            if (active('top') && ball.x >= gx1 && ball.x <= gx2) {
+              // داخل الفتحة السوداء - هدف
+              if (ball.y < -BALL_R) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
+            } else {
+              // خارج الفتحة - ارتداد من الجدار الأحمر
+              // ارتداد من زاوية الفتحة
+              if (ball.x >= gx1 - EDGE && ball.x < gx1) {
+                ball.x = gx1 - WALL_R - 2; ball.vx = -Math.abs(ball.vx) * 1.05; ball.vy = Math.abs(ball.vy);
+              } else if (ball.x > gx2 && ball.x <= gx2 + EDGE) {
+                ball.x = gx2 + WALL_R + 2; ball.vx = Math.abs(ball.vx) * 1.05; ball.vy = Math.abs(ball.vy);
+              } else {
+                ball.y = BORDER; ball.vy = Math.abs(ball.vy) * 1.02;
+              }
+            }
+          }
+          // سفلي
+          if (ball.y > h - BORDER) {
+            if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) {
+              if (ball.y > h + BALL_R) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
+            } else {
+              if (ball.x >= gx1 - EDGE && ball.x < gx1) {
+                ball.x = gx1 - WALL_R - 2; ball.vx = -Math.abs(ball.vx) * 1.05; ball.vy = -Math.abs(ball.vy);
+              } else if (ball.x > gx2 && ball.x <= gx2 + EDGE) {
+                ball.x = gx2 + WALL_R + 2; ball.vx = Math.abs(ball.vx) * 1.05; ball.vy = -Math.abs(ball.vy);
+              } else {
+                ball.y = h - BORDER; ball.vy = -Math.abs(ball.vy) * 1.02;
+              }
+            }
+          }
+          // يسار
+          if (ball.x < BORDER) {
+            if (active('left') && ball.y >= gy1 && ball.y <= gy2) {
+              if (ball.x < -BALL_R) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
+            } else {
+              if (ball.y >= gy1 - EDGE && ball.y < gy1) {
+                ball.y = gy1 - WALL_R - 2; ball.vy = -Math.abs(ball.vy) * 1.05; ball.vx = Math.abs(ball.vx);
+              } else if (ball.y > gy2 && ball.y <= gy2 + EDGE) {
+                ball.y = gy2 + WALL_R + 2; ball.vy = Math.abs(ball.vy) * 1.05; ball.vx = Math.abs(ball.vx);
+              } else {
+                ball.x = BORDER; ball.vx = Math.abs(ball.vx) * 1.02;
+              }
+            }
+          }
+          // يمين
+          if (ball.x > w - BORDER) {
+            if (active('right') && ball.y >= gy1 && ball.y <= gy2) {
+              if (ball.x > w + BALL_R) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
+            } else {
+              if (ball.y >= gy1 - EDGE && ball.y < gy1) {
+                ball.y = gy1 - WALL_R - 2; ball.vy = -Math.abs(ball.vy) * 1.05; ball.vx = -Math.abs(ball.vx);
+              } else if (ball.y > gy2 && ball.y <= gy2 + EDGE) {
+                ball.y = gy2 + WALL_R + 2; ball.vy = Math.abs(ball.vy) * 1.05; ball.vx = -Math.abs(ball.vx);
+              } else {
+                ball.x = w - BORDER; ball.vx = -Math.abs(ball.vx) * 1.02;
+              }
+            }
+          }
           const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
           cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
+          // احصر مضرب اللاعب داخل الساحة البيضاء فقط - لا يخرج
+          cur.x = Math.max(70, Math.min(w - 70, cur.x));
+          cur.y = Math.max(70, Math.min(h - 70, cur.y));
         } else {
           const SUBSTEPS = 4;
           const stepDelta = delta / SUBSTEPS;
@@ -920,7 +1070,13 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
 
   const bindTouch = (direction: keyof typeof touchControls.current) => ({ onPointerDown: () => { touchControls.current[direction] = true; }, onPointerUp: () => { touchControls.current[direction] = false; }, onPointerLeave: () => { touchControls.current[direction] = false; } });
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (paused || celebrating) return; if (isServing) { requestLaunch(); return; }
+    if (paused || celebrating) return; 
+    // إصلاح 5: بدء الكرة من المضرب عند الضغط
+    if (isServing || servingRef.current.active) { 
+      requestLaunch(); 
+      servingRef.current.requested = true;
+      return; 
+    }
     (event.currentTarget as any).setPointerCapture?.(event.pointerId);
     const pt = getWorldFromClient(event.clientX, event.clientY);
     const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 195 : 70; // الإصبع أسفل المضرب ولا يغطيه - إصلاح جوال
@@ -1151,40 +1307,96 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
   const canvas = context.canvas as HTMLCanvasElement; const sx = canvas.width / world.w; const sy = canvas.height / world.h;
   context.save(); context.setTransform(1, 0, 0, 1, 0, 0); context.clearRect(0, 0, canvas.width, canvas.height); context.restore();
   context.save(); context.translate(world.w/2, world.h/2); context.rotate(myAngle); context.translate(-world.w/2, -world.h/2);
-  const outerRadius = 36; const borderOuter = 32; const borderInner = 14; const countdown = (state as any).countdown || 0;
+  const outerRadius = 22; const borderThick = 28; const innerMargin = 10; const countdown = (state as any).countdown || 0;
+  // خلفية سوداء خارجية
   context.fillStyle = '#000000'; context.fillRect(0, 0, world.w, world.h);
   const rr = (x: number, y: number, w: number, h: number, r: number) => { context.beginPath(); context.moveTo(x + r, y); context.lineTo(x + w - r, y); context.quadraticCurveTo(x + w, y, x + w, y + r); context.lineTo(x + w, y + h - r); context.quadraticCurveTo(x + w, y + h, x + w - r, y + h); context.lineTo(x + r, y + h); context.quadraticCurveTo(x, y + h, x, y + h - r); context.lineTo(x, y + r); context.quadraticCurveTo(x, y, x + r, y); context.closePath(); };
-  context.fillStyle = '#0c0c0c'; rr(0, 0, world.w, world.h, outerRadius); context.fill();
-  const ledX = borderOuter - 6; const ledY = borderOuter - 6; const ledW = world.w - (borderOuter - 6) * 2; const ledH = world.h - (borderOuter - 6) * 2; const ledR = outerRadius - 10;
-  let ledGrad: CanvasGradient;
-  if (typeof (context as any).createConicGradient === 'function') { ledGrad = (context as any).createConicGradient(-Math.PI * 0.78, world.w / 2, world.h / 2); ledGrad.addColorStop(0.00, '#00e5ff'); ledGrad.addColorStop(0.20, '#7c4dff'); ledGrad.addColorStop(0.40, '#ff2d78'); ledGrad.addColorStop(0.60, '#ff7a28'); ledGrad.addColorStop(0.80, '#ffcf5a'); ledGrad.addColorStop(1.00, '#00e5ff'); } else { ledGrad = context.createLinearGradient(ledX, ledY, ledX + ledW, ledY + ledH); ledGrad.addColorStop(0, '#00e5ff'); ledGrad.addColorStop(0.5, '#ff2d78'); ledGrad.addColorStop(1, '#ff8a2a'); }
-  context.save(); context.shadowBlur = 35; context.shadowColor = '#00e5ff'; context.strokeStyle = ledGrad; context.lineWidth = 12; context.lineCap = 'round'; rr(ledX, ledY, ledW, ledH, ledR); context.stroke(); context.restore();
-  context.strokeStyle = 'rgba(255,255,255,0.95)'; context.lineWidth = 4; rr(ledX, ledY, ledW, ledH, ledR); context.stroke();
-  const innerX = borderOuter + borderInner; const innerY = borderOuter + borderInner; const innerW = world.w - (borderOuter + borderInner) * 2; const innerH = world.h - (borderOuter + borderInner) * 2; const innerR = outerRadius - 18;
-  context.fillStyle = '#f3f5f7'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
+  // إطار أحمر سميك مثل الصورة - مع فتحة سوداء للهدف
+  const GOAL_W = Math.min(520, Math.max(280, world.w * 0.52)); // كبر الاهداف - 52% مثل ما طلب
+  const GOAL_H = Math.min(520, Math.max(280, world.h * 0.52)); // كبر الاهداف
+  const GX1 = (world.w - GOAL_W) / 2; const GX2 = GX1 + GOAL_W;
+  const GY1 = (world.h - GOAL_H) / 2; const GY2 = GY1 + GOAL_H;
+
+  // رسم الإطار الأحمر مع قطع مكان الهدف (أسود)
   const colors = Object.fromEntries(players.map((player) => [player.side, player.color]));
   const active = (side: Player['side']) => { if (players.some((player) => player.side === side)) return true; const count = Math.max(2, players.length || 2); const req = count === 2 ? ['bottom','top'] : ['bottom','top','right','left']; return (req as string[]).includes(side); };
-  const GOAL_W = players.length === 2? 260 : 300; const GX1 = (world.w - GOAL_W) / 2; const GY1 = (world.h - GOAL_W) / 2;
-  const drawGoal = (x: number, y: number, w: number, h: number, col: string) => { context.fillStyle = '#000000'; context.fillRect(x, y, w, h); context.fillStyle = col + '33'; context.fillRect(x, y, w, h); context.strokeStyle = col; context.lineWidth = 2.5; context.shadowColor = col; context.shadowBlur = 12; context.strokeRect(x, y, w, h); context.shadowBlur = 0; };
-  if (active('top')) drawGoal(GX1, 0, GOAL_W, borderOuter + 2, colors.top?? COLORS[1]); if (active('bottom')) drawGoal(GX1, world.h - (borderOuter + 2), GOAL_W, borderOuter + 2, colors.bottom?? COLORS[0]); if (active('left')) drawGoal(0, GY1, borderOuter + 2, GOAL_W, colors.left?? COLORS[3]); if (active('right')) drawGoal(world.w - (borderOuter + 2), GY1, borderOuter + 2, GOAL_W, colors.right?? COLORS[2]);
-  const drawHatPaddle = (x: number, y: number, color: string) => { const size = PADDLE_SIZE; context.save(); const clampedX = Math.max(innerX + size / 2, Math.min(innerX + innerW - size / 2, x)); const clampedY = Math.max(innerY + size / 2, Math.min(innerY + innerH - size / 2, y)); context.translate(clampedX, clampedY); context.shadowColor = color; context.shadowBlur = 20; const img = getColoredPaddle(color, size); context.drawImage(img, -size / 2, -size / 2, size, size); context.restore(); };
+
+  // طبقة الإطار الأحمر
+  context.fillStyle = '#d32f2f'; // أحمر مثل الصورة
+  // علوي: جزئين يسار ويمين الفتحة
+  if (active('top')) {
+    context.fillRect(0, 0, GX1, borderThick); // يسار الفتحة
+    context.fillRect(GX2, 0, world.w - GX2, borderThick); // يمين الفتحة
+  } else {
+    context.fillRect(0, 0, world.w, borderThick);
+  }
+  // سفلي
+  if (active('bottom')) {
+    context.fillRect(0, world.h - borderThick, GX1, borderThick);
+    context.fillRect(GX2, world.h - borderThick, world.w - GX2, borderThick);
+  } else {
+    context.fillRect(0, world.h - borderThick, world.w, borderThick);
+  }
+  // يسار
+  if (active('left')) {
+    context.fillRect(0, 0, borderThick, GY1);
+    context.fillRect(0, GY2, borderThick, world.h - GY2);
+  } else {
+    context.fillRect(0, 0, borderThick, world.h);
+  }
+  // يمين
+  if (active('right')) {
+    context.fillRect(world.w - borderThick, 0, borderThick, GY1);
+    context.fillRect(world.w - borderThick, GY2, borderThick, world.h - GY2);
+  } else {
+    context.fillRect(world.w - borderThick, 0, borderThick, world.h);
+  }
+
+  // الفتحات السوداء - مكان دخول الكرة فقط
+  context.fillStyle = '#000000';
+  if (active('top')) context.fillRect(GX1, 0, GOAL_W, borderThick);
+  if (active('bottom')) context.fillRect(GX1, world.h - borderThick, GOAL_W, borderThick);
+  if (active('left')) context.fillRect(0, GY1, borderThick, GOAL_H);
+  if (active('right')) context.fillRect(world.w - borderThick, GY1, borderThick, GOAL_H);
+
+  // الساحة الداخلية بيضاء مع خطوط
+  const innerX = borderThick + innerMargin; const innerY = borderThick + innerMargin;
+  const innerW = world.w - (borderThick + innerMargin) * 2; const innerH = world.h - (borderThick + innerMargin) * 2;
+  const innerR = 12;
+  context.fillStyle = '#f5f5f0'; rr(innerX, innerY, innerW, innerH, innerR); context.fill();
+  // خط المنتصف ودوائر
+  context.strokeStyle = 'rgba(0,0,0,0.08)'; context.lineWidth = 1.5; context.setLineDash([8,8]);
+  context.beginPath(); context.moveTo(world.w/2, innerY); context.lineTo(world.w/2, innerY+innerH); context.stroke();
+  context.beginPath(); context.moveTo(innerX, world.h/2); context.lineTo(innerX+innerW, world.h/2); context.stroke();
+  context.setLineDash([]);
+  // دوائر المنتصف
+  context.strokeStyle = 'rgba(211,47,47,0.25)'; context.lineWidth = 2;
+  context.beginPath(); context.arc(world.w/2, world.h/2, 90, 0, Math.PI*2); context.stroke();
+  context.beginPath(); context.arc(innerX+innerW*0.25, world.h/2, 70, 0, Math.PI*2); context.stroke();
+  context.beginPath(); context.arc(innerX+innerW*0.75, world.h/2, 70, 0, Math.PI*2); context.stroke();
+
+  const drawGoalGlow = (x: number, y: number, w: number, h: number, col: string) => {
+    context.fillStyle = col + '18'; context.fillRect(x, y, w, h);
+    context.strokeStyle = col; context.lineWidth = 2; context.shadowColor = col; context.shadowBlur = 10; context.strokeRect(x, y, w, h); context.shadowBlur = 0;
+  };
+  if (active('top')) drawGoalGlow(GX1, 0, GOAL_W, borderThick, colors.top?? COLORS[1]);
+  if (active('bottom')) drawGoalGlow(GX1, world.h - borderThick, GOAL_W, borderThick, colors.bottom?? COLORS[0]);
+  if (active('left')) drawGoalGlow(0, GY1, borderThick, GOAL_H, colors.left?? COLORS[3]);
+  if (active('right')) drawGoalGlow(world.w - borderThick, GY1, borderThick, GOAL_H, colors.right?? COLORS[2]);
   if (active('top')) drawHatPaddle(state.paddles.top.x, state.paddles.top.y, colors.top?? COLORS[1]); if (active('bottom')) drawHatPaddle(state.paddles.bottom.x, state.paddles.bottom.y, colors.bottom?? COLORS[0]); if (active('left')) drawHatPaddle(state.paddles.left.x, state.paddles.left.y, colors.left?? COLORS[3]); if (active('right')) drawHatPaddle(state.paddles.right.x, state.paddles.right.y, colors.right?? COLORS[2]);
   if (countdown > 0) { context.save(); context.fillStyle = 'rgba(0,0,0,0.78)'; context.fillRect(0, 0, world.w, world.h); context.fillStyle = '#ff2233'; context.font = 'bold 120px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.shadowColor = '#ff2233'; context.shadowBlur = 28; context.fillText(String(countdown), world.w / 2, world.h / 2); context.shadowBlur = 0; context.restore(); }
-  const screenRadius = 13 * Math.min(sx, sy); const rx = screenRadius / sx; const ry = screenRadius / sy;
-  // الكرة مضيئة مشعة للساحات المظلمة - 5
+  const screenRadius = 11 * Math.min(sx, sy); const rx = screenRadius / sx; const ry = screenRadius / sy;
+  // إصلاح 2: الساحة البيضاء الكرة داكنة لا مضيئة
   context.save();
-  context.shadowColor = '#00e5ff'; context.shadowBlur = 32;
-  context.fillStyle = 'rgba(0,229,255,0.42)';
-  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*2.4, ry*2.4, 0, 0, Math.PI * 2); context.fill();
-  context.shadowColor = '#ffffff'; context.shadowBlur = 20;
-  context.fillStyle = '#00e5ff';
-  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*1.5, ry*1.5, 0, 0, Math.PI * 2); context.fill();
-  context.shadowColor = '#00e5ff'; context.shadowBlur = isServing? 44 : 36;
-  context.fillStyle = '#ffffff';
+  context.shadowColor = 'rgba(0,0,0,0.35)'; context.shadowBlur = 8;
+  context.fillStyle = '#111111';
   context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx, ry, 0, 0, Math.PI * 2); context.fill();
   context.shadowBlur = 0;
-  context.fillStyle = 'rgba(255,255,255,0.96)';
-  context.beginPath(); context.ellipse(state.ball.x - rx*0.25, state.ball.y - ry*0.25, rx*0.4, ry*0.4, 0, 0, Math.PI * 2); context.fill();
+  context.fillStyle = '#222222';
+  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*0.92, ry*0.92, 0, 0, Math.PI * 2); context.fill();
+  // لمعة صغيرة بيضاء بسيطة
+  context.fillStyle = 'rgba(255,255,255,0.55)';
+  context.beginPath(); context.ellipse(state.ball.x - rx*0.22, state.ball.y - ry*0.22, rx*0.28, ry*0.28, 0, 0, Math.PI * 2); context.fill();
   context.restore();
   try { updateAndDrawStars(context); } catch {}
   state.effects = state.effects.filter((effect) => now - effect.born < 900);
