@@ -543,6 +543,22 @@ export function GameScreen3D({
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
+  // تم إرجاع خاصية الانتظار لإصلاح الكاميرا - ضد الكمبيوتر يبدأ بعد 3.5 ثانية
+  useEffect(()=>{
+    const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
+    if (vsComp && !localReadyRef.current) {
+      const timer = setTimeout(() => {
+        if (!localReadyRef.current) {
+          setLocalReady(true);
+          localReadyRef.current = true;
+          stateRef.current.countdown = 3;
+          stateRef.current.countdownStart = performance.now();
+          setCountdown(3);
+        }
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [players, (settings as any).vsComputer, localReady]);
 
 
   const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
@@ -550,17 +566,59 @@ export function GameScreen3D({
   const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
 
   const getMySide = useCallback((): Player['side'] => {
-    return (players.find((p) => p.socketId === socket.id)?.side?? players[0]?.side?? 'bottom') as Player['side'];
-  }, [players]);
+    // اللاعب الرئيسي دائماً تحت - حتى في وضع الأصدقاء كل واحد يشوف نفسه تحت في جواله
+    const found = players.find((p) => p.socketId === socket.id);
+    if (found) {
+      // في وضع الأصدقاء، كل لاعب يشوف نفسه تحت - نرجع جانبه الحقيقي للكاميرا
+      return found.side as Player['side'];
+    }
+    // ضد الكمبيوتر أو وضع غير متصل - اللاعب الرئيسي دائماً تحت
+    const isVsComputer = (settings as any).vsComputer || players.some((p:any)=>p.computer);
+    if (isVsComputer) {
+      return 'bottom' as Player['side'];
+    }
+    return (players[0]?.side?? 'bottom') as Player['side'];
+  }, [players, (settings as any).vsComputer]);
 
-  const mySideForCam = getMySide();
+    const mySideForCam = getMySide();
   const initialCam = useMemo(() => {
-    const sideKey = mySideForCam === 'top'? 'topPlayer' : mySideForCam === 'left'? 'sideLeft' : mySideForCam === 'right'? 'sideRight' : 'bottom';
+    // اللاعب الرئيسي دائماً تحت - الكاميرا دائماً خلف اللاعب الرئيسي
+    // في وضع الأصدقاء، كل جوال يشوف نفسه تحت
+    const actualSide = mySideForCam;
+    // نختار بريست الكاميرا بحيث يكون جانب اللاعب الرئيسي دائماً في الأسفل
+    let sideKey: string;
+    if (actualSide === 'top') {
+      sideKey = 'topPlayer'; // كاميرا خلف الخصم العلوي - تظهره تحت
+    } else if (actualSide === 'left') {
+      sideKey = 'sideLeft'; // كاميرا من اليسار - تظهر اليسار تحت
+    } else if (actualSide === 'right') {
+      sideKey = 'sideRight'; // كاميرا من اليمين - تظهر اليمين تحت
+    } else {
+      sideKey = 'bottom'; // كاميرا خلفك - أنت تحت (الافتراضي)
+    }
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
-    return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: 1 };
+    return {
+      angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: 1
+    };
   }, [world, adaptivePresets, mySideForCam]);
 
   const cam = useRef({...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 });
+  
+  // تحديث الكاميرا عند تغير الجانب - لضمان أن اللاعب الرئيسي دائماً تحت عند بدء اللعبة
+  useEffect(() => {
+    const sideKey = mySideForCam === 'top'? 'topPlayer' : mySideForCam === 'left'? 'sideLeft' : mySideForCam === 'right'? 'sideRight' : 'bottom';
+    const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
+    cam.current.angle = preset.angle;
+    cam.current.targetAngle = preset.angle;
+    cam.current.distance = preset.distance;
+    cam.current.targetDistance = preset.distance;
+    cam.current.height = preset.height;
+    cam.current.targetHeight = preset.height;
+    cam.current.targetX = world.w / 2;
+    cam.current.targetZ = world.h / 2;
+    cam.current.lookX = world.w / 2;
+    cam.current.lookZ = world.h / 2;
+  }, [mySideForCam, adaptivePresets]);
   useEffect(() => {
     const saved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
     if (saved) {
@@ -791,7 +849,9 @@ export function GameScreen3D({
   }, [arenaStyle]);
 
   const resetCamera = useCallback(() => {
-    const sideKey = getMySide() === 'top'? 'topPlayer' : getMySide() === 'left'? 'sideLeft' : getMySide() === 'right'? 'sideRight' : 'bottom';
+    // إعادة الكاميرا بحيث يكون اللاعب الرئيسي دائماً تحت
+    const mySide = getMySide();
+    const sideKey = mySide === 'top'? 'topPlayer' : mySide === 'left'? 'sideLeft' : mySide === 'right'? 'sideRight' : 'bottom';
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
     cam.current = {
       angle: preset.angle,
@@ -1748,25 +1808,19 @@ export function GameScreen3D({
       {/* لا نغطي الساحة - شريط صغير للبدء في الأسفل - ضد الكمبيوتر يبدأ فوراً، مع الأصدقاء ينتظر الكل */}
       {!localReady && (
         <div style={{
-          position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 10020, display: 'flex', gap: '12px', alignItems: 'center',
+          position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9997, display: 'flex', gap: '12px', alignItems: 'center',
           background: 'rgba(15,15,20,0.88)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
           border: '1px solid rgba(255,255,255,0.15)', borderRadius: '999px', padding: '10px 18px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.6)', pointerEvents: 'auto'
         }}>
           <button onClick={()=>{
-            // عند الضغط على ابدأ - يبدأ الكمبيوتر فوراً بدون الحاجة للضغط على الشاشة
-            hasDraggedRef.current = true;
-            noDragStartRef.current = 0;
             if (!isFriendsMode) {
               setLocalReady(true);
               localReadyRef.current = true;
               stateRef.current.countdown = 3;
               stateRef.current.countdownStart = performance.now();
               setCountdown(3);
-              // إخفاء تلميح السحب
-              if (hintDotRef.current) hintDotRef.current.style.display = 'none';
-              if (hintTextRef.current) hintTextRef.current.style.display = 'none';
             } else {
               const myId = socket.id || 'local_' + Math.random().toString(36).slice(2,7);
               if (!readyPlayers.includes(myId)) {
@@ -2005,7 +2059,7 @@ export function GameScreen3D({
         </button>
         {/* إصلاح 3: زر كاميرا عائم للجوال - يظهر دائماً */}
         <button onClick={()=>setShowCamMenu(v=>!v)} style={{
-          position: 'absolute', top: 12, right: 12, zIndex: 10005,
+          position: 'absolute', top: 12, right: 12, zIndex: 10006,
           background: showCamMenu ? '#00e5ff' : 'rgba(10,10,12,0.9)', 
           color: showCamMenu ? '#000' : '#fff',
           border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: 12,
