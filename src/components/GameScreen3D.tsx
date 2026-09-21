@@ -1361,59 +1361,66 @@ export function GameScreen3D({
               if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
             }
 
-            // === جدران بدون حاجز عند الفتحة السوداء ===
-            const goalHalfW = Math.min(290, Math.max(160, world.w * 0.30)); // 60% /2 =30%
-            const sideGoalHalfW = Math.min(290, Math.max(160, world.h * 0.30));
+                        // === التحكم في مساحة الهدف + إصلاح الارتداد من الأطراف (الأرقام 1-4 في الصورة) ===
+            // هنا تتحكم في حجم الهدف: 0.20=40% صغير، 0.30=60% متوسط، 0.40=80% كبير
+            const goalHalfW = Math.min(290, Math.max(160, world.w * 0.30)); // غيّر 0.30 للتحكم في عرض الهدف
+            const sideGoalHalfW = Math.min(290, Math.max(160, world.h * 0.30)); // غيّر 0.30 للتحكم في ارتفاع الهدف الجانبي
             const BORDER = 28;
             const leftBound = BORDER + BALL_RADIUS;
             const rightBound = world.w - BORDER - BALL_RADIUS;
             const topBound = BORDER + BALL_RADIUS;
             const bottomBound = world.h - BORDER - BALL_RADIUS;
             
-            // جدار علوي - لا يوجد جدار عند الفتحة
+            // جدار علوي - مع هامش 12 بكسل لمنع الارتداد من طرف الهدف
             if (state.ball.y <= topBound) {
-              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && activeSide('top')) {
-                // داخل الفتحة - لا جدار
+              const edgeBuffer = 12;
+              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW + edgeBuffer && activeSide('top')) {
+                // داخل الفتحة + هامش - لا جدار - الكرة تدخل من فوق المساحة السوداء وتختفي
               } else {
-                state.ball.y = topBound;
-                state.ball.vy = Math.abs(state.ball.vy) * 0.95;
+                state.ball.y = topBound + 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
+                state.ball.vy = minSpeed;
               }
             }
-            // جدار سفلي
+            // جدار سفلي - مع هامش
             if (state.ball.y >= bottomBound) {
-              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && activeSide('bottom')) {
+              const edgeBuffer = 12;
+              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW + edgeBuffer && activeSide('bottom')) {
               } else {
-                state.ball.y = bottomBound;
-                state.ball.vy = -Math.abs(state.ball.vy) * 0.95;
+                state.ball.y = bottomBound - 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
+                state.ball.vy = -minSpeed;
               }
             }
-            // جدار يسار
+            // جدار يسار - إصلاح الأسهم 1 و 2 - الكرة كانت ترتد من أطراف الأهداف الفارغة
             if (state.ball.x <= leftBound) {
-              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && activeSide('left')) {
+              const edgeBuffer = 12; // يصلح الارتداد عند الأرقام 1 و 2
+              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW + edgeBuffer && activeSide('left')) {
+                // داخل الفتحة + هامش - لا جدار - تدخل من فوق المساحة السوداء وتختفي
               } else {
-                state.ball.x = leftBound;
-                state.ball.vx = Math.abs(state.ball.vx) * 0.95;
+                state.ball.x = leftBound + 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
+                state.ball.vx = minSpeed;
               }
             }
-            // جدار يمين
+            // جدار يمين - إصلاح الأسهم 3 و 4
             if (state.ball.x >= rightBound) {
-              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && activeSide('right')) {
+              const edgeBuffer = 12; // يصلح الارتداد عند الأرقام 3 و 4
+              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW + edgeBuffer && activeSide('right')) {
               } else {
-                state.ball.x = rightBound;
-                state.ball.vx = -Math.abs(state.ball.vx) * 0.95;
+                state.ball.x = rightBound - 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
+                state.ball.vx = -minSpeed;
               }
+            }
             }
 
             // تسجيل الأهداف - الكرة تدخل من فوق المساحة السوداء وتختفي
             // === التحكم في مساحة الهدف - تقدر تغير 0.30 لتكبير أو تصغير الهدف ===
-            // goalHalfW = نصف عرض الهدف = 30% من عرض الساحة = الهدف كامل 60%
-            // لو تبي هدف أصغر: غير 0.30 إلى 0.20 (40% كامل)
-            // لو تبي هدف أكبر: غير 0.30 إلى 0.40 (80% كامل)
             const goalScoredSide = (() => {
               // هدف علوي - الكرة تدخل من فوق المساحة السوداء وتختفي
               if (state.ball.y < 25) { // كان 8 - الآن 25 عشان تختفي من فوق المساحة السوداء
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
-                  // اجعل الكرة تختفي عند دخولها من فوق المساحة السوداء
                   state.ball.visible = false;
                   if (threeRef.current?.ball) {
                     threeRef.current.ball.visible = false;
@@ -1421,8 +1428,8 @@ export function GameScreen3D({
                   return 'top' as const;
                 }
               }
-              // هدف سفلي - الكرة تدخل من فوق المساحة السوداء وتختفي
-              if (state.ball.y > world.h - 25) { // كان h-8 - الآن h-25
+              // هدف سفلي
+              if (state.ball.y > world.h - 25) {
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                   state.ball.visible = false;
                   if (threeRef.current?.ball) {
