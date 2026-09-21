@@ -1265,19 +1265,9 @@ export function GameScreen3D({
             prev.z = curr.z;
           });
 
-          // === إذا من المضرب - الكرة تتبع المضرب - مع إصلاح التعليق ===
+          // === إذا من المضرب - الكرة تتبع المضرب ===
           if (state.serving.active) {
             const servingSide = state.serving.side;
-            // إصلاح التعليق: ضد الكمبيوتر يطلق تلقائياً بعد 600ms
-            const elapsedServing = now - (state.serving.startTime || 0);
-            const isServingComputer = isVsComputer && servingSide !== getMySide();
-            if (isServingComputer && elapsedServing > 600) {
-              state.serving.requested = true;
-            }
-            // حتى في طور الأصدقاء، إذا تأخر أكثر من 3 ثواني يطلق تلقائياً لمنع التعليق
-            if (elapsedServing > 3000) {
-              state.serving.requested = true;
-            }
             const servingPaddle = state.paddles[servingSide];
             if (servingPaddle) {
               if (servingSide === 'bottom') { state.ball.x = servingPaddle.x; state.ball.y = servingPaddle.z - 60; }
@@ -1378,37 +1368,45 @@ export function GameScreen3D({
             const topBound = BORDER + BALL_RADIUS;
             const bottomBound = world.h - BORDER - BALL_RADIUS;
             
-            // جدار علوي - لا يوجد جدار عند الفتحة
+            // جدار علوي - لا يوجد جدار عند الفتحة - مع إصلاح التجميد
             if (state.ball.y <= topBound) {
               if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && active('top')) {
-                // داخل الفتحة - لا جدار
+                // داخل الفتحة - لا جدار - اتركه يدخل
               } else {
-                state.ball.y = topBound;
-                state.ball.vy = Math.abs(state.ball.vy) * 0.95;
+                state.ball.y = topBound + 2; // ادفعه بعيداً لمنع التعليق
+                const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
+                state.ball.vy = minSpeed; // ارتداد بقوة ثابتة
+                if (Math.abs(state.ball.vy) < 0.5) state.ball.vy = 2.5; // منع التوقف
               }
             }
             // جدار سفلي
             if (state.ball.y >= bottomBound) {
               if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && active('bottom')) {
               } else {
-                state.ball.y = bottomBound;
-                state.ball.vy = -Math.abs(state.ball.vy) * 0.95;
+                state.ball.y = bottomBound - 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
+                state.ball.vy = -minSpeed;
+                if (Math.abs(state.ball.vy) < 0.5) state.ball.vy = -2.5;
               }
             }
             // جدار يسار
             if (state.ball.x <= leftBound) {
               if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && active('left')) {
               } else {
-                state.ball.x = leftBound;
-                state.ball.vx = Math.abs(state.ball.vx) * 0.95;
+                state.ball.x = leftBound + 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
+                state.ball.vx = minSpeed;
+                if (Math.abs(state.ball.vx) < 0.5) state.ball.vx = 2.5;
               }
             }
             // جدار يمين
             if (state.ball.x >= rightBound) {
               if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && active('right')) {
               } else {
-                state.ball.x = rightBound;
-                state.ball.vx = -Math.abs(state.ball.vx) * 0.95;
+                state.ball.x = rightBound - 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
+                state.ball.vx = -minSpeed;
+                if (Math.abs(state.ball.vx) < 0.5) state.ball.vx = -2.5;
               }
             }
 
@@ -1416,25 +1414,25 @@ export function GameScreen3D({
               // إصلاح مشكلة الاختراق بدون تسجيل
             const goalScoredSide = (() => {
               // هدف علوي
-              if (state.ball.y < 8) {
+              if (state.ball.y < 15) {
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                   return 'top' as const;
                 }
               }
               // هدف سفلي
-              if (state.ball.y > world.h - 8) {
+              if (state.ball.y > world.h - 15) {
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                   return 'bottom' as const;
                 }
               }
               // أهداف جانبية للـ 4 لاعبين فقط
               if (needPlayers >= 4) {
-                if (state.ball.x < 8) {
+                if (state.ball.x < 15) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                     return 'left' as const;
                   }
                 }
-                if (state.ball.x > world.w - 8) {
+                if (state.ball.x > world.w - 15) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                     return 'right' as const;
                   }
@@ -1751,7 +1749,7 @@ export function GameScreen3D({
       {!localReady && (
         <div style={{
           position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 9995, display: 'flex', gap: '12px', alignItems: 'center',
+          zIndex: 9997, display: 'flex', gap: '12px', alignItems: 'center',
           background: 'rgba(15,15,20,0.88)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
           border: '1px solid rgba(255,255,255,0.15)', borderRadius: '999px', padding: '10px 18px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.6)', pointerEvents: 'auto'
@@ -2001,7 +1999,7 @@ export function GameScreen3D({
         </button>
         {/* إصلاح 3: زر كاميرا عائم للجوال - يظهر دائماً */}
         <button onClick={()=>setShowCamMenu(v=>!v)} style={{
-          position: 'absolute', top: 12, right: 12, zIndex: 10008,
+          position: 'absolute', top: 12, right: 12, zIndex: 10006,
           background: showCamMenu ? '#00e5ff' : 'rgba(10,10,12,0.9)', 
           color: showCamMenu ? '#000' : '#fff',
           border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: 12,

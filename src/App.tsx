@@ -824,14 +824,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           
           // === إذا من المضرب - الكرة تتبع المضرب حتى يطلب الإطلاق ===
           if (servingRef.current.active) {
-      const elapsed = performance.now() - (servingRef.current.startTime || 0);
-      if (servingRef.current.side !== mySide && elapsed > 600) {
-        servingRef.current.requested = true;
-      }
-      if (elapsed > 3000) {
-        servingRef.current.requested = true;
-      }
-      const servingSide = servingRef.current.side;
+            const servingSide = servingRef.current.side;
             const servingPaddle = state.paddles[servingSide];
             if (servingPaddle) {
               if (servingSide === 'bottom') { ball.x = servingPaddle.x; ball.y = servingPaddle.y - 50; }
@@ -957,54 +950,58 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               prev.y = paddle.y;
             });
 
-            // === اهداف بدون جدار - مع منع الارتداد اذا ضرب المضرب نفس الإطار ===
+            // === اهداف بدون جدار - مع إصلاح التجميد عند الاصطدام ===
             const BORDER = 28;
             const goalW = Math.min(580, Math.max(320, w * 0.60));
             const goalH = Math.min(580, Math.max(320, h * 0.60));
             const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
             const gy1 = (h - goalH) / 2, gy2 = gy1 + goalH;
 
-            // علوي
+            // علوي - بدون تجميد
             if (ball.y <= BORDER + BALL_R) {
               if (ball.x >= gx1 && ball.x <= gx2 && active('top')) {
-                if (ball.y < 8) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
+                if (ball.y < 15) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
               } else {
                 if (hitThisFrame !== 'top' && ball.y < BORDER + BALL_R) {
-                  ball.y = BORDER + BALL_R;
-                  ball.vy = Math.abs(ball.vy) * 1.02;
+                  ball.y = BORDER + BALL_R + 3;
+                  const spd = Math.max(Math.abs(ball.vy), 2.8);
+                  ball.vy = spd > 0 ? spd : 2.8;
                 }
               }
             }
             // سفلي
             if (ball.y >= h - BORDER - BALL_R) {
               if (ball.x >= gx1 && ball.x <= gx2 && active('bottom')) {
-                if (ball.y > h - 8) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
+                if (ball.y > h - 15) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
               } else {
                 if (hitThisFrame !== 'bottom' && ball.y > h - BORDER - BALL_R) {
-                  ball.y = h - BORDER - BALL_R;
-                  ball.vy = -Math.abs(ball.vy) * 1.02;
+                  ball.y = h - BORDER - BALL_R - 3;
+                  const spd = Math.max(Math.abs(ball.vy), 2.8);
+                  ball.vy = spd > 0 ? -spd : -2.8;
                 }
               }
             }
             // يسار
             if (ball.x <= BORDER + BALL_R) {
               if (ball.y >= gy1 && ball.y <= gy2 && active('left')) {
-                if (ball.x < 8) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
+                if (ball.x < 15) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
               } else {
                 if (hitThisFrame !== 'left' && ball.x < BORDER + BALL_R) {
-                  ball.x = BORDER + BALL_R;
-                  ball.vx = Math.abs(ball.vx) * 1.02;
+                  ball.x = BORDER + BALL_R + 3;
+                  const spd = Math.max(Math.abs(ball.vx), 2.8);
+                  ball.vx = spd > 0 ? spd : 2.8;
                 }
               }
             }
             // يمين
             if (ball.x >= w - BORDER - BALL_R) {
               if (ball.y >= gy1 && ball.y <= gy2 && active('right')) {
-                if (ball.x > w - 8) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
+                if (ball.x > w - 15) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
               } else {
                 if (hitThisFrame !== 'right' && ball.x > w - BORDER - BALL_R) {
-                  ball.x = w - BORDER - BALL_R;
-                  ball.vx = -Math.abs(ball.vx) * 1.02;
+                  ball.x = w - BORDER - BALL_R - 3;
+                  const spd = Math.max(Math.abs(ball.vx), 2.8);
+                  ball.vx = spd > 0 ? -spd : -2.8;
                 }
               }
             }
