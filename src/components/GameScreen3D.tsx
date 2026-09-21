@@ -1404,7 +1404,7 @@ export function GameScreen3D({
 
             // تسجيل الأهداف
 
-             - إصلاح مشكلة الاختراق بدون تسجيل
+             // إصلاح مشكلة الاختراق بدون تسجيل
             const goalScoredSide = (() => {
               // هدف علوي
               if (state.ball.y < 8) {
