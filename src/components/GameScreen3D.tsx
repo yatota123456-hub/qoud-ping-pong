@@ -276,7 +276,7 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   outerTube.position.y = 26;
   group.add(outerTube);
   // الأهداف - تكبير كبير مثل الصورة المرفقة - مهمة جداً
-  const goalW = Math.min(360, Math.max(180, worldW * 0.60)); // أكبر من فوق الإطار - 2 - أكبر
+  const goalW = worldW * 0.72; // مطابق للفتحة الفعلية + هامش - كان 0.60 مقيد ب 360
   const goalH = 36;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
@@ -293,7 +293,7 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
   group.add(goalLightBottom);
   if (worldW >= 900) {
-    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.60));
+    const sideGoalW = worldH * 0.72; // مطابق للفتحة
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, sideGoalW), goalMat);
     goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
     group.add(goalLeft);
@@ -391,7 +391,7 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     group.add(glowMesh);
   });
   // الأهداف - تكبير كبير مثل الصورة المرفقة - تمت إضافتها الآن
-  const goalW = Math.min(360, Math.max(180, worldW * 0.60)); // فتحة سوداء 32% مثل الصورة // أكبر من فوق الإطار - 2 - أكبر
+  const goalW = worldW * 0.72; // مطابق للفتحة الفعلية + هامش
   const goalH = 32;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.2, metalness: 0.1, emissive: '#111111', emissiveIntensity: 0.15 });
   // هدف علوي - كبير مثل الصورة
@@ -410,7 +410,7 @@ function createArenaFrameModern(worldW: number, worldH: number) {
   goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
   group.add(goalLightBottom);
   if (worldW >= 800) {
-    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.60)); // 32% مثل الصورة
+    const sideGoalW = worldH * 0.72; // مطابق للفتحة // 32% مثل الصورة
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 6, goalH, sideGoalW), goalMat);
     goalLeft.position.set(-bezelThickness/2 - 3, bezelY+2, worldH/2);
     group.add(goalLeft);
@@ -1181,9 +1181,9 @@ export function GameScreen3D({
     const PADDLE_RADIUS = 36;
     const BALL_RADIUS = 14;
     const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
-    const MIN_SPEED = 5.0;
-    const MAX_SPEED = 16; // زيادة للسماح بارتداد بقوة حسب سرعة المضرب
-    const WALL_BOUNCE_DAMP = 0.95;
+    const MIN_SPEED = 6.0; // كان 5.0 - سرعة دنيا أعلى
+    const MAX_SPEED = 24; // كان 16 - الآن 24 للسماح بارتداد قوي جداً حسب سرعة المضرب
+    const WALL_BOUNCE_DAMP = 0.98; // كان 0.95 - ارتداد أقوى من الجدران
 
     const tick = (now: number) => {
       const rawDelta = (now - state.last) / 16.67;
@@ -1362,64 +1362,62 @@ export function GameScreen3D({
             }
 
                         // === التحكم في مساحة الهدف + إصلاح الارتداد من الأطراف (الأرقام 1-4 في الصورة) ===
-            // هنا تتحكم في حجم الهدف: 0.20=40% صغير، 0.30=60% متوسط، 0.40=80% كبير
-            const goalHalfW = Math.min(290, Math.max(160, world.w * 0.30)); // غيّر 0.30 للتحكم في عرض الهدف
-            const sideGoalHalfW = Math.min(290, Math.max(160, world.h * 0.30)); // غيّر 0.30 للتحكم في ارتفاع الهدف الجانبي
+            // === إصلاح مشكلة الارتداد من الخطوط الحمراء - المرمى الآن مفتوح بالكامل ===
+            // هنا تتحكم في حجم الهدف: 0.36 = أوسع ليطابق الفتحة السوداء المرئية - كان 0.30
+            const goalHalfW = Math.min(340, Math.max(190, world.w * 0.36)); // كان 0.30 - الآن 0.36 ليطابق الصورة
+            const sideGoalHalfW = Math.min(340, Math.max(190, world.h * 0.36));
+
             const BORDER = 28;
             const leftBound = BORDER + BALL_RADIUS;
             const rightBound = world.w - BORDER - BALL_RADIUS;
             const topBound = BORDER + BALL_RADIUS;
             const bottomBound = world.h - BORDER - BALL_RADIUS;
             
-            // جدار علوي - مع هامش 12 بكسل لمنع الارتداد من طرف الهدف
+            // جدار علوي - مفتوح تماماً عند المرمى بدون أي حاجز أحمر - تم إلغاء الهدف العلوي كحاجز
             if (state.ball.y <= topBound) {
-              const edgeBuffer = 12;
-              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW + edgeBuffer && activeSide('top')) {
-                // داخل الفتحة + هامش - لا جدار - الكرة تدخل من فوق المساحة السوداء وتختفي
+              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && activeSide('top')) {
+                // داخل فتحة المرمى - لا يوجد جدار إطلاقاً - الكرة تمر مباشرة للهدف
               } else {
                 state.ball.y = topBound + 2;
                 const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
-                state.ball.vy = minSpeed;
+                state.ball.vy = Math.abs(minSpeed);
               }
             }
-            // جدار سفلي - مع هامش
+            // جدار سفلي - مفتوح تماماً عند المرمى - إصلاح الأسهم في الصورة
             if (state.ball.y >= bottomBound) {
-              const edgeBuffer = 12;
-              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW + edgeBuffer && activeSide('bottom')) {
+              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && activeSide('bottom')) {
+                // داخل فتحة المرمى السفلي - لا جدار - الكرة تدخل الهدف مباشرة بدون ارتداد من الخط الأحمر
               } else {
                 state.ball.y = bottomBound - 2;
                 const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
-                state.ball.vy = -minSpeed;
+                state.ball.vy = -Math.abs(minSpeed);
               }
             }
-            // جدار يسار - إصلاح الأسهم 1 و 2 - الكرة كانت ترتد من أطراف الأهداف الفارغة
+            // جدار يسار
             if (state.ball.x <= leftBound) {
-              const edgeBuffer = 12; // يصلح الارتداد عند الأرقام 1 و 2
-              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW + edgeBuffer && activeSide('left')) {
-                // داخل الفتحة + هامش - لا جدار - تدخل من فوق المساحة السوداء وتختفي
+              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && activeSide('left')) {
               } else {
                 state.ball.x = leftBound + 2;
                 const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
-                state.ball.vx = minSpeed;
+                state.ball.vx = Math.abs(minSpeed);
               }
             }
-            // جدار يمين - إصلاح الأسهم 3 و 4
+            // جدار يمين
             if (state.ball.x >= rightBound) {
-              const edgeBuffer = 12; // يصلح الارتداد عند الأرقام 3 و 4
-              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW + edgeBuffer && activeSide('right')) {
+              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && activeSide('right')) {
               } else {
                 state.ball.x = rightBound - 2;
                 const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
-                state.ball.vx = -minSpeed;
+                state.ball.vx = -Math.abs(minSpeed);
               }
             }
             
 
             // تسجيل الأهداف - الكرة تدخل من فوق المساحة السوداء وتختفي
-            // === التحكم في مساحة الهدف - تقدر تغير 0.30 لتكبير أو تصغير الهدف ===
+            // === تسجيل الهدف - الكرة الآن تدخل بسهولة بدون اصطدام بالخطوط الحمراء ===
             const goalScoredSide = (() => {
-              // هدف علوي - الكرة تدخل من فوق المساحة السوداء وتختفي
-              if (state.ball.y < 25) { // كان 8 - الآن 25 عشان تختفي من فوق المساحة السوداء
+              // هدف علوي - إلغاء الحاجز - الكرة تدخل مباشرة عند تجاوز الحد
+              if (state.ball.y < topBound - 5) { // كان 25 - الآن يعتمد على topBound ليتطابق مع الفتحة
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                   state.ball.visible = false;
                   if (threeRef.current?.ball) {
@@ -1428,8 +1426,8 @@ export function GameScreen3D({
                   return 'top' as const;
                 }
               }
-              // هدف سفلي
-              if (state.ball.y > world.h - 25) {
+              // هدف سفلي - إصلاح مشكلة الأسهم - يدخل بمجرد تجاوز الخط الأحمر
+              if (state.ball.y > bottomBound + 5) {
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                   state.ball.visible = false;
                   if (threeRef.current?.ball) {
@@ -1438,16 +1436,16 @@ export function GameScreen3D({
                   return 'bottom' as const;
                 }
               }
-              // أهداف جانبية للـ 4 لاعبين فقط
+              // أهداف جانبية للـ 4 لاعبين فقط - مفتوحة بدون حاجز
               if (needPlayers >= 4) {
-                if (state.ball.x < 25) {
+                if (state.ball.x < leftBound - 5) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                     state.ball.visible = false;
                     if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                     return 'left' as const;
                   }
                 }
-                if (state.ball.x > world.w - 25) {
+                if (state.ball.x > rightBound + 5) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                     state.ball.visible = false;
                     if (threeRef.current?.ball) threeRef.current.ball.visible = false;
@@ -1494,13 +1492,11 @@ export function GameScreen3D({
               state.ballTarget.vy = 0;
               // === إصلاح 4: عند اختيار من المضرب - الكرة تبدأ من المضرب وبالترتيب ===
               if ((settings as any).start === 'paddle') {
-                const order: Player['side'][] = (players.length >= 4 ? ['bottom','right','top','left'] : ['bottom','top']) as any;
-                let nextSide: Player['side'] = 'bottom';
-                if (goalScoredSide) {
-                  const lastIdx = order.indexOf(goalScoredSide as any);
-                  const nextIdx = (lastIdx + 1) % order.length;
-                  nextSide = order[nextIdx] || 'bottom';
-                }
+                // === طلب المستخدم: بعد الهدف الكرة تبدأ من مضرب الخصم (اللي دخل فيه الهدف) وليس من المسجل ===
+                // goalScoredSide هو الجهة اللي دخل فيها الهدف (الخاسر) - الخصم هو الخاسر
+                // إذا bottom دخل فيه هدف (خاسر bottom) -> الكرة تبدأ من bottom
+                // إذا top دخل فيه هدف (خاسر top) -> الكرة تبدأ من top
+                let nextSide: Player['side'] = goalScoredSide as Player['side'] || 'bottom'; // يبدأ من الخصم (اللي دخل فيه الهدف)
                 state.serving.active = true;
                 state.serving.side = nextSide;
                 state.serving.startTime = now;
@@ -1592,9 +1588,9 @@ export function GameScreen3D({
               state.ball.x += nx * overlap;
               state.ball.y += ny * overlap;
 
-              // === فيزياء محسنة: ارتداد بقوة حسب سرعة واتجاه المضرب - إصلاح مطلوب ===
+              // === فيزياء قوية: ارتداد بقوة حسب سرعة المضرب - طلب المستخدم ===
               const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
-              const paddleSpeedFactor = 0.85; // كان 0.35 - الآن 0.85 لارتداد أقوى
+              const paddleSpeedFactor = 1.8; // كان 0.85 - الآن 1.8 ارتداد قوي جداً حسب سرعة المضرب
               const ballVelDotNormal = state.ball.vx * nx + state.ball.vy * ny;
               
               // ارتداد مع إضافة سرعة المضرب بقوة كبيرة - الكرة ترتد بقوة حسب اتجاهه وسرعته
@@ -1607,21 +1603,21 @@ export function GameScreen3D({
                 : (state.ball.y - paddle.z) / PADDLE_RADIUS;
               
               if (side === 'bottom' || side === 'top') {
-                newVx += hitOffset * 5.5; // كان 3.5 - الآن 5.5
-                // إضافة دفع إضافي حسب سرعة المضرب الأفقية
-                newVx += pVel.vx * 0.25;
+                newVx += hitOffset * 8.5; // كان 5.5 - الآن 8.5 تأثير أقوى لمكان الضرب
+                // إضافة دفع إضافي قوي حسب سرعة المضرب الأفقية
+                newVx += pVel.vx * 0.55;
               } else {
-                newVy += hitOffset * 5.5;
-                newVy += pVel.vy * 0.25;
+                newVy += hitOffset * 8.5;
+                newVy += pVel.vy * 0.55;
               }
 
               // زيادة السرعة بقوة حسب سرعة المضرب - كلما كان المضرب أسرع ارتدت الكرة بقوة أكبر
-              const speedBoost = 1.12 + state.rally * 0.03 + paddleSpeed * 0.06;
+              const speedBoost = 1.25 + state.rally * 0.04 + paddleSpeed * 0.12; // كان 1.12 + 0.03 + 0.06
               let newSpeed = Math.hypot(newVx, newVy) * speedBoost;
-              // سرعة إضافية بناء على سرعة المضرب
-              newSpeed += paddleSpeed * 0.18;
-              newSpeed = Math.min(newSpeed, MAX_SPEED + paddleSpeed * 0.15);
-              newSpeed = Math.max(newSpeed, MIN_SPEED + paddleSpeed * 0.05);
+              // سرعة إضافية كبيرة بناء على سرعة المضرب - الضربة القوية تعطي سرعة عالية
+              newSpeed += paddleSpeed * 0.45; // كان 0.18
+              newSpeed = Math.min(newSpeed, MAX_SPEED + paddleSpeed * 0.4); // كان 0.15
+              newSpeed = Math.max(newSpeed, MIN_SPEED + paddleSpeed * 0.08);
               
               const angle = Math.atan2(newVy, newVx);
               // منع الزاوية الأفقية تماماً
