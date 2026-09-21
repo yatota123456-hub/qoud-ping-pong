@@ -917,57 +917,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           });
           const goalW = 820; // أكبر من فوق الإطار على كل الساحات - 2 - أكبر بكثير
           const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW, gy1 = (h - goalW) / 2, gy2 = gy1 + goalW;
-          const EDGE_MARGIN = 38; // هامش ارتداد أطراف الهدف - إصلاح 1
-          // هدف علوي مع ارتداد حواف
-          if (ball.y < 18) {
-            if (active('top') && ball.x >= gx1 && ball.x <= gx2) {
-              // داخل الهدف - هدف
-              onGoalRef.current(playerForSide('bottom')); resetBall('top');
-            } else if (ball.x >= gx1 - EDGE_MARGIN && ball.x <= gx1 + 12) {
-              // حافة يسار الهدف العلوي - ارتداد قوي
-              ball.x = gx1 - 22; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
-            } else if (ball.x >= gx2 - 12 && ball.x <= gx2 + EDGE_MARGIN) {
-              ball.x = gx2 + 22; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = Math.abs(ball.vy);
-            } else {
-              ball.y = 18; ball.vy = Math.abs(ball.vy);
-            }
-          }
-          // هدف سفلي مع ارتداد حواف
-          if (ball.y > h - 18) {
-            if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) {
-              onGoalRef.current(playerForSide('top')); resetBall('bottom');
-            } else if (ball.x >= gx1 - EDGE_MARGIN && ball.x <= gx1 + 12) {
-              ball.x = gx1 - 22; ball.vx = -Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
-            } else if (ball.x >= gx2 - 12 && ball.x <= gx2 + EDGE_MARGIN) {
-              ball.x = gx2 + 22; ball.vx = Math.abs(ball.vx) * 1.1; ball.vy = -Math.abs(ball.vy);
-            } else {
-              ball.y = h - 18; ball.vy = -Math.abs(ball.vy);
-            }
-          }
-          // هدف يسار مع ارتداد حواف
-          if (ball.x < 18) {
-            if (active('left') && ball.y >= gy1 && ball.y <= gy2) {
-              onGoalRef.current(playerForSide('right')); resetBall('left');
-            } else if (ball.y >= gy1 - EDGE_MARGIN && ball.y <= gy1 + 12) {
-              ball.y = gy1 - 22; ball.vy = -Math.abs(ball.vy) * 1.1; ball.vx = Math.abs(ball.vx);
-            } else if (ball.y >= gy2 - 12 && ball.y <= gy2 + EDGE_MARGIN) {
-              ball.y = gy2 + 22; ball.vy = Math.abs(ball.vy) * 1.1; ball.vx = Math.abs(ball.vx);
-            } else {
-              ball.x = 18; ball.vx = Math.abs(ball.vx);
-            }
-          }
-          // هدف يمين مع ارتداد حواف
-          if (ball.x > w - 18) {
-            if (active('right') && ball.y >= gy1 && ball.y <= gy2) {
-              onGoalRef.current(playerForSide('left')); resetBall('right');
-            } else if (ball.y >= gy1 - EDGE_MARGIN && ball.y <= gy1 + 12) {
-              ball.y = gy1 - 22; ball.vy = -Math.abs(ball.vy) * 1.1; ball.vx = -Math.abs(ball.vx);
-            } else if (ball.y >= gy2 - 12 && ball.y <= gy2 + EDGE_MARGIN) {
-              ball.y = gy2 + 22; ball.vy = Math.abs(ball.vy) * 1.1; ball.vx = -Math.abs(ball.vx);
-            } else {
-              ball.x = w - 18; ball.vx = -Math.abs(ball.vx);
-            }
-          }
+          if (ball.y < 18) { if (active('top') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); } else { ball.y = 18; ball.vy = Math.abs(ball.vy); } }
+          if (ball.y > h - 18) { if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); } else { ball.y = h - 18; ball.vy = -Math.abs(ball.vy); } }
+          if (ball.x < 18) { if (active('left') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('right')); resetBall('left'); } else { ball.x = 18; ball.vx = Math.abs(ball.vx); } }
+          if (ball.x > w - 18) { if (active('right') && ball.y >= gy1 && ball.y <= gy2) { onGoalRef.current(playerForSide('left')); resetBall('right'); } else { ball.x = w - 18; ball.vx = -Math.abs(ball.vx); } }
           const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
           cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
         } else {
@@ -1293,18 +1246,18 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
   const drawHatPaddle = (x: number, y: number, color: string) => { const size = PADDLE_SIZE; context.save(); const clampedX = Math.max(innerX + size / 2, Math.min(innerX + innerW - size / 2, x)); const clampedY = Math.max(innerY + size / 2, Math.min(innerY + innerH - size / 2, y)); context.translate(clampedX, clampedY); context.shadowColor = color; context.shadowBlur = 20; const img = getColoredPaddle(color, size); context.drawImage(img, -size / 2, -size / 2, size, size); context.restore(); };
   if (active('top')) drawHatPaddle(state.paddles.top.x, state.paddles.top.y, colors.top?? COLORS[1]); if (active('bottom')) drawHatPaddle(state.paddles.bottom.x, state.paddles.bottom.y, colors.bottom?? COLORS[0]); if (active('left')) drawHatPaddle(state.paddles.left.x, state.paddles.left.y, colors.left?? COLORS[3]); if (active('right')) drawHatPaddle(state.paddles.right.x, state.paddles.right.y, colors.right?? COLORS[2]);
   if (countdown > 0) { context.save(); context.fillStyle = 'rgba(0,0,0,0.78)'; context.fillRect(0, 0, world.w, world.h); context.fillStyle = '#ff2233'; context.font = 'bold 120px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.shadowColor = '#ff2233'; context.shadowBlur = 28; context.fillText(String(countdown), world.w / 2, world.h / 2); context.shadowBlur = 0; context.restore(); }
-  const screenRadius = 11 * Math.min(sx, sy); const rx = screenRadius / sx; const ry = screenRadius / sy;
-  // إصلاح 2: الساحة البيضاء الكرة داكنة لا مضيئة
+  const screenRadius = 12 * Math.min(sx, sy); const rx = screenRadius / sx; const ry = screenRadius / sy;
+  // الكرة غامقة في الساحة البيضاء - 1
   context.save();
-  context.shadowColor = 'rgba(0,0,0,0.35)'; context.shadowBlur = 8;
-  context.fillStyle = '#111111';
+  context.shadowColor = 'rgba(0,0,0,0.45)'; context.shadowBlur = 16;
+  context.fillStyle = '#0a0a0a';
+  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*1.15, ry*1.15, 0, 0, Math.PI * 2); context.fill();
+  context.shadowColor = '#ff2233'; context.shadowBlur = isServing? 28 : 20;
+  context.fillStyle = '#ff2233';
   context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx, ry, 0, 0, Math.PI * 2); context.fill();
   context.shadowBlur = 0;
-  context.fillStyle = '#222222';
-  context.beginPath(); context.ellipse(state.ball.x, state.ball.y, rx*0.92, ry*0.92, 0, 0, Math.PI * 2); context.fill();
-  // لمعة صغيرة بيضاء بسيطة
-  context.fillStyle = 'rgba(255,255,255,0.55)';
-  context.beginPath(); context.ellipse(state.ball.x - rx*0.22, state.ball.y - ry*0.22, rx*0.28, ry*0.28, 0, 0, Math.PI * 2); context.fill();
+  context.fillStyle = 'rgba(255,255,255,0.9)';
+  context.beginPath(); context.ellipse(state.ball.x - rx*0.28, state.ball.y - ry*0.28, rx*0.38, ry*0.38, 0, 0, Math.PI * 2); context.fill();
   context.restore();
   try { updateAndDrawStars(context); } catch {}
   state.effects = state.effects.filter((effect) => now - effect.born < 900);
