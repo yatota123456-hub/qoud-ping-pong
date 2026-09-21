@@ -937,81 +937,58 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             prev.x = paddle.x;
             prev.y = paddle.y;
           });
-          // === اهداف كبيرة 60% + دخول سهل من الفتحة السوداء فقط ===
+          // === الاهداف بدون جدار - تدخل مباشرة من الفتحة السوداء ===
           const BORDER = 28;
-          const WALL_R = 14;
-          const goalW = Math.min(580, Math.max(320, w * 0.60)); // 60% كبيرة
+          const goalW = Math.min(580, Math.max(320, w * 0.60)); // 60% فتحة بدون جدار
           const goalH = Math.min(580, Math.max(320, h * 0.60));
           const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
           const gy1 = (h - goalH) / 2, gy2 = gy1 + goalH;
 
-          // علوي - يدخل فقط من الفتحة السوداء
+          // علوي - لا يوجد جدار في الفتحة
           if (ball.y <= BORDER + BALL_R) {
-            if (active('top')) {
-              if (ball.x >= gx1 + 6 && ball.x <= gx2 - 6) {
-                // داخل الفتحة - اتركه يدخل
-                if (ball.y < 8) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
-              } else {
-                // خارج الفتحة - ارتداد من الأحمر
-                if (ball.y < BORDER) {
-                  ball.y = BORDER + BALL_R;
-                  ball.vy = Math.abs(ball.vy) * 1.02;
-                }
-                // ارتداد جانبي من زاوية الفتحة
-                if (ball.x >= gx1 - 18 && ball.x < gx1 + 10 && ball.y < BORDER + 12) {
-                  ball.vx = -Math.abs(ball.vx) * 1.05;
-                }
-                if (ball.x > gx2 - 10 && ball.x <= gx2 + 18 && ball.y < BORDER + 12) {
-                  ball.vx = Math.abs(ball.vx) * 1.05;
-                }
-              }
+            if (ball.x >= gx1 && ball.x <= gx2 && active('top')) {
+              // داخل الفتحة - لا جدار - اتركه يدخل
+              if (ball.y < 8) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
+              // لا نرتد هنا
             } else {
-              if (ball.y < BORDER) { ball.y = BORDER + BALL_R; ball.vy = Math.abs(ball.vy); }
+              // خارج الفتحة - يوجد جدار احمر - ارتد
+              if (ball.y < BORDER + BALL_R) {
+                ball.y = BORDER + BALL_R;
+                ball.vy = Math.abs(ball.vy) * 1.02;
+              }
             }
           }
-          // سفلي
+          // سفلي - لا يوجد جدار في الفتحة
           if (ball.y >= h - BORDER - BALL_R) {
-            if (active('bottom')) {
-              if (ball.x >= gx1 + 6 && ball.x <= gx2 - 6) {
-                if (ball.y > h - 8) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
-              } else {
-                if (ball.y > h - BORDER) {
-                  ball.y = h - BORDER - BALL_R;
-                  ball.vy = -Math.abs(ball.vy) * 1.02;
-                }
-                if (ball.x >= gx1 - 18 && ball.x < gx1 + 10 && ball.y > h - BORDER - 12) {
-                  ball.vx = -Math.abs(ball.vx) * 1.05;
-                }
-                if (ball.x > gx2 - 10 && ball.x <= gx2 + 18 && ball.y > h - BORDER - 12) {
-                  ball.vx = Math.abs(ball.vx) * 1.05;
-                }
-              }
+            if (ball.x >= gx1 && ball.x <= gx2 && active('bottom')) {
+              if (ball.y > h - 8) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
             } else {
-              if (ball.y > h - BORDER) { ball.y = h - BORDER - BALL_R; ball.vy = -Math.abs(ball.vy); }
+              if (ball.y > h - BORDER - BALL_R) {
+                ball.y = h - BORDER - BALL_R;
+                ball.vy = -Math.abs(ball.vy) * 1.02;
+              }
             }
           }
-          // يسار
+          // يسار - لا يوجد جدار في الفتحة
           if (ball.x <= BORDER + BALL_R) {
-            if (active('left')) {
-              if (ball.y >= gy1 + 6 && ball.y <= gy2 - 6) {
-                if (ball.x < 8) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
-              } else {
-                if (ball.x < BORDER) { ball.x = BORDER + BALL_R; ball.vx = Math.abs(ball.vx) * 1.02; }
-              }
+            if (ball.y >= gy1 && ball.y <= gy2 && active('left')) {
+              if (ball.x < 8) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
             } else {
-              if (ball.x < BORDER) { ball.x = BORDER + BALL_R; ball.vx = Math.abs(ball.vx); }
+              if (ball.x < BORDER + BALL_R) {
+                ball.x = BORDER + BALL_R;
+                ball.vx = Math.abs(ball.vx) * 1.02;
+              }
             }
           }
-          // يمين
+          // يمين - لا يوجد جدار في الفتحة
           if (ball.x >= w - BORDER - BALL_R) {
-            if (active('right')) {
-              if (ball.y >= gy1 + 6 && ball.y <= gy2 - 6) {
-                if (ball.x > w - 8) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
-              } else {
-                if (ball.x > w - BORDER) { ball.x = w - BORDER - BALL_R; ball.vx = -Math.abs(ball.vx) * 1.02; }
-              }
+            if (ball.y >= gy1 && ball.y <= gy2 && active('right')) {
+              if (ball.x > w - 8) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
             } else {
-              if (ball.x > w - BORDER) { ball.x = w - BORDER - BALL_R; ball.vx = -Math.abs(ball.vx); }
+              if (ball.x > w - BORDER - BALL_R) {
+                ball.x = w - BORDER - BALL_R;
+                ball.vx = -Math.abs(ball.vx) * 1.02;
+              }
             }
           }
 
