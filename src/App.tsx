@@ -638,6 +638,14 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const [localReady, setLocalReady] = useState(false);
   const localReadyRef = useRef(false);
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
+  // ضد الكمبيوتر يبدأ فوراً بدون ضغط الشاشة
+  useEffect(()=>{
+    const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
+    if (vsComp && !localReady) {
+      setLocalReady(true);
+      localReadyRef.current = true;
+    }
+  }, [players, (settings as any).vsComputer]);
   const world = useMemo(() => getArenaWorld(players.length, settings.arenaSize), [players.length, settings.arenaSize]);
   const mySide = useMemo(() => (players.find((p:any)=>p.socketId===socket.id)?.side || players[0]?.side || 'bottom') as Player['side'], [players]);
   const angleMap: any = { bottom: 0, top: Math.PI, right: Math.PI/2, left: -Math.PI/2 };
@@ -929,75 +937,85 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
             prev.x = paddle.x;
             prev.y = paddle.y;
           });
-          // === إصلاح: اهداف كبيرة 52% + ارتداد صحيح من الجدار الاحمر فقط ===
-          const BORDER = 28; // سماكة الإطار الأحمر
-          const WALL_R = 16; // نصف قطر الارتداد
-          const goalW = Math.min(520, Math.max(280, w * 0.52)); // اهداف كبيرة 52%
-          const goalH = Math.min(520, Math.max(280, h * 0.52));
+          // === اهداف كبيرة 60% + دخول سهل من الفتحة السوداء فقط ===
+          const BORDER = 28;
+          const WALL_R = 14;
+          const goalW = Math.min(580, Math.max(320, w * 0.60)); // 60% كبيرة
+          const goalH = Math.min(580, Math.max(320, h * 0.60));
           const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
           const gy1 = (h - goalH) / 2, gy2 = gy1 + goalH;
-          const EDGE = 26;
 
-          // --- جدران علوية وسفلية ---
-          // علوي
-          if (ball.y < BORDER) {
-            if (active('top') && ball.x >= gx1 && ball.x <= gx2) {
-              // داخل الفتحة السوداء - هدف
-              if (ball.y < -BALL_R) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
-            } else {
-              // خارج الفتحة - ارتداد من الجدار الأحمر
-              // ارتداد من زاوية الفتحة
-              if (ball.x >= gx1 - EDGE && ball.x < gx1) {
-                ball.x = gx1 - WALL_R - 2; ball.vx = -Math.abs(ball.vx) * 1.05; ball.vy = Math.abs(ball.vy);
-              } else if (ball.x > gx2 && ball.x <= gx2 + EDGE) {
-                ball.x = gx2 + WALL_R + 2; ball.vx = Math.abs(ball.vx) * 1.05; ball.vy = Math.abs(ball.vy);
+          // علوي - يدخل فقط من الفتحة السوداء
+          if (ball.y <= BORDER + BALL_R) {
+            if (active('top')) {
+              if (ball.x >= gx1 + 6 && ball.x <= gx2 - 6) {
+                // داخل الفتحة - اتركه يدخل
+                if (ball.y < 8) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
               } else {
-                ball.y = BORDER; ball.vy = Math.abs(ball.vy) * 1.02;
+                // خارج الفتحة - ارتداد من الأحمر
+                if (ball.y < BORDER) {
+                  ball.y = BORDER + BALL_R;
+                  ball.vy = Math.abs(ball.vy) * 1.02;
+                }
+                // ارتداد جانبي من زاوية الفتحة
+                if (ball.x >= gx1 - 18 && ball.x < gx1 + 10 && ball.y < BORDER + 12) {
+                  ball.vx = -Math.abs(ball.vx) * 1.05;
+                }
+                if (ball.x > gx2 - 10 && ball.x <= gx2 + 18 && ball.y < BORDER + 12) {
+                  ball.vx = Math.abs(ball.vx) * 1.05;
+                }
               }
+            } else {
+              if (ball.y < BORDER) { ball.y = BORDER + BALL_R; ball.vy = Math.abs(ball.vy); }
             }
           }
           // سفلي
-          if (ball.y > h - BORDER) {
-            if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) {
-              if (ball.y > h + BALL_R) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
-            } else {
-              if (ball.x >= gx1 - EDGE && ball.x < gx1) {
-                ball.x = gx1 - WALL_R - 2; ball.vx = -Math.abs(ball.vx) * 1.05; ball.vy = -Math.abs(ball.vy);
-              } else if (ball.x > gx2 && ball.x <= gx2 + EDGE) {
-                ball.x = gx2 + WALL_R + 2; ball.vx = Math.abs(ball.vx) * 1.05; ball.vy = -Math.abs(ball.vy);
+          if (ball.y >= h - BORDER - BALL_R) {
+            if (active('bottom')) {
+              if (ball.x >= gx1 + 6 && ball.x <= gx2 - 6) {
+                if (ball.y > h - 8) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
               } else {
-                ball.y = h - BORDER; ball.vy = -Math.abs(ball.vy) * 1.02;
+                if (ball.y > h - BORDER) {
+                  ball.y = h - BORDER - BALL_R;
+                  ball.vy = -Math.abs(ball.vy) * 1.02;
+                }
+                if (ball.x >= gx1 - 18 && ball.x < gx1 + 10 && ball.y > h - BORDER - 12) {
+                  ball.vx = -Math.abs(ball.vx) * 1.05;
+                }
+                if (ball.x > gx2 - 10 && ball.x <= gx2 + 18 && ball.y > h - BORDER - 12) {
+                  ball.vx = Math.abs(ball.vx) * 1.05;
+                }
               }
+            } else {
+              if (ball.y > h - BORDER) { ball.y = h - BORDER - BALL_R; ball.vy = -Math.abs(ball.vy); }
             }
           }
           // يسار
-          if (ball.x < BORDER) {
-            if (active('left') && ball.y >= gy1 && ball.y <= gy2) {
-              if (ball.x < -BALL_R) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
-            } else {
-              if (ball.y >= gy1 - EDGE && ball.y < gy1) {
-                ball.y = gy1 - WALL_R - 2; ball.vy = -Math.abs(ball.vy) * 1.05; ball.vx = Math.abs(ball.vx);
-              } else if (ball.y > gy2 && ball.y <= gy2 + EDGE) {
-                ball.y = gy2 + WALL_R + 2; ball.vy = Math.abs(ball.vy) * 1.05; ball.vx = Math.abs(ball.vx);
+          if (ball.x <= BORDER + BALL_R) {
+            if (active('left')) {
+              if (ball.y >= gy1 + 6 && ball.y <= gy2 - 6) {
+                if (ball.x < 8) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
               } else {
-                ball.x = BORDER; ball.vx = Math.abs(ball.vx) * 1.02;
+                if (ball.x < BORDER) { ball.x = BORDER + BALL_R; ball.vx = Math.abs(ball.vx) * 1.02; }
               }
+            } else {
+              if (ball.x < BORDER) { ball.x = BORDER + BALL_R; ball.vx = Math.abs(ball.vx); }
             }
           }
           // يمين
-          if (ball.x > w - BORDER) {
-            if (active('right') && ball.y >= gy1 && ball.y <= gy2) {
-              if (ball.x > w + BALL_R) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
-            } else {
-              if (ball.y >= gy1 - EDGE && ball.y < gy1) {
-                ball.y = gy1 - WALL_R - 2; ball.vy = -Math.abs(ball.vy) * 1.05; ball.vx = -Math.abs(ball.vx);
-              } else if (ball.y > gy2 && ball.y <= gy2 + EDGE) {
-                ball.y = gy2 + WALL_R + 2; ball.vy = Math.abs(ball.vy) * 1.05; ball.vx = -Math.abs(ball.vx);
+          if (ball.x >= w - BORDER - BALL_R) {
+            if (active('right')) {
+              if (ball.y >= gy1 + 6 && ball.y <= gy2 - 6) {
+                if (ball.x > w - 8) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
               } else {
-                ball.x = w - BORDER; ball.vx = -Math.abs(ball.vx) * 1.02;
+                if (ball.x > w - BORDER) { ball.x = w - BORDER - BALL_R; ball.vx = -Math.abs(ball.vx) * 1.02; }
               }
+            } else {
+              if (ball.x > w - BORDER) { ball.x = w - BORDER - BALL_R; ball.vx = -Math.abs(ball.vx); }
             }
           }
+
+
           const cur = state.paddles[mySide]; const tgt = state.targetPaddles[mySide];
           cur.x += (tgt.x - cur.x) * 0.5; cur.y += (tgt.y - cur.y) * 0.5;
           // احصر مضرب اللاعب داخل الساحة البيضاء فقط - لا يخرج
@@ -1312,8 +1330,8 @@ function draw(context: CanvasRenderingContext2D, state: any, players: Player[], 
   context.fillStyle = '#000000'; context.fillRect(0, 0, world.w, world.h);
   const rr = (x: number, y: number, w: number, h: number, r: number) => { context.beginPath(); context.moveTo(x + r, y); context.lineTo(x + w - r, y); context.quadraticCurveTo(x + w, y, x + w, y + r); context.lineTo(x + w, y + h - r); context.quadraticCurveTo(x + w, y + h, x + w - r, y + h); context.lineTo(x + r, y + h); context.quadraticCurveTo(x, y + h, x, y + h - r); context.lineTo(x, y + r); context.quadraticCurveTo(x, y, x + r, y); context.closePath(); };
   // إطار أحمر سميك مثل الصورة - مع فتحة سوداء للهدف
-  const GOAL_W = Math.min(520, Math.max(280, world.w * 0.52)); // كبر الاهداف - 52% مثل ما طلب
-  const GOAL_H = Math.min(520, Math.max(280, world.h * 0.52)); // كبر الاهداف
+  const GOAL_W = Math.min(580, Math.max(320, world.w * 0.60)); // 60% كبيرة مثل الصورة الجديدة
+  const GOAL_H = Math.min(580, Math.max(320, world.h * 0.60)); // 60% كبيرة
   const GX1 = (world.w - GOAL_W) / 2; const GX2 = GX1 + GOAL_W;
   const GY1 = (world.h - GOAL_H) / 2; const GY2 = GY1 + GOAL_H;
 

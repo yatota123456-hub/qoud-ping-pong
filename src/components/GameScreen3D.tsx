@@ -204,8 +204,8 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   });
   // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.52; // مثل الصورة - فتحة سوداء 32% فقط // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
-  const goalGapH = worldH * 0.52; // مثل الصورة // أكبر
+  const goalGapW = worldW * 0.60; // مثل الصورة - فتحة سوداء 32% فقط // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
+  const goalGapH = worldH * 0.60; // مثل الصورة // أكبر
   
   const bezelPieces: any[] = [];
 
@@ -276,7 +276,7 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   outerTube.position.y = 26;
   group.add(outerTube);
   // الأهداف - تكبير كبير مثل الصورة المرفقة - مهمة جداً
-  const goalW = Math.min(360, Math.max(180, worldW * 0.52)); // أكبر من فوق الإطار - 2 - أكبر
+  const goalW = Math.min(360, Math.max(180, worldW * 0.60)); // أكبر من فوق الإطار - 2 - أكبر
   const goalH = 36;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
@@ -293,7 +293,7 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
   group.add(goalLightBottom);
   if (worldW >= 900) {
-    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.52));
+    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.60));
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, sideGoalW), goalMat);
     goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
     group.add(goalLeft);
@@ -339,8 +339,8 @@ function createArenaFrameModern(worldW: number, worldH: number) {
   };
   // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.52; // مثل الصورة - فتحة سوداء 32% فقط // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
-  const goalGapH = worldH * 0.52; // مثل الصورة // أكبر
+  const goalGapW = worldW * 0.60; // مثل الصورة - فتحة سوداء 32% فقط // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
+  const goalGapH = worldH * 0.60; // مثل الصورة // أكبر
   
   const bezelPieces: any[] = [];
 
@@ -391,7 +391,7 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     group.add(glowMesh);
   });
   // الأهداف - تكبير كبير مثل الصورة المرفقة - تمت إضافتها الآن
-  const goalW = Math.min(360, Math.max(180, worldW * 0.52)); // فتحة سوداء 32% مثل الصورة // أكبر من فوق الإطار - 2 - أكبر
+  const goalW = Math.min(360, Math.max(180, worldW * 0.60)); // فتحة سوداء 32% مثل الصورة // أكبر من فوق الإطار - 2 - أكبر
   const goalH = 32;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.2, metalness: 0.1, emissive: '#111111', emissiveIntensity: 0.15 });
   // هدف علوي - كبير مثل الصورة
@@ -410,7 +410,7 @@ function createArenaFrameModern(worldW: number, worldH: number) {
   goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
   group.add(goalLightBottom);
   if (worldW >= 800) {
-    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.52)); // 32% مثل الصورة
+    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.60)); // 32% مثل الصورة
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 6, goalH, sideGoalW), goalMat);
     goalLeft.position.set(-bezelThickness/2 - 3, bezelY+2, worldH/2);
     group.add(goalLeft);
@@ -503,6 +503,21 @@ export function GameScreen3D({
   onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; 
 }) {
   const [localReady, setLocalReady] = useState(false);
+  // ضد الكمبيوتر يبدأ فوراً
+  useEffect(()=>{
+    const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
+    if (vsComp) {
+      setLocalReady(true);
+      // @ts-ignore
+      if (typeof localReadyRef !== 'undefined') localReadyRef.current = true;
+      // @ts-ignore
+      if (typeof stateRef !== 'undefined' && stateRef.current) {
+        stateRef.current.countdown = 3;
+        stateRef.current.countdownStart = performance.now();
+      }
+      setCountdown(3);
+    }
+  }, [players, (settings as any).vsComputer]);
   const [arenaStyle, setArenaStyle] = useState<'classic' | 'modern'>('modern');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
@@ -540,6 +555,7 @@ export function GameScreen3D({
   const gameEndedRef = useRef(false);
   const frameIdRef = useRef<number>(0);
   const localReadyRef = useRef(localReady);
+  useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
@@ -1344,8 +1360,8 @@ export function GameScreen3D({
             }
 
             // اصطدام بالجدران (ليس الأهداف) - الأهداف كبيرة وظاهرة مثل الأسهم
-            const goalHalfW = Math.min(260, Math.max(140, world.w * 0.26)); // 16% نصف الفتحة - مثل الصورة السوداء
-            const sideGoalHalfW = Math.min(260, Math.max(140, world.h * 0.26)); // 16% مثل الصورة
+            const goalHalfW = Math.min(260, Math.max(140, world.w * 0.30)); // 16% نصف الفتحة - مثل الصورة السوداء
+            const sideGoalHalfW = Math.min(260, Math.max(140, world.h * 0.30)); // 16% مثل الصورة
             const leftBound = BALL_RADIUS;
             const rightBound = world.w - BALL_RADIUS;
             const topBound = BALL_RADIUS;
@@ -1442,25 +1458,25 @@ export function GameScreen3D({
             // تسجيل الأهداف - إصلاح مشكلة الاختراق بدون تسجيل
             const goalScoredSide = (() => {
               // هدف علوي
-              if (state.ball.y < -BALL_RADIUS * 1.5) {
+              if (state.ball.y < 8) {
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                   return 'top' as const;
                 }
               }
               // هدف سفلي
-              if (state.ball.y > world.h + BALL_RADIUS * 1.5) {
+              if (state.ball.y > world.h - 8) {
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                   return 'bottom' as const;
                 }
               }
               // أهداف جانبية للـ 4 لاعبين فقط
               if (needPlayers >= 4) {
-                if (state.ball.x < -BALL_RADIUS * 1.5) {
+                if (state.ball.x < 8) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                     return 'left' as const;
                   }
                 }
-                if (state.ball.x > world.w + BALL_RADIUS * 1.5) {
+                if (state.ball.x > world.w - 8) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                     return 'right' as const;
                   }
