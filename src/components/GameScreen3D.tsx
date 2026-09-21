@@ -1413,7 +1413,7 @@ export function GameScreen3D({
                 state.ball.vx = -minSpeed;
               }
             }
-            }
+            
 
             // تسجيل الأهداف - الكرة تدخل من فوق المساحة السوداء وتختفي
             // === التحكم في مساحة الهدف - تقدر تغير 0.30 لتكبير أو تصغير الهدف ===
@@ -1702,7 +1702,7 @@ export function GameScreen3D({
             }
           }
         }
-        if(!hasDraggedRef.current && hintDotRef.current && hintTextRef.current && mountRef.current && localReadyRef.current){
+        if(!hasDraggedRef.current && hintDotRef.current && hintTextRef.current && mountRef.current && localReadyRef.current) {
           const elapsed = now - noDragStartRef.current;
           if(elapsed>3000 && state.countdown===0 &&!pausedRef.current &&!gameEndedRef.current){
             const mySide = getMySide();
