@@ -503,21 +503,6 @@ export function GameScreen3D({
   onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; 
 }) {
   const [localReady, setLocalReady] = useState(false);
-  // ضد الكمبيوتر يبدأ فوراً
-  useEffect(()=>{
-    const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
-    if (vsComp) {
-      setLocalReady(true);
-      // @ts-ignore
-      if (typeof localReadyRef !== 'undefined') localReadyRef.current = true;
-      // @ts-ignore
-      if (typeof stateRef !== 'undefined' && stateRef.current) {
-        stateRef.current.countdown = 3;
-        stateRef.current.countdownStart = performance.now();
-      }
-      setCountdown(3);
-    }
-  }, [players, (settings as any).vsComputer]);
   const [arenaStyle, setArenaStyle] = useState<'classic' | 'modern'>('modern');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
@@ -555,7 +540,6 @@ export function GameScreen3D({
   const gameEndedRef = useRef(false);
   const frameIdRef = useRef<number>(0);
   const localReadyRef = useRef(localReady);
-  useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
