@@ -1359,80 +1359,124 @@ export function GameScreen3D({
               if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
             }
 
-            // === جدران بدون حاجز عند الفتحة السوداء ===
-            const goalHalfW = Math.min(290, Math.max(160, world.w * 0.30)); // 60% /2 =30%
-            const sideGoalHalfW = Math.min(290, Math.max(160, world.h * 0.30));
-            const BORDER = 28;
-            const leftBound = BORDER + BALL_RADIUS;
-            const rightBound = world.w - BORDER - BALL_RADIUS;
-            const topBound = BORDER + BALL_RADIUS;
-            const bottomBound = world.h - BORDER - BALL_RADIUS;
+            // اصطدام بالجدران (ليس الأهداف) - الأهداف كبيرة وظاهرة مثل الأسهم
+            const goalHalfW = Math.min(260, Math.max(140, world.w * 0.30)); // 16% نصف الفتحة - مثل الصورة السوداء
+            const sideGoalHalfW = Math.min(260, Math.max(140, world.h * 0.30)); // 16% مثل الصورة
+            const leftBound = BALL_RADIUS;
+            const rightBound = world.w - BALL_RADIUS;
+            const topBound = BALL_RADIUS;
+            const bottomBound = world.h - BALL_RADIUS;
             
-            // جدار علوي - لا يوجد جدار عند الفتحة - مع إصلاح التجميد
-            if (state.ball.y <= topBound) {
-              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && active('top')) {
-                // داخل الفتحة - لا جدار - اتركه يدخل
+            // إصلاح 1: أطراف الهدف الكرة ترتد - معالجة الزوايا والحواف
+            // جدران يمين ويسار - مع استثناء الأهداف الجانبية في 4 لاعبين فقط + ارتداد حواف الهدف
+            if (state.ball.x < leftBound) {
+              if (needPlayers < 4 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
+                state.ball.x = leftBound;
+                state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                state.ball.vy += (Math.random() - 0.5) * 1.5;
               } else {
-                state.ball.y = topBound + 2; // ادفعه بعيداً لمنع التعليق
-                const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
-                state.ball.vy = minSpeed; // ارتداد بقوة ثابتة
-                if (Math.abs(state.ball.vy) < 0.5) state.ball.vy = 2.5; // منع التوقف
+                // على حافة الهدف الجانبي - ارتداد من الحافة الجانبية للهدف
+                const edgeDist = Math.abs(state.ball.y - world.h/2) - sideGoalHalfW;
+                if (edgeDist < 40) {
+                  state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                  state.ball.vy = (state.ball.y > world.h/2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random()-0.5)*2;
+                }
               }
             }
-            // جدار سفلي
-            if (state.ball.y >= bottomBound) {
-              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && active('bottom')) {
+            if (state.ball.x > rightBound) {
+              if (needPlayers < 4 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
+                state.ball.x = rightBound;
+                state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                state.ball.vy += (Math.random() - 0.5) * 1.5;
               } else {
-                state.ball.y = bottomBound - 2;
-                const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
-                state.ball.vy = -minSpeed;
-                if (Math.abs(state.ball.vy) < 0.5) state.ball.vy = -2.5;
+                const edgeDist = Math.abs(state.ball.y - world.h/2) - sideGoalHalfW;
+                if (edgeDist < 40) {
+                  state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                  state.ball.vy = (state.ball.y > world.h/2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random()-0.5)*2;
+                }
               }
             }
-            // جدار يسار
-            if (state.ball.x <= leftBound) {
-              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && active('left')) {
+            // جدران فوق وتحت - مع استثناء الأهداف + ارتداد قوي من أطراف الهدف
+            if (state.ball.y < topBound) {
+              if (Math.abs(state.ball.x - world.w/2) > goalHalfW) {
+                state.ball.y = topBound;
+                state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                state.ball.vx += (Math.random() - 0.5) * 1.5;
               } else {
-                state.ball.x = leftBound + 2;
-                const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
-                state.ball.vx = minSpeed;
-                if (Math.abs(state.ball.vx) < 0.5) state.ball.vx = 2.5;
+                // حافة الهدف العلوي - ارتداد من الزاوية
+                const edgeDist = Math.abs(state.ball.x - world.w/2) - goalHalfW;
+                if (edgeDist < 45 && edgeDist > -10) {
+                  // الكرة على طرف الهدف - ارتداد زاوية قوي
+                  state.ball.y = topBound;
+                  state.ball.vy = Math.abs(state.ball.vy) * 0.9;
+                  state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
+                  if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * 4;
+                }
               }
             }
-            // جدار يمين
-            if (state.ball.x >= rightBound) {
-              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && active('right')) {
+            if (state.ball.y > bottomBound) {
+              if (Math.abs(state.ball.x - world.w/2) > goalHalfW) {
+                state.ball.y = bottomBound;
+                state.ball.vy = -Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                state.ball.vx += (Math.random() - 0.5) * 1.5;
               } else {
-                state.ball.x = rightBound - 2;
-                const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
-                state.ball.vx = -minSpeed;
-                if (Math.abs(state.ball.vx) < 0.5) state.ball.vx = -2.5;
+                const edgeDist = Math.abs(state.ball.x - world.w/2) - goalHalfW;
+                if (edgeDist < 45 && edgeDist > -10) {
+                  state.ball.y = bottomBound;
+                  state.ball.vy = -Math.abs(state.ball.vy) * 0.9;
+                  state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
+                  if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * 4;
+                }
+              }
+            }
+            // ارتداد إضافي من زوايا قطع الإطار (حافة الفتحة العمودية)
+            if (state.ball.y < topBound + 45) {
+              const leftEdge = world.w/2 - goalHalfW;
+              const rightEdge = world.w/2 + goalHalfW;
+              if (Math.abs(state.ball.x - leftEdge) < BALL_RADIUS + 8) {
+                state.ball.x = leftEdge - (BALL_RADIUS + 10);
+                state.ball.vx = -Math.abs(state.ball.vx) * 0.95;
+              }
+              if (Math.abs(state.ball.x - rightEdge) < BALL_RADIUS + 8) {
+                state.ball.x = rightEdge + (BALL_RADIUS + 10);
+                state.ball.vx = Math.abs(state.ball.vx) * 0.95;
+              }
+            }
+            if (state.ball.y > bottomBound - 45) {
+              const leftEdge = world.w/2 - goalHalfW;
+              const rightEdge = world.w/2 + goalHalfW;
+              if (Math.abs(state.ball.x - leftEdge) < BALL_RADIUS + 8) {
+                state.ball.x = leftEdge - (BALL_RADIUS + 10);
+                state.ball.vx = -Math.abs(state.ball.vx) * 0.95;
+              }
+              if (Math.abs(state.ball.x - rightEdge) < BALL_RADIUS + 8) {
+                state.ball.x = rightEdge + (BALL_RADIUS + 10);
+                state.ball.vx = Math.abs(state.ball.vx) * 0.95;
               }
             }
 
-            // تسجيل الأهداف
-              // إصلاح مشكلة الاختراق بدون تسجيل
+            // تسجيل الأهداف - إصلاح مشكلة الاختراق بدون تسجيل
             const goalScoredSide = (() => {
               // هدف علوي
-              if (state.ball.y < 15) {
+              if (state.ball.y < 8) {
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                   return 'top' as const;
                 }
               }
               // هدف سفلي
-              if (state.ball.y > world.h - 15) {
+              if (state.ball.y > world.h - 8) {
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                   return 'bottom' as const;
                 }
               }
               // أهداف جانبية للـ 4 لاعبين فقط
               if (needPlayers >= 4) {
-                if (state.ball.x < 15) {
+                if (state.ball.x < 8) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                     return 'left' as const;
                   }
                 }
-                if (state.ball.x > world.w - 15) {
+                if (state.ball.x > world.w - 8) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                     return 'right' as const;
                   }
