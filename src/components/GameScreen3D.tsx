@@ -1362,8 +1362,8 @@ export function GameScreen3D({
             }
 
             // === جدران بدون حاجز عند الفتحة السوداء ===
-            const goalHalfW = Math.min(160, Math.max(290, world.w * 0.30)); // 60% /2 =30%
-            const sideGoalHalfW = Math.min(160, Math.max(290, world.h * 0.30));
+            const goalHalfW = Math.min(290, Math.max(160, world.w * 0.30)); // 60% /2 =30%
+            const sideGoalHalfW = Math.min(290, Math.max(160, world.h * 0.30));
             const BORDER = 28;
             const leftBound = BORDER + BALL_RADIUS;
             const rightBound = world.w - BORDER - BALL_RADIUS;
@@ -1404,30 +1404,46 @@ export function GameScreen3D({
               }
             }
 
-            // تسجيل الأهداف
-              // إصلاح مشكلة الاختراق بدون تسجيل
+            // تسجيل الأهداف - الكرة تدخل من فوق المساحة السوداء وتختفي
+            // === التحكم في مساحة الهدف - تقدر تغير 0.30 لتكبير أو تصغير الهدف ===
+            // goalHalfW = نصف عرض الهدف = 30% من عرض الساحة = الهدف كامل 60%
+            // لو تبي هدف أصغر: غير 0.30 إلى 0.20 (40% كامل)
+            // لو تبي هدف أكبر: غير 0.30 إلى 0.40 (80% كامل)
             const goalScoredSide = (() => {
-              // هدف علوي
-              if (state.ball.y < 8) {
+              // هدف علوي - الكرة تدخل من فوق المساحة السوداء وتختفي
+              if (state.ball.y < 25) { // كان 8 - الآن 25 عشان تختفي من فوق المساحة السوداء
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
+                  // اجعل الكرة تختفي عند دخولها من فوق المساحة السوداء
+                  state.ball.visible = false;
+                  if (threeRef.current?.ball) {
+                    threeRef.current.ball.visible = false;
+                  }
                   return 'top' as const;
                 }
               }
-              // هدف سفلي
-              if (state.ball.y > world.h - 8) {
+              // هدف سفلي - الكرة تدخل من فوق المساحة السوداء وتختفي
+              if (state.ball.y > world.h - 25) { // كان h-8 - الآن h-25
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
+                  state.ball.visible = false;
+                  if (threeRef.current?.ball) {
+                    threeRef.current.ball.visible = false;
+                  }
                   return 'bottom' as const;
                 }
               }
               // أهداف جانبية للـ 4 لاعبين فقط
               if (needPlayers >= 4) {
-                if (state.ball.x < 8) {
+                if (state.ball.x < 25) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
+                    state.ball.visible = false;
+                    if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                     return 'left' as const;
                   }
                 }
-                if (state.ball.x > world.w - 8) {
+                if (state.ball.x > world.w - 25) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
+                    state.ball.visible = false;
+                    if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                     return 'right' as const;
                   }
                 }
