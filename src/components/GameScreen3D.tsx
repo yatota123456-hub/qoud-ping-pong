@@ -1362,8 +1362,8 @@ export function GameScreen3D({
             }
 
             // === جدران بدون حاجز عند الفتحة السوداء ===
-            const goalHalfW = Math.min(290, Math.max(160, world.w * 0.30)); // 60% /2 =30%
-            const sideGoalHalfW = Math.min(290, Math.max(160, world.h * 0.30));
+            const goalHalfW = Math.min(160, Math.max(290, world.w * 0.30)); // 60% /2 =30%
+            const sideGoalHalfW = Math.min(160, Math.max(290, world.h * 0.30));
             const BORDER = 28;
             const leftBound = BORDER + BALL_RADIUS;
             const rightBound = world.w - BORDER - BALL_RADIUS;
