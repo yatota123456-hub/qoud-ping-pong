@@ -943,8 +943,17 @@ export function GameScreen3D({
         });
       }
       if (data.countdown !== undefined) {
-        stateRef.current.countdown = data.countdown;
-        setCountdown(data.countdown);
+        if (!isOfflineMode) {
+          // الأونلاين (حتى Host): العد من السيرفر فقط - إصلاح جذري
+          if (stateRef.current.countdown !== data.countdown) {
+            stateRef.current.countdown = data.countdown;
+            stateRef.current.countdownStart = performance.now();
+            setCountdown(data.countdown);
+          }
+        } else {
+          stateRef.current.countdown = data.countdown;
+          setCountdown(data.countdown);
+        }
       }
       if (data.countdownSide !== undefined) {
         stateRef.current.countdownSide = data.countdownSide || null;
@@ -1263,44 +1272,41 @@ export function GameScreen3D({
         camera.lookAt(c.lookX, 0, c.lookZ);
 
         if (localReadyRef.current && !pausedRef.current && !gameEndedRef.current) {
-          // === العداد قبل اللعب وبعد كل هدف - إصلاح مطلوب ===
+          // === العداد - جذري: الأوفلاين محلي، الأونلاين من السيرفر ===
           if (state.countdown > 0) {
-            const elapsed = (now - state.countdownStart) / 1000;
-            if (elapsed >= 1) {
-              state.countdown -= 1;
-              state.countdownStart = now;
-              setCountdown(state.countdown);
-              if (state.countdown === 0) {
-                // انتهى العد - أطلق الكرة
-                const angle = (Math.random() - 0.5) * 0.8; // زاوية عشوائية قريبة من العمودي
-                const initSpeed = getInitialSpeed();
-                // اتجاه الكرة بعيداً عن الهدف الأخير
-                if (state.countdownSide === 'top') {
-                  // آخر هدف كان علوي - الكرة تتجه للأسفل
-                  state.ball.vx = Math.sin(angle) * initSpeed;
-                  state.ball.vy = Math.abs(Math.cos(angle) * initSpeed) + 2;
-                } else if (state.countdownSide === 'bottom') {
-                  state.ball.vx = Math.sin(angle) * initSpeed;
-                  state.ball.vy = -Math.abs(Math.cos(angle) * initSpeed) - 2;
-                } else if (state.countdownSide === 'left') {
-                  state.ball.vx = Math.abs(initSpeed) + 2;
-                  state.ball.vy = Math.sin(angle) * initSpeed;
-                } else if (state.countdownSide === 'right') {
-                  state.ball.vx = -Math.abs(initSpeed) - 2;
-                  state.ball.vy = Math.sin(angle) * initSpeed;
-                } else {
-                  // بداية المباراة - اتجاه عشوائي
-                  const randAngle = Math.random() * Math.PI * 2;
-                  state.ball.vx = Math.cos(randAngle) * initSpeed;
-                  state.ball.vy = Math.sin(randAngle) * initSpeed;
-                }
-                state.ballTarget.vx = state.ball.vx;
-                state.ballTarget.vy = state.ball.vy;
-                if (isHost && !isOfflineMode) {
-                  socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy }, countdown: 0 });
+            if (isOfflineMode) {
+              const elapsed = (now - state.countdownStart) / 1000;
+              if (elapsed >= 1) {
+                state.countdown -= 1;
+                state.countdownStart = now;
+                setCountdown(state.countdown);
+                if (state.countdown === 0) {
+                  const angle = (Math.random() - 0.5) * 0.8;
+                  const initSpeed = getInitialSpeed();
+                  if (state.countdownSide === 'top') {
+                    state.ball.vx = Math.sin(angle) * initSpeed;
+                    state.ball.vy = Math.abs(Math.cos(angle) * initSpeed) + 2;
+                  } else if (state.countdownSide === 'bottom') {
+                    state.ball.vx = Math.sin(angle) * initSpeed;
+                    state.ball.vy = -Math.abs(Math.cos(angle) * initSpeed) - 2;
+                  } else if (state.countdownSide === 'left') {
+                    state.ball.vx = Math.abs(initSpeed) + 2;
+                    state.ball.vy = Math.sin(angle) * initSpeed;
+                  } else if (state.countdownSide === 'right') {
+                    state.ball.vx = -Math.abs(initSpeed) - 2;
+                    state.ball.vy = Math.sin(angle) * initSpeed;
+                  } else {
+                    const randAngle = Math.random() * Math.PI * 2;
+                    state.ball.vx = Math.cos(randAngle) * initSpeed;
+                    state.ball.vy = Math.sin(randAngle) * initSpeed;
+                  }
+                  state.ballTarget.vx = state.ball.vx;
+                  state.ballTarget.vy = state.ball.vy;
                 }
               }
             }
+            // ملاحظة: في الأونلاين العد يأتي من السيرفر عبر game-state، لا ننقصه محليا
+
             // أثناء العد - الكرة ثابتة في الوسط
             state.ball.x = world.w / 2;
             state.ball.y = world.h / 2;
@@ -1343,8 +1349,8 @@ export function GameScreen3D({
 
           // تحديث موقع الكرة - فيزياء محلية مستقرة - فقط إذا انتهى العد
           if (state.countdown === 0 && !state.serving.active) {
-            // إذا أوفلاين أو Host، نحن نتحكم بالفيزياء
-            if (isOfflineMode || isHost) {
+            // جذري: الأوفلاين فقط يحسب فيزياء، الأونلاين (حتى Host) يأخذ من السيرفر
+            if (isOfflineMode) {
             // === AI للكمبيوتر في وضع 3D - نفس طريقة 2D ===
             if (isOfflineMode) {
               const predX = state.ball.x + state.ball.vx * 10;
@@ -1382,28 +1388,31 @@ export function GameScreen3D({
               state.ball.x += state.ball.vx * delta;
               state.ball.y += state.ball.vy * delta;
             } else {
-              // أونلاين كـ client: تنبؤ + تصحيح سريع - إصلاح الكرة لا تظهر للاعب 2 و 4
-              // كان corrFactor 0.08 ضعيف جدا فتبدو ثابتة، الآن 0.32 مع teleport
-              const distToTarget = Math.hypot(state.ballTarget.x - state.ball.x, state.ballTarget.y - state.ball.y);
-              if (distToTarget > 90) {
-                // إذا الفرق كبير (بعد هدف) - انتقال فوري
+              // أونلاين (2 و 4 لاعبين): السيرفر متحكم وحيد - إصلاح جذري لتساوي الحركة 100%
+              // حتى Host لا يحسب فيزياء، الكل يرى نفس الكرة من السيرفر
+              const dx = state.ballTarget.x - state.ball.x;
+              const dy = state.ballTarget.y - state.ball.y;
+              const dist = Math.hypot(dx, dy);
+              if (dist > 80) {
                 state.ball.x = state.ballTarget.x;
                 state.ball.y = state.ballTarget.y;
                 state.ball.vx = state.ballTarget.vx;
                 state.ball.vy = state.ballTarget.vy;
               } else {
-                state.ball.x += state.ball.vx * delta * 0.5;
-                state.ball.y += state.ball.vy * delta * 0.5;
-                const corrFactor = 0.32; // كان 0.08 - الآن أسرع 4 مرات ليظهر مثل اللاعب الأول
-                state.ball.x += (state.ballTarget.x - state.ball.x) * corrFactor;
-                state.ball.y += (state.ballTarget.y - state.ball.y) * corrFactor;
-                const velLerp = 0.35; // كان 0.15
-                state.ball.vx += (state.ballTarget.vx - state.ball.vx) * velLerp;
-                state.ball.vy += (state.ballTarget.vy - state.ball.vy) * velLerp;
+                const LERP_POS = 0.45; // كان 0.08 ثم 0.32 - الآن 0.45 لتساوي تام
+                const LERP_VEL = 0.55;
+                const PREDICT = 0.85;
+                const predX = state.ballTarget.x + state.ballTarget.vx * PREDICT;
+                const predY = state.ballTarget.y + state.ballTarget.vy * PREDICT;
+                state.ball.x += (predX - state.ball.x) * LERP_POS;
+                state.ball.y += (predY - state.ball.y) * LERP_POS;
+                state.ball.vx += (state.ballTarget.vx - state.ball.vx) * LERP_VEL;
+                state.ball.vy += (state.ballTarget.vy - state.ball.vy) * LERP_VEL;
               }
             }
 
-            // منع الكرة من التعلق أفقياً يمين ويسار
+            // منع الكرة من التعلق - فقط للأوفلاين، الأونلاين السيرفر يحسبه
+            if (isOfflineMode) {
             const speed = Math.hypot(state.ball.vx, state.ball.vy);
             if (speed < MIN_SPEED) {
               const angle = Math.atan2(state.ball.vy, state.ball.vx);
@@ -1720,7 +1729,9 @@ export function GameScreen3D({
             }
           }
 
-          // تحديث مواقع المضارب - مع منع الـ lag
+            } // نهاية if (isOfflineMode) - الفيزياء للأوفلاين فقط
+
+                    // تحديث مواقع المضارب - مع منع الـ lag
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
             const target = state.targetPaddles[side];
