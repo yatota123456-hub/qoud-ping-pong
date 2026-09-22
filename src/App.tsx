@@ -27,9 +27,21 @@ const PADDLE_SIZE = 42;
 const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 10, sound: true, graphics: '2d', arenaSize: 'medium', seriesType: 'single', seriesRounds: 3 } as Settings;
 
 function randomRoom(existing: string[] = []) {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  // 6 أرقام مختلفة فقط - بدون تكرار
   let code = '';
-  do { code = Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join(''); } while (existing.includes(code));
+  do {
+    const digits = ['0','1','2','3','4','5','6','7','8','9'];
+    // خلط الأرقام وأخذ 6 مختلفة
+    for (let i = digits.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [digits[i], digits[j]] = [digits[j], digits[i]];
+    }
+    code = digits.slice(0, 6).join('');
+    // تأكد أول رقم ليس صفر لسهولة القراءة
+    if (code[0] === '0') {
+      code = code.slice(1) + code[0];
+    }
+  } while (existing.includes(code));
   return code;
 }
 function loadWins(): Record<string, number> { try { return JSON.parse(localStorage.getItem('qoud-ping-pong-wins')?? '{}') as Record<string, number>; } catch { return {}; } }
@@ -245,8 +257,10 @@ useEffect(() => {
     finally { setIsConnectingRoom(false); }
   };
   const joinByCode = async (customName?: string) => {
-    const code = joinCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
-    if (code.length!== 4) { setError(isAr? 'الكود 4 حروف' : 'Code 4 chars'); return; }
+    const code = joinCode.replace(/[^0-9]/g, '').slice(0, 6);
+    if (code.length!== 6) { setError(isAr? 'الكود 6 أرقام مختلفة' : 'Code 6 different digits'); return; }
+    // تحقق أن الأرقام مختلفة
+    if (new Set(code.split('')).size !== 6) { setError(isAr? 'الأرقام يجب أن تكون مختلفة' : 'Digits must be different'); return; }
     const finalName = (customName || joinName || localStorage.getItem('qoud_name') || names[0] || 'لاعب').trim().slice(0, 15);
     if (finalName.length < 2) { setError(isAr? 'اكتب اسمك أولاً' : 'Write your name first'); return; }
     localStorage.setItem('qoud_name', finalName);
@@ -569,10 +583,10 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           </div>
           <div className="grid grid-cols-[1fr_90px_48px] gap-2">
             <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border-[2px] border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
-            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4))} placeholder="BZYF" className="w-full h-11 rounded-full border-[2px] border-white bg-white text-black text-center font-black text-[15px] tracking-[0.2em] outline-none" />
+            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.replace(/[^0-9]/g,'').slice(0,6))} placeholder="123456" className="w-full h-11 rounded-full border-[2px] border-white bg-white text-black text-center font-black text-[15px] tracking-[0.2em] outline-none" />
             <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border-[2px] border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
           </div>
-          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 4 حروف ثم انضم</div>
+          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 6 أرقام مختلفة ثم انضم</div>
         </section>
 
         <button onClick={onCreate} className="h-[52px] rounded-[16px] border-[2.5px] border-black bg-black text-[#f6f0d2] font-black text-[16px] active:scale-[0.98] transition hover:bg-[#1a1a1a]">بدء اللعب • انشئ غرفة</button>
@@ -639,20 +653,18 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const localReadyRef = useRef(false);
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   const world = useMemo(() => getArenaWorld(players.length, settings.arenaSize), [players.length, settings.arenaSize]);
-  // 2D: كل لاعب يلعب من تحت - خاصة اللاعب الثاني يستطيع التحكم من تحت
-  // و 4 لاعبين نفس الطريقة كل واحد يتحكم من تحت لكن يرى أصدقاءه في مواقعهم الصحيحة
+  // 2D: كل لاعب يلعب من تحت - إصلاح الشاشة السوداء - بدون دوران كاميرا مؤقتاً لضمان ظهور الساحة
+  // ثم التحكم من تحت لكل لاعب عن طريق عكس الإحداثيات
   const mySide = useMemo(() => {
-    // في وضع الأصدقاء، كل لاعب يرى نفسه تحت في جواله
     const found = players.find((p:any)=>p.socketId===socket.id);
     if (found) {
       return found.side as Player['side'];
     }
-    // ضد الكمبيوتر أو offline - اللاعب الرئيسي دائماً تحت
     return 'bottom' as Player['side'];
   }, [players]);
-  // دوران الساحة بحيث يكون جانبك دائماً في الأسفل - كل لاعب يرى نفسه تحت
-  const angleMap: any = { bottom: 0, top: Math.PI, right: -Math.PI/2, left: Math.PI/2 };
-  const myAngle = angleMap[mySide]?? 0;
+  // إلغاء الدوران مؤقتاً لإصلاح الشاشة السوداء - الساحة ثابتة
+  // كل لاعب يرى نفسه تحت عن طريق عكس التحكم وليس دوران الساحة
+  const myAngle = 0;
   soundRef.current = sound; onTimeUpRef.current = onTimeUp; onGoalRef.current = onGoal; pausedRef.current = paused;
   useEffect(()=>{ celebratingRef.current = celebrating; },[celebrating]);
   const audioCtxRef = useRef<AudioContext|null>(null);
@@ -675,11 +687,10 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const rect = arena.getBoundingClientRect();
     let wx = ((clientX-rect.left)/rect.width)*world.w;
     let wy = ((clientY-rect.top)/rect.height)*world.h;
-    // دوران عكسي لتحويل لمس الشاشة إلى إحداثيات العالم - بحيث كل لاعب يتحكم من تحت
-    const cos = Math.cos(-myAngle); const sin = Math.sin(-myAngle);
-    const dx = wx-world.w/2; const dy = wy-world.h/2;
-    return { x: dx*cos - dy*sin + world.w/2, y: dx*sin + dy*cos + world.h/2 };
-  }, [world, myAngle]);
+    // بدون دوران - إحداثيات مباشرة لإصلاح الشاشة السوداء
+    // التحكم من تحت لكل لاعب يتم عن طريق عكس الإحداثيات في الأسفل
+    return { x: wx, y: wy };
+  }, [world]);
 
   useEffect(() => {
     const handleGameState = (data: any) => {
@@ -790,9 +801,20 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
         if (drag.current.side === mySide) {
           state.targetPaddles[mySide].x = clamp(drag.current.x, 50, world.w - 50);
           if(mySide==='bottom' || mySide==='top'){
-            const minY = mySide==='bottom'? world.h - PADDLE_MOVE_ZONE - 60 : 40;
-            const maxY = mySide==='bottom'? world.h - 40 : 40 + PADDLE_MOVE_ZONE;
-            state.targetPaddles[mySide].y = clamp(drag.current.y, minY, maxY);
+            if (mySide === 'bottom') {
+              const minY = world.h - PADDLE_MOVE_ZONE - 60;
+              const maxY = world.h - 40;
+              state.targetPaddles[mySide].y = clamp(drag.current.y, minY, maxY);
+            } else {
+              const minY = 40;
+              const maxY = 40 + PADDLE_MOVE_ZONE;
+              if (drag.current.y > world.h / 2) {
+                const t = (drag.current.y - world.h/2) / (world.h/2);
+                state.targetPaddles[mySide].y = clamp(40 + t * PADDLE_MOVE_ZONE, minY, maxY);
+              } else {
+                state.targetPaddles[mySide].y = clamp(drag.current.y, minY, maxY);
+              }
+            }
           } else {
             state.targetPaddles[mySide].y = clamp(drag.current.y, 50, world.h - 50);
             const minX = mySide==='left'? 40 : world.w - PADDLE_MOVE_ZONE - 60;

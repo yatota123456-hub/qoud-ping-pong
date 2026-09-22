@@ -543,21 +543,11 @@ export function GameScreen3D({
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
-  // تم إرجاع خاصية الانتظار لإصلاح الكاميرا - ضد الكمبيوتر يبدأ بعد 3.5 ثانية
+  // انتظار من بداية اللعبة لتغيير اتجاه الكاميرا - لا يبدأ اللعب من أي ضغطة زر حتى يضغط كل واحد زر البدء فقط
+  // ضد الكمبيوتر وأصدقاء - الكل ينتظر زر البدء
   useEffect(()=>{
-    const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
-    if (vsComp && !localReadyRef.current) {
-      const timer = setTimeout(() => {
-        if (!localReadyRef.current) {
-          setLocalReady(true);
-          localReadyRef.current = true;
-          stateRef.current.countdown = 3;
-          stateRef.current.countdownStart = performance.now();
-          setCountdown(3);
-        }
-      }, 3500);
-      return () => clearTimeout(timer);
-    }
+    // لا يوجد بدء تلقائي - ينتظر زر البدء فقط
+    // الكاميرا يمكن تغييرها أثناء الانتظار
   }, [players, (settings as any).vsComputer, localReady]);
 
 
@@ -746,11 +736,13 @@ export function GameScreen3D({
     paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any
   });
 
-  // إطلاق الكرة من المضرب بالمسافة
+  // إلغاء بدء الكرة من أي ضغطة زر - فقط زر البدء يبدأ اللعبة
+  // لا يبدأ من المسافة أو أي مكان - فقط بعد أن يضغط كل واحد زر البدء
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // لا يبدأ من المسافة أثناء الانتظار - فقط بعد العد
       if (e.code === 'Space' || e.key === ' ') {
-        if (stateRef.current.serving.active) {
+        if (stateRef.current.serving.active && localReadyRef.current && stateRef.current.countdown === 0) {
           stateRef.current.serving.requested = true;
           e.preventDefault();
         }
@@ -1007,12 +999,15 @@ export function GameScreen3D({
     const mouse = new THREE.Vector2();
     const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
     const handlePointerMove = (e: PointerEvent) => {
-      // إصلاح 5: بدء الكرة من المضرب عند الضغط - حتى لو ثابتة
-      if (stateRef.current.serving.active) {
-        if (e.type === 'pointerdown') {
+      // لا يبدأ الكرة من أي ضغطة أثناء الانتظار - فقط تحريك المضرب لتجربة الكاميرا
+      // الكرة تبدأ فقط بعد أن يضغط كل واحد زر البدء وينتهي العد
+      if (stateRef.current.serving.active && !localReadyRef.current) {
+        // أثناء الانتظار - لا تطلب الكرة، فقط حرك المضرب
+      } else if (stateRef.current.serving.active && localReadyRef.current) {
+        if (e.type === 'pointerdown' && stateRef.current.countdown === 0) {
           stateRef.current.serving.requested = true;
           if (e.cancelable) e.preventDefault();
-          return;
+          // لا return - استمر لتحريك المضرب أيضاً
         }
       }
       if (!e.isPrimary || !threeRef.current) return;
@@ -2330,4 +2325,3 @@ export function GameScreen3D({
     </main>
   );
 }
-const btnStyle: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#fff', borderRadius: 8, padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontWeight: 700, cursor: 'pointer', fontSize: '10px' };
