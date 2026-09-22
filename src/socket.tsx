@@ -54,13 +54,29 @@ class ColyseusBridge {
     }
     room.onStateChange((state: any) => this.dispatch('room-update', this.roomData(state)));
     room.onError?.((code: number, message: string) => this.dispatch('error', message || `Connection error (${code})`));
-    room.onLeave?.((code: number) => { if (this.room === room) this.dispatch('connection-lost', code); });
+    room.onLeave?.((code: number) => { 
+      // إصلاح: إذا كان الخروج مقصود (this.room = null) لا تحاول إعادة اتصال
+      if (this.room !== room) return;
+      if (code === 1000 || (code as any) === 4000) {
+        // خروج طبيعي - لا تحاول إعادة اتصال
+        this.room = null;
+        return;
+      }
+      if (this.room === room) this.dispatch('connection-lost', code); 
+    });
     if (room.state) this.dispatch('room-update', this.roomData(room.state));
   }
   async leave() {
     const room = this.room;
     this.room = null;
-    if (room) { try { await room.leave(true); } catch {} }
+    if (room) { 
+      try { 
+        // إصلاح مشكلة إعادة الاتصال المتكرر - إغلاق كامل بدون محاولة إعادة اتصال
+        (room as any)._reconnectionToken = null;
+        (room as any).connection?.close();
+        await room.leave(true); 
+      } catch {} 
+    }
   }
   private dispatch(event: string, ...args: any[]) {
     this.listeners.get(event)?.forEach((l) => { try { l(...args); } catch {} });
@@ -101,4 +117,6 @@ function getColyseusEndpoint() {
 }
 
 export const colyseus = new Client(getColyseusEndpoint());
+// إصلاح مشكلة إعادة الاتصال المتكرر - تقليل المحاولات وإيقافها عند الخروج المقصود
+(colyseus as any).reconnectionAttempts = 1;
 export const socket = new ColyseusBridge();

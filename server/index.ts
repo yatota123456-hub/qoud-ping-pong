@@ -553,6 +553,8 @@ class QoudRoom extends Room<QoudRoomState> {
         vy: this.state.ball.vy,
         visible: this.state.ball.visible,
       },
+      worldW: this.state.worldW,
+      worldH: this.state.worldH,
       paddles: Object.fromEntries(
         Array.from(this.state.paddles.entries()).map(([side, paddle]) => [
           side,

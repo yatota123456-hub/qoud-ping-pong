@@ -562,7 +562,13 @@ export function GameScreen3D({
 
 
   const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
-  const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
+  const [serverWorld, setServerWorld] = useState<{w:number,h:number}|null>(null);
+  const world = useMemo(() => {
+    if (serverWorld && !isOfflineMode) {
+      return { w: serverWorld.w, h: serverWorld.h };
+    }
+    return getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize);
+  }, [players.length, settings.players, settings.arenaSize, serverWorld, isOfflineMode]);
   const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
 
   const getMySide = useCallback((): Player['side'] => {
@@ -926,6 +932,12 @@ export function GameScreen3D({
     const handleGameState = (data: any) => {
       if (!data) return;
       const mySide = getMySide();
+      if (data.worldW && data.worldH) {
+        if (!serverWorldRef.current || serverWorldRef.current.w !== data.worldW || serverWorldRef.current.h !== data.worldH) {
+          serverWorldRef.current = { w: data.worldW, h: data.worldH };
+        setServerWorld({ w: data.worldW, h: data.worldH });
+        }
+      }
       if (data.ball) {
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
@@ -1388,26 +1400,32 @@ export function GameScreen3D({
               state.ball.x += state.ball.vx * delta;
               state.ball.y += state.ball.vy * delta;
             } else {
-              // أونلاين (2 و 4 لاعبين): السيرفر متحكم وحيد - إصلاح جذري لتساوي الحركة 100%
-              // حتى Host لا يحسب فيزياء، الكل يرى نفس الكرة من السيرفر
+              // أونلاين (2 و 4 لاعبين): السيرفر متحكم وحيد - إصلاح جذري بدون تنبؤ
+              // المشكلة السابقة: التنبؤ كان يجعل الكرة تبدو في ملعب آخر
               const dx = state.ballTarget.x - state.ball.x;
               const dy = state.ballTarget.y - state.ball.y;
               const dist = Math.hypot(dx, dy);
-              if (dist > 80) {
+              // استخدام أبعاد السيرفر لضمان نفس الساحة للكل - إصلاح الكرة في ملعب آخر
+              const currentW = serverWorld?.w || serverWorldRef.current?.w || world.w;
+              const currentH = serverWorld?.h || serverWorldRef.current?.h || world.h;
+              if (dist > 120) {
+                // انتقال فوري إذا بعيدة (بعد هدف)
                 state.ball.x = state.ballTarget.x;
                 state.ball.y = state.ballTarget.y;
                 state.ball.vx = state.ballTarget.vx;
                 state.ball.vy = state.ballTarget.vy;
               } else {
-                const LERP_POS = 0.45; // كان 0.08 ثم 0.32 - الآن 0.45 لتساوي تام
-                const LERP_VEL = 0.55;
-                const PREDICT = 0.85;
-                const predX = state.ballTarget.x + state.ballTarget.vx * PREDICT;
-                const predY = state.ballTarget.y + state.ballTarget.vy * PREDICT;
-                state.ball.x += (predX - state.ball.x) * LERP_POS;
-                state.ball.y += (predY - state.ball.y) * LERP_POS;
+                // lerp مباشر بدون تنبؤ - يضمن نفس المكان للكل بدون تأخير
+                const LERP_POS = 0.65; // عالي لتساوي فوري بدون تأخير
+                const LERP_VEL = 0.6;
+                // بدون تنبؤ - نستخدم موقع السيرفر مباشرة
+                state.ball.x += (state.ballTarget.x - state.ball.x) * LERP_POS;
+                state.ball.y += (state.ballTarget.y - state.ball.y) * LERP_POS;
                 state.ball.vx += (state.ballTarget.vx - state.ball.vx) * LERP_VEL;
                 state.ball.vy += (state.ballTarget.vy - state.ball.vy) * LERP_VEL;
+                // تأكد أن الكرة داخل حدود الساحة
+                state.ball.x = Math.max(BALL_RADIUS, Math.min(currentW - BALL_RADIUS, state.ball.x));
+                state.ball.y = Math.max(BALL_RADIUS, Math.min(currentH - BALL_RADIUS, state.ball.y));
               }
             }
 
