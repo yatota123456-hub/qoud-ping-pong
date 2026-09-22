@@ -543,11 +543,21 @@ export function GameScreen3D({
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
-  // انتظار من بداية اللعبة لتغيير اتجاه الكاميرا - لا يبدأ اللعب من أي ضغطة زر حتى يضغط كل واحد زر البدء فقط
-  // ضد الكمبيوتر وأصدقاء - الكل ينتظر زر البدء
+  // تم إرجاع خاصية الانتظار لإصلاح الكاميرا - ضد الكمبيوتر يبدأ بعد 3.5 ثانية
   useEffect(()=>{
-    // لا يوجد بدء تلقائي - ينتظر زر البدء فقط
-    // الكاميرا يمكن تغييرها أثناء الانتظار
+    const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
+    if (vsComp && !localReadyRef.current) {
+      const timer = setTimeout(() => {
+        if (!localReadyRef.current) {
+          setLocalReady(true);
+          localReadyRef.current = true;
+          stateRef.current.countdown = 3;
+          stateRef.current.countdownStart = performance.now();
+          setCountdown(3);
+        }
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
   }, [players, (settings as any).vsComputer, localReady]);
 
 
@@ -572,19 +582,23 @@ export function GameScreen3D({
 
     const mySideForCam = getMySide();
   const initialCam = useMemo(() => {
-    // اللاعب الرئيسي دائماً تحت - الكاميرا دائماً خلف اللاعب الرئيسي
-    // في وضع الأصدقاء، كل جوال يشوف نفسه تحت
+    // كل لاعب يرى نفسه تحت وبقية اللاعبين يرونهم في الأعلى إذا كان 2 لاعبين أصدقاء
+    // و 4 أصدقاء من شاشة كل لاعب يلعب من تحت أما في شاشة الأصدقاء يرونهم في الأطراف وفي الأعلى
+    // اللاعب الرئيسي دائماً تحت - الكاميرا خلف اللاعب الرئيسي
+    // في وضع الأصدقاء 2 و 4: كل جوال يشوف نفسه تحت ويرى أصدقاءه في مواقعهم الصحيحة
     const actualSide = mySideForCam;
     // نختار بريست الكاميرا بحيث يكون جانب اللاعب الرئيسي دائماً في الأسفل
+    // 2 لاعبين: bottom يرى نفسه تحت و top فوق، top يرى نفسه تحت و bottom فوق
+    // 4 لاعبين: كل واحد يرى نفسه تحت والبقية في الأطراف وفوق
     let sideKey: string;
     if (actualSide === 'top') {
-      sideKey = 'topPlayer'; // كاميرا خلف الخصم العلوي - تظهره تحت
+      sideKey = 'topPlayer'; // كاميرا خلف العلوي - أنت تحت (top يظهر تحت)، صديقك bottom يظهر فوق، left/right في الأطراف
     } else if (actualSide === 'left') {
-      sideKey = 'sideLeft'; // كاميرا من اليسار - تظهر اليسار تحت
+      sideKey = 'sideLeft'; // كاميرا من اليسار - أنت تحت (left يظهر تحت)، الأصدقاء في الأطراف وفوق
     } else if (actualSide === 'right') {
-      sideKey = 'sideRight'; // كاميرا من اليمين - تظهر اليمين تحت
+      sideKey = 'sideRight'; // كاميرا من اليمين - أنت تحت (right يظهر تحت)، الأصدقاء في الأطراف وفوق
     } else {
-      sideKey = 'bottom'; // كاميرا خلفك - أنت تحت (الافتراضي)
+      sideKey = 'bottom'; // كاميرا خلفك - أنت تحت (bottom يظهر تحت)، صديقك top يظهر فوق، left/right في الأطراف
     }
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
     return {
@@ -594,7 +608,9 @@ export function GameScreen3D({
 
   const cam = useRef({...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 });
   
-  // تحديث الكاميرا عند تغير الجانب - لضمان أن اللاعب الرئيسي دائماً تحت عند بدء اللعبة
+  // تحديث الكاميرا عند تغير الجانب - كل لاعب يرى نفسه تحت
+  // 2 لاعبين: كل واحد يرى نفسه تحت والآخر فوق
+  // 4 لاعبين: كل واحد يرى نفسه تحت والبقية في الأطراف وفوق
   useEffect(() => {
     const sideKey = mySideForCam === 'top'? 'topPlayer' : mySideForCam === 'left'? 'sideLeft' : mySideForCam === 'right'? 'sideRight' : 'bottom';
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
@@ -736,13 +752,11 @@ export function GameScreen3D({
     paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any
   });
 
-  // إلغاء بدء الكرة من أي ضغطة زر - فقط زر البدء يبدأ اللعبة
-  // لا يبدأ من المسافة أو أي مكان - فقط بعد أن يضغط كل واحد زر البدء
+  // إطلاق الكرة من المضرب بالمسافة
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // لا يبدأ من المسافة أثناء الانتظار - فقط بعد العد
       if (e.code === 'Space' || e.key === ' ') {
-        if (stateRef.current.serving.active && localReadyRef.current && stateRef.current.countdown === 0) {
+        if (stateRef.current.serving.active) {
           stateRef.current.serving.requested = true;
           e.preventDefault();
         }
@@ -999,15 +1013,12 @@ export function GameScreen3D({
     const mouse = new THREE.Vector2();
     const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
     const handlePointerMove = (e: PointerEvent) => {
-      // لا يبدأ الكرة من أي ضغطة أثناء الانتظار - فقط تحريك المضرب لتجربة الكاميرا
-      // الكرة تبدأ فقط بعد أن يضغط كل واحد زر البدء وينتهي العد
-      if (stateRef.current.serving.active && !localReadyRef.current) {
-        // أثناء الانتظار - لا تطلب الكرة، فقط حرك المضرب
-      } else if (stateRef.current.serving.active && localReadyRef.current) {
-        if (e.type === 'pointerdown' && stateRef.current.countdown === 0) {
+      // إصلاح 5: بدء الكرة من المضرب عند الضغط - حتى لو ثابتة
+      if (stateRef.current.serving.active) {
+        if (e.type === 'pointerdown') {
           stateRef.current.serving.requested = true;
           if (e.cancelable) e.preventDefault();
-          // لا return - استمر لتحريك المضرب أيضاً
+          return;
         }
       }
       if (!e.isPrimary || !threeRef.current) return;
@@ -2325,3 +2336,4 @@ export function GameScreen3D({
     </main>
   );
 }
+const btnStyle: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#fff', borderRadius: 8, padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontWeight: 700, cursor: 'pointer', fontSize: '10px' };
