@@ -929,7 +929,7 @@ export function GameScreen3D({
     cam.current = {...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2} as any;
   }, [initialCam, settings.arenaSize, world.w, world.h]);
 
-  useEffect(() => {
+    useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
       const mySide = getMySide();
@@ -944,18 +944,6 @@ export function GameScreen3D({
         stateRef.current.ballTarget.y = data.ball.y;
         stateRef.current.ballTarget.vx = data.ball.vx;
         stateRef.current.ballTarget.vy = data.ball.vy;
-        // إصلاح جذري: مزامنة فورية للكل إذا الفرق كبير (بعد هدف) - يضمن نفس الساحة
-        if (!isOfflineMode) {
-          const dx = data.ball.x - stateRef.current.ball.x;
-          const dy = data.ball.y - stateRef.current.ball.y;
-          const dist = Math.hypot(dx, dy);
-          if (dist > 100) {
-            stateRef.current.ball.x = data.ball.x;
-            stateRef.current.ball.y = data.ball.y;
-            stateRef.current.ball.vx = data.ball.vx;
-            stateRef.current.ball.vy = data.ball.vy;
-          }
-        }
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
@@ -969,7 +957,6 @@ export function GameScreen3D({
       }
       if (data.countdown !== undefined) {
         if (!isOfflineMode) {
-          // الأونلاين (حتى Host): العد من السيرفر فقط - إصلاح جذري
           if (stateRef.current.countdown !== data.countdown) {
             stateRef.current.countdown = data.countdown;
             stateRef.current.countdownStart = performance.now();
@@ -986,7 +973,6 @@ export function GameScreen3D({
       }
       if (data.rally !== undefined) {
         setRally(data.rally);
-        stateRef.current.rally = data.rally;
       }
       if (data.timeLeft !== undefined) {
         setTimeLeft(data.timeLeft);
@@ -994,7 +980,7 @@ export function GameScreen3D({
     };
     socket.on('game-state', handleGameState);
     return () => { socket.off('game-state', handleGameState); };
-  }, [getMySide, isHost, isOfflineMode]);
+  }, [getMySide, isOfflineMode]);
 
   // طور الأصدقاء فقط (مع الأصدقاء) - نظام الجاهزية: لا تبدأ حتى يضغط الكل ابدأ - ضد الكمبيوتر لا يوجد انتظار
   useEffect(() => {
@@ -1331,12 +1317,12 @@ export function GameScreen3D({
                 }
               }
             }
-            // في الأونلاين العد يأتي من السيرفر فقط
-            // أثناء العد - الكرة ثابتة في الوسط للكل (Host و Clients)
+            // أثناء العد - الكرة ثابتة في الوسط - في الأونلاين السيرفر يرسل العد
             state.ball.x = world.w / 2;
             state.ball.y = world.h / 2;
             state.ballTarget.x = state.ball.x;
             state.ballTarget.y = state.ball.y;
+            // لا نحرك المضارب أثناء العد؟ نسمح بالتحكم
           }
 
           // حساب سرعة المضارب - مهم لمنع الاختراق
@@ -1371,11 +1357,10 @@ export function GameScreen3D({
             }
           }
 
-          // تحديث موقع الكرة - جذري: السيرفر هو المتحكم الوحيد في الأونلاين
+          // تحديث موقع الكرة - جذري: السيرفر متحكم وحيد في الأونلاين
           if (state.countdown === 0 && !state.serving.active) {
             if (isOfflineMode) {
-              // === OFFLINE فقط: فيزياء كاملة محلية ===
-              // AI للكمبيوتر
+              // OFFLINE فقط: فيزياء كاملة
               const predX = state.ball.x + state.ball.vx * 10;
               const predY = state.ball.y + state.ball.vy * 10;
               const diffMax = settings.difficulty === 'easy' ? 3.0 : settings.difficulty === 'hard' ? 8.0 : 5.0;
@@ -1404,10 +1389,8 @@ export function GameScreen3D({
                   tp.x = Math.max(world.w - 220, Math.min(world.w - 40, chase(state.paddles[side].x, predX, delta)));
                 }
               });
-
               state.ball.x += state.ball.vx * delta;
               state.ball.y += state.ball.vy * delta;
-
               const speed = Math.hypot(state.ball.vx, state.ball.vy);
               if (speed < MIN_SPEED) {
                 const angle = Math.atan2(state.ball.vy, state.ball.vx);
@@ -1423,7 +1406,6 @@ export function GameScreen3D({
                 state.ball.vy += (Math.random() - 0.5) * 3;
                 if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
               }
-
               const goalHalfW = Math.min(340, Math.max(190, world.w * 0.36));
               const sideGoalHalfW = Math.min(340, Math.max(190, world.h * 0.36));
               const BORDER = 28;
@@ -1431,7 +1413,6 @@ export function GameScreen3D({
               const rightBound = world.w - BORDER - BALL_RADIUS;
               const topBound = BORDER + BALL_RADIUS;
               const bottomBound = world.h - BORDER - BALL_RADIUS;
-              
               if (state.ball.y <= topBound) {
                 if (!(Math.abs(state.ball.x - world.w/2) <= goalHalfW + 12 && activeSide('top'))) {
                   state.ball.y = topBound + 2;
@@ -1456,7 +1437,6 @@ export function GameScreen3D({
                   state.ball.vx = -Math.max(Math.abs(state.ball.vx), 2.5);
                 }
               }
-
               const goalScoredSide = (() => {
                 if (state.ball.y < 25 && Math.abs(state.ball.x - world.w/2) <= goalHalfW) return 'top' as const;
                 if (state.ball.y > world.h - 25 && Math.abs(state.ball.x - world.w/2) <= goalHalfW) return 'bottom' as const;
@@ -1466,7 +1446,6 @@ export function GameScreen3D({
                 }
                 return null;
               })();
-
               if (goalScoredSide) {
                 const missedPlayer = players.find(p => p.side === goalScoredSide) || { side: goalScoredSide } as any;
                 state.ball.x = world.w / 2; state.ball.y = world.h / 2;
@@ -1502,7 +1481,7 @@ export function GameScreen3D({
                 });
               }
             } else {
-              // ONLINE (2 و 4 لاعبين): السيرفر متحكم وحيد - بدون تنبؤ - إصلاح الكرة في ملعب آخر
+              // ONLINE: السيرفر متحكم وحيد - بدون تنبؤ - يمنع الكرة في ملعب آخر
               const currentW = serverWorld?.w || serverWorldRef.current?.w || world.w;
               const currentH = serverWorld?.h || serverWorldRef.current?.h || world.h;
               const dx = state.ballTarget.x - state.ball.x;
@@ -1514,7 +1493,7 @@ export function GameScreen3D({
                 state.ball.vx = state.ballTarget.vx;
                 state.ball.vy = state.ballTarget.vy;
               } else {
-                const LERP_POS = 0.65; // بدون تنبؤ - متساوي 100%
+                const LERP_POS = 0.65;
                 const LERP_VEL = 0.6;
                 state.ball.x += (state.ballTarget.x - state.ball.x) * LERP_POS;
                 state.ball.y += (state.ballTarget.y - state.ball.y) * LERP_POS;
