@@ -639,8 +639,19 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const localReadyRef = useRef(false);
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   const world = useMemo(() => getArenaWorld(players.length, settings.arenaSize), [players.length, settings.arenaSize]);
-  const mySide = useMemo(() => (players.find((p:any)=>p.socketId===socket.id)?.side || players[0]?.side || 'bottom') as Player['side'], [players]);
-  const angleMap: any = { bottom: 0, top: Math.PI, right: Math.PI/2, left: -Math.PI/2 };
+  // 2D: كل لاعب يلعب من تحت - خاصة اللاعب الثاني يستطيع التحكم من تحت
+  // و 4 لاعبين نفس الطريقة كل واحد يتحكم من تحت لكن يرى أصدقاءه في مواقعهم الصحيحة
+  const mySide = useMemo(() => {
+    // في وضع الأصدقاء، كل لاعب يرى نفسه تحت في جواله
+    const found = players.find((p:any)=>p.socketId===socket.id);
+    if (found) {
+      return found.side as Player['side'];
+    }
+    // ضد الكمبيوتر أو offline - اللاعب الرئيسي دائماً تحت
+    return 'bottom' as Player['side'];
+  }, [players]);
+  // دوران الساحة بحيث يكون جانبك دائماً في الأسفل - كل لاعب يرى نفسه تحت
+  const angleMap: any = { bottom: 0, top: Math.PI, right: -Math.PI/2, left: Math.PI/2 };
   const myAngle = angleMap[mySide]?? 0;
   soundRef.current = sound; onTimeUpRef.current = onTimeUp; onGoalRef.current = onGoal; pausedRef.current = paused;
   useEffect(()=>{ celebratingRef.current = celebrating; },[celebrating]);
@@ -664,6 +675,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const rect = arena.getBoundingClientRect();
     let wx = ((clientX-rect.left)/rect.width)*world.w;
     let wy = ((clientY-rect.top)/rect.height)*world.h;
+    // دوران عكسي لتحويل لمس الشاشة إلى إحداثيات العالم - بحيث كل لاعب يتحكم من تحت
     const cos = Math.cos(-myAngle); const sin = Math.sin(-myAngle);
     const dx = wx-world.w/2; const dy = wy-world.h/2;
     return { x: dx*cos - dy*sin + world.w/2, y: dx*sin + dy*cos + world.h/2 };
@@ -1151,9 +1163,9 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
       <div ref={hintTextRef} style={{ position: 'absolute', background: '#00e5ff', color: '#000', padding: '6px 12px', borderRadius: 999, fontSize: '12px', fontWeight: 900, display: 'none', zIndex: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>👆 حرك المضرب من هنا</div>
       <button onClick={() => window.location.reload()} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: 'rgba(255, 45, 45, 0.9)', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>خروج</button>
 
-      {/* --- Overlay الجديد 2D: يغطي كامل الساحة وشبه شفاف --- */}
+      {/* --- Overlay 2D مبسط - بدون تغطية سوداء كاملة - يظهر اللاعبين والكرة --- */}
       {!localReady && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s' }}>
+        <div style={{ position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 'calc(100% - 32px)', maxWidth: '420px', background: 'rgba(15,15,20,0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '20px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'center', boxShadow: '0 12px 40px rgba(0,0,0,0.6)' }}>
             <div style={{textAlign:'center'}}>
               <h3 style={{color:'#fff', fontSize:'18px', fontWeight:900, marginBottom:'6px'}}>جاهز؟ الساحة أمامك</h3>

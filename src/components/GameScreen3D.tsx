@@ -1040,10 +1040,12 @@ export function GameScreen3D({
         const leftLimit = isFourPlayers ? world.w * 0.22 : world.w * 0.38;
         const rightLimit = isFourPlayers ? world.w * 0.78 : world.w * 0.62;
 
-        // نقطة التحريك دائماً أسفل المضرب (جنوب) بمسافة OFFSET - ليظهر المضرب ولا يغطيه الإصبع لكل الجهات
+        // نقطة التحريك دائماً أسفل المضرب (جنوب الشاشة) بمسافة OFFSET - ليظهر المضرب ولا يغطيه الإصبع
+        // لكل لاعب يلعب من تحت - خاصة اللاعب الثاني والـ 4 لاعبين - كل واحد يتحكم من تحت ويرى أصدقاءه في مواقعهم الصحيحة
         if (mySide === 'top') {
+          // اللاعب العلوي - كاميرته خلف العلوي - أسفل الشاشة = شمال العالم - المضرب فوق الإصبع بصرياً
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, 45, topLimit); // إصبع أسفل المضرب دائماً
+          const clampedZ = clamp(tz + OFFSET, 45, topLimit); // + OFFSET للعلوي ليتحكم من تحت
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
@@ -1054,14 +1056,14 @@ export function GameScreen3D({
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'left') {
-          const clampedX = clamp(tx, 45, leftLimit);
-          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45); // إصبع أسفل المضرب وليس عليه
+          const clampedX = clamp(tx, leftLimit, leftLimit + 200);
+          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'right') {
-          const clampedX = clamp(tx, rightLimit, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45); // إصبع أسفل المضرب لكل الجهات
+          const clampedX = clamp(tx, rightLimit - 200, world.w - 45);
+          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
@@ -1225,9 +1227,9 @@ export function GameScreen3D({
     const PADDLE_RADIUS = 36;
     const BALL_RADIUS = 14;
     const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
-    const MIN_SPEED = 5.0;
-    const MAX_SPEED = 16; // زيادة للسماح بارتداد بقوة حسب سرعة المضرب
-    const WALL_BOUNCE_DAMP = 0.95;
+    const MIN_SPEED = 6.0; // كان 5.0 - سرعة دنيا أعلى
+    const MAX_SPEED = 24; // كان 16 - الآن 24 للسماح بارتداد قوي جداً حسب سرعة المضرب
+    const WALL_BOUNCE_DAMP = 0.98; // كان 0.95 - ارتداد أقوى
 
     const tick = (now: number) => {
       const rawDelta = (now - state.last) / 16.67;
@@ -1407,8 +1409,8 @@ export function GameScreen3D({
 
                         // === التحكم في مساحة الهدف + إصلاح الارتداد من الأطراف (الأرقام 1-4 في الصورة) ===
             // هنا تتحكم في حجم الهدف: 0.20=40% صغير، 0.30=60% متوسط، 0.40=80% كبير
-            const goalHalfW = Math.min(290, Math.max(160, world.w * 0.30)); // غيّر 0.30 للتحكم في عرض الهدف
-            const sideGoalHalfW = Math.min(290, Math.max(160, world.h * 0.30)); // غيّر 0.30 للتحكم في ارتفاع الهدف الجانبي
+            const goalHalfW = Math.min(340, Math.max(190, world.w * 0.36)); // كان 0.30 - الآن 0.36 ليطابق الصورة - هدف كبير
+            const sideGoalHalfW = Math.min(340, Math.max(190, world.h * 0.36)); // هدف كبير
             const BORDER = 28;
             const leftBound = BORDER + BALL_RADIUS;
             const rightBound = world.w - BORDER - BALL_RADIUS;
