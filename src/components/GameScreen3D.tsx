@@ -566,18 +566,23 @@ export function GameScreen3D({
   const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
 
   const getMySide = useCallback((): Player['side'] => {
-    // اللاعب الرئيسي دائماً تحت - حتى في وضع الأصدقاء كل واحد يشوف نفسه تحت في جواله
+    // المضيف يكون في الأسفل - اللاعب الأول في شاشة جواله
+    // وكل لاعب في جواله يرى نفسه تحت ويلعب
+    // حتى في وضع الأصدقاء كل واحد يشوف نفسه تحت في جواله
     const found = players.find((p) => p.socketId === socket.id);
     if (found) {
       // في وضع الأصدقاء، كل لاعب يشوف نفسه تحت - نرجع جانبه الحقيقي للكاميرا
+      // المضيف (الأول) جانبه bottom دائماً، يرى نفسه تحت
+      // الثاني top يرى نفسه تحت، الثالث right يرى نفسه تحت، الرابع left يرى نفسه تحت
       return found.side as Player['side'];
     }
-    // ضد الكمبيوتر أو وضع غير متصل - اللاعب الرئيسي دائماً تحت
+    // ضد الكمبيوتر أو وضع غير متصل - اللاعب الرئيسي (المضيف) دائماً تحت
     const isVsComputer = (settings as any).vsComputer || players.some((p:any)=>p.computer);
     if (isVsComputer) {
-      return 'bottom' as Player['side'];
+      return 'bottom' as Player['side']; // المضيف في الأسفل
     }
-    return (players[0]?.side?? 'bottom') as Player['side'];
+    // المضيف هو اللاعب الأول - جانبه bottom
+    return (players[0]?.side?? 'bottom') as Player['side']; // المضيف في الأسفل
   }, [players, (settings as any).vsComputer]);
 
     const mySideForCam = getMySide();
