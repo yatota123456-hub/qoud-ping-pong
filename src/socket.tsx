@@ -1,8 +1,7 @@
-
 import { Client } from '@colyseus/sdk';
 
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
-type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: any; series?: any };
+type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: any; series?: any; isPaused?: boolean; worldW?: number; worldH?: number };
 
 type SocketListener = (...args: any[]) => void;
 
@@ -30,35 +29,36 @@ class ColyseusBridge {
     this.room.send(event, payload); 
     return true; 
   }
+  // تم تحسين الارسال لتقليل التأخير - إزالة threshold العالي
   sendPaddleTarget(x: number, y: number) {
     const now = performance.now();
     const dx = x - this.lastPaddlePos.x;
     const dy = y - this.lastPaddlePos.y;
     const distSq = dx*dx + dy*dy;
-    if (distSq < 4 && now - this.lastPaddleEmit < 32) return;
-    if (now - this.lastPaddleEmit < 16) return;
+    // تقليل التأخير: نرسل حتى لو الحركة 1 بكسل فقط، وكل 16ms كحد أدنى (60Hz)
+    if (distSq < 1 && now - this.lastPaddleEmit < 16) return;
+    if (now - this.lastPaddleEmit < 10) return; // 100Hz max
     this.lastPaddleEmit = now;
     this.lastPaddlePos = { x, y };
     this.emit('paddle-target', { x: Math.round(x), y: Math.round(y) });
   }
   attach(room: any) {
     this.room = room;
- const messageTypes = [
-  'room-update','game-started','goal-scored','round-finished',
-  'next-round','series-started','match-finished','host-left',
-  'hit-effect','countdown','game-state','paddle-input',
-  'player-ready','all-players-ready','pause-update','game-paused','pause-state'
-];
+    const messageTypes = [
+      'room-update','game-started','goal-scored','round-finished',
+      'next-round','series-started','match-finished','host-left',
+      'hit-effect','countdown','game-state','paddle-input',
+      'player-ready','all-players-ready',
+      'pause-update','game-paused','pause-state'
+    ];
     for (const messageType of messageTypes) {
       room.onMessage(messageType, (payload: unknown) => this.dispatch(messageType, payload));
     }
     room.onStateChange((state: any) => this.dispatch('room-update', this.roomData(state)));
     room.onError?.((code: number, message: string) => this.dispatch('error', message || `Connection error (${code})`));
     room.onLeave?.((code: number) => { 
-      // إصلاح: إذا كان الخروج مقصود (this.room = null) لا تحاول إعادة اتصال
       if (this.room !== room) return;
       if (code === 1000 || (code as any) === 4000) {
-        // خروج طبيعي - لا تحاول إعادة اتصال
         this.room = null;
         return;
       }
@@ -71,7 +71,6 @@ class ColyseusBridge {
     this.room = null;
     if (room) { 
       try { 
-        // إصلاح مشكلة إعادة الاتصال المتكرر - إغلاق كامل بدون محاولة إعادة اتصال
         (room as any)._reconnectionToken = null;
         (room as any).connection?.close();
         await room.leave(true); 
@@ -102,6 +101,9 @@ class ColyseusBridge {
       hostSocketId: state?.hostSessionId,
       hostName: players.find((p: Player) => p.id === state?.hostSessionId)?.name,
       players, settings, series,
+      isPaused: Boolean(state?.isPaused),
+      worldW: state?.worldW ? Number(state.worldW) : undefined,
+      worldH: state?.worldH ? Number(state.worldH) : undefined,
     };
   }
 }
@@ -117,6 +119,5 @@ function getColyseusEndpoint() {
 }
 
 export const colyseus = new Client(getColyseusEndpoint());
-// إصلاح مشكلة إعادة الاتصال المتكرر - تقليل المحاولات وإيقافها عند الخروج المقصود
 (colyseus as any).reconnectionAttempts = 1;
 export const socket = new ColyseusBridge();

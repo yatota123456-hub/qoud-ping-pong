@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { ChevronLeft, ChevronRight, LogIn, Minus, Monitor, Pause, Play, Plus, Volume2, X, Zap, ArrowLeft, Gamepad2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { GameScreen3D } from './components/GameScreen3D';
@@ -656,15 +656,30 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   // 2D: كل لاعب يلعب من تحت - إصلاح الشاشة السوداء - بدون دوران كاميرا مؤقتاً لضمان ظهور الساحة
   // ثم التحكم من تحت لكل لاعب عن طريق عكس الإحداثيات
   const mySide = useMemo(() => {
-    const found = players.find((p:any)=>p.socketId===socket.id);
-    if (found) {
-      return found.side as Player['side'];
+    const mySocketId = (socket as any).id || (socket as any).socketId;
+    if (mySocketId) {
+      const found = players.find((p:any)=>p.socketId===mySocketId);
+      if (found) return found.side as Player['side'];
     }
+    const isVsComputer = (settings as any).vsComputer || players.some((p:any)=>p.computer);
+    if (isVsComputer) return 'bottom' as Player['side'];
+    // للمضيف والعميل
+    if (isHost) {
+      const hostP = players.find((p:any)=>p.side==='bottom') || players[0];
+      return (hostP?.side ?? 'bottom') as Player['side'];
+    }
+    const nonBottom = players.find((p:any)=>p.side!=='bottom' && !p.computer);
+    if (nonBottom) return nonBottom.side as Player['side'];
     return 'bottom' as Player['side'];
-  }, [players]);
-  // إلغاء الدوران مؤقتاً لإصلاح الشاشة السوداء - الساحة ثابتة
-  // كل لاعب يرى نفسه تحت عن طريق عكس التحكم وليس دوران الساحة
-  const myAngle = 0;
+  }, [players, isHost, settings.vsComputer]);
+  // FIX: كل لاعب يرى نفسه تحت - دوران الساحة حسب الجانب (2D)
+  // bottom=0, top=PI, left=-PI/2, right=PI/2 - بدون تعديل كاميرا خارجي
+  const myAngle = useMemo(() => {
+    if (mySide === 'top') return Math.PI;
+    if (mySide === 'left') return -Math.PI/2;
+    if (mySide === 'right') return Math.PI/2;
+    return 0;
+  }, [mySide]);
   soundRef.current = sound; onTimeUpRef.current = onTimeUp; onGoalRef.current = onGoal; pausedRef.current = paused;
   useEffect(()=>{ celebratingRef.current = celebrating; },[celebrating]);
   const audioCtxRef = useRef<AudioContext|null>(null);
@@ -687,10 +702,20 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const rect = arena.getBoundingClientRect();
     let wx = ((clientX-rect.left)/rect.width)*world.w;
     let wy = ((clientY-rect.top)/rect.height)*world.h;
-    // بدون دوران - إحداثيات مباشرة لإصلاح الشاشة السوداء
-    // التحكم من تحت لكل لاعب يتم عن طريق عكس الإحداثيات في الأسفل
+    // FIX: عكس دوران الساحة لتحويل إحداثيات اللمس إلى إحداثيات العالم
+    // الساحة مرسومة بدوران myAngle، لذا نعكس الدوران للنقطة
+    if (myAngle !== 0) {
+      const cx = world.w/2;
+      const cy = world.h/2;
+      const dx = wx - cx;
+      const dy = wy - cy;
+      const cos = Math.cos(-myAngle);
+      const sin = Math.sin(-myAngle);
+      wx = cx + dx * cos - dy * sin;
+      wy = cy + dx * sin + dy * cos;
+    }
     return { x: wx, y: wy };
-  }, [world]);
+  }, [world, myAngle]);
 
   useEffect(() => {
     const handleGameState = (data: any) => {
@@ -1116,9 +1141,9 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 195 : 70; // الإصبع أسفل المضرب ولا يغطيه - إصلاح جوال
     let tx=pt.x, ty=pt.y;
     if(mySide==='bottom') ty=pt.y-OFFSET;
-    else if(mySide==='top') ty=pt.y-OFFSET;
-    else if(mySide==='left') { tx=pt.x; ty=pt.y-OFFSET; }
-    else if(mySide==='right') { tx=pt.x; ty=pt.y-OFFSET; }
+    else if(mySide==='top') ty=pt.y+OFFSET;
+    else if(mySide==='left') tx=pt.x+OFFSET;
+    else if(mySide==='right') tx=pt.x-OFFSET;
     hasDraggedRef.current=true; if(hintDotRef.current) hintDotRef.current.style.display='none'; if(hintTextRef.current) hintTextRef.current.style.display='none';
     drag.current = { side: mySide, x: tx, y: ty };
     stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
@@ -1130,9 +1155,9 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     const isTouch = (event as any).pointerType==='touch'; const OFFSET = isTouch? 195 : 70; // الإصبع أسفل المضرب ولا يغطيه - إصلاح جوال
     let tx=pt.x, ty=pt.y;
     if(mySide==='bottom') ty=pt.y-OFFSET;
-    else if(mySide==='top') ty=pt.y-OFFSET;
-    else if(mySide==='left') { tx=pt.x; ty=pt.y-OFFSET; }
-    else if(mySide==='right') { tx=pt.x; ty=pt.y-OFFSET; }
+    else if(mySide==='top') ty=pt.y+OFFSET;
+    else if(mySide==='left') tx=pt.x+OFFSET;
+    else if(mySide==='right') tx=pt.x-OFFSET;
     drag.current.x = tx; drag.current.y = ty;
     stateRef.current.targetPaddles[mySide].x = tx; stateRef.current.targetPaddles[mySide].y = ty;
     socket.sendPaddleTarget(tx, ty);
