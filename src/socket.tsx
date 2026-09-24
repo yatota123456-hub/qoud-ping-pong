@@ -29,15 +29,13 @@ class ColyseusBridge {
     this.room.send(event, payload); 
     return true; 
   }
-  // تم تحسين الارسال لتقليل التأخير - إزالة threshold العالي
   sendPaddleTarget(x: number, y: number) {
     const now = performance.now();
     const dx = x - this.lastPaddlePos.x;
     const dy = y - this.lastPaddlePos.y;
     const distSq = dx*dx + dy*dy;
-    // تقليل التأخير: نرسل حتى لو الحركة 1 بكسل فقط، وكل 16ms كحد أدنى (60Hz)
     if (distSq < 1 && now - this.lastPaddleEmit < 16) return;
-    if (now - this.lastPaddleEmit < 10) return; // 100Hz max
+    if (now - this.lastPaddleEmit < 10) return;
     this.lastPaddleEmit = now;
     this.lastPaddlePos = { x, y };
     this.emit('paddle-target', { x: Math.round(x), y: Math.round(y) });
@@ -102,6 +100,7 @@ class ColyseusBridge {
       hostName: players.find((p: Player) => p.id === state?.hostSessionId)?.name,
       players, settings, series,
       isPaused: Boolean(state?.isPaused),
+      // ✅ حجم الساحة من السيرفر
       worldW: state?.worldW ? Number(state.worldW) : undefined,
       worldH: state?.worldH ? Number(state.worldH) : undefined,
     };
@@ -121,3 +120,4 @@ function getColyseusEndpoint() {
 export const colyseus = new Client(getColyseusEndpoint());
 (colyseus as any).reconnectionAttempts = 1;
 export const socket = new ColyseusBridge();
+export type { RoomData };

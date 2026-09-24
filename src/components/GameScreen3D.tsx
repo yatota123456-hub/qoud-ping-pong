@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Pause, Play, X, RotateCcw, Camera, Eye, EyeOff, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw,Save, Video, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { socket } from '../socket.tsx';
+import type { RoomData } from '../socket.tsx';
 
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
 type Settings = any;
@@ -445,11 +446,10 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
   // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين يكون مستطيل - تصحيح حسب طلب المستخدم
-  const base = count >= 4 ? SQUARE : RECT;
-  const sc = ARENA_SCALES[size] || 1;
+  const base = count >= 3 ? SQUARE : RECT;
+    const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
 }
-
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
   const isMobileNow = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
   // إصلاح 1: الساحة متوسطة أمام الكاميرا عند بدء اللعبة - مسافة محسوبة من حجم الساحة لضمان التوسيط
@@ -495,33 +495,20 @@ const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
 
 export function GameScreen3D({ 
   roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating, 
-  seriesWins = {}, currentRound = 1, onGoal, onTimeUp, onPause, onExit 
+  seriesWins = {}, currentRound = 1, onGoal, onTimeUp, onPause, onExit , roomData 
 }: { 
   roomCode: string; isHost: boolean; players: Player[]; settings: Settings; 
   scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null; 
   seriesWins?: Record<string, number>; currentRound?: number; 
   onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; 
+  roomData?: RoomData; 
 }) {
   const [localReady, setLocalReady] = useState(false);
-  // ضد الكمبيوتر يبدأ فوراً
-  useEffect(()=>{
-    const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
-    if (vsComp) {
-      setLocalReady(true);
-      // @ts-ignore
-      if (typeof localReadyRef !== 'undefined') localReadyRef.current = true;
-      // @ts-ignore
-      if (typeof stateRef !== 'undefined' && stateRef.current) {
-        stateRef.current.countdown = 3;
-        stateRef.current.countdownStart = performance.now();
-      }
-      setCountdown(3);
-    }
-  }, [players, (settings as any).vsComputer]);
   const [arenaStyle, setArenaStyle] = useState<'classic' | 'modern'>('modern');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
-
+ 
+    
   useEffect(() => {
     const savedCam = localStorage.getItem(`qoud_camera_preset_${settings.arenaSize || 'medium'}`);
     if (savedCam) {
@@ -540,6 +527,7 @@ export function GameScreen3D({
     } catch {}
     setShowRestoreModal(false);
   };
+  
 
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
@@ -556,37 +544,126 @@ export function GameScreen3D({
   const frameIdRef = useRef<number>(0);
   const localReadyRef = useRef(localReady);
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
-  useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
-  const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
-  const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
-  const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
+  // تم إرجاع خاصية الانتظار لإصلاح الكاميرا - ضد الكمبيوتر يبدأ بعد 3.5 ثانية
 
+
+
+ const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
+
+// === إصلاح: كل اللاعبين يلعبون في نفس حجم الساحة بالضبط - نأخذه من السيرفر مباشرة ===
+const localWorld = useMemo(() => getArenaWorld(settings.players || 2, settings.arenaSize), [settings.players, settings.arenaSize]);
+const isVsComputerForWorld = (settings as any).vsComputer || players.some((p: any) => p.computer);
+const isOfflineForWorld = !socket.connected || players.length <= 1 || isVsComputerForWorld;
+
+const initialRemoteWorld = useMemo(() => {
+  if (isOfflineForWorld) return null;
+  const st = (socket as any).room?.state;
+  if (st?.worldW && st?.worldH) return { w: Number(st.worldW), h: Number(st.worldH) };
+  if (roomData?.worldW && roomData?.worldH) return { w: roomData.worldW, h: roomData.worldH };
+  return null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+const [remoteWorld, setRemoteWorld] = useState<{ w: number; h: number } | null>(initialRemoteWorld);
+
+useEffect(() => {
+  if (isOfflineForWorld) return;
+  const applyWorld = (w?: number, h?: number) => {
+    if (!w || !h) return;
+    setRemoteWorld((prev) => (prev && prev.w === w && prev.h === h) ? prev : { w, h });
+  };
+  const onRoomUpdate = (rd: any) => applyWorld(rd?.worldW, rd?.worldH);
+  const onGameStateWorld = (d: any) => applyWorld(d?.worldW, d?.worldH);
+  socket.on('room-update', onRoomUpdate);
+  socket.on('game-state', onGameStateWorld);
+  return () => { socket.off('room-update', onRoomUpdate); socket.off('game-state', onGameStateWorld); };
+}, [isOfflineForWorld]);
+
+// نفس القيمة بالضبط عند كل اللاعبين المتصلين بنفس الغرفة
+const world = remoteWorld ?? localWorld;
+const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
   const getMySide = useCallback((): Player['side'] => {
-    return (players.find((p) => p.socketId === socket.id)?.side?? players[0]?.side?? 'bottom') as Player['side'];
-  }, [players]);
+    const mySocketId = (socket as any).id || (socket as any).socketId;
+    if (mySocketId) {
+      const foundBySocket = players.find((p) => p.socketId === mySocketId);
+      if (foundBySocket) return foundBySocket.side as Player['side'];
+    }
+    const isVsComputerLocal = (settings as any).vsComputer || players.some((p:any)=>p.computer);
+    if (isVsComputerLocal) {
+      return 'bottom' as Player['side'];
+    }
+    if (isHost) {
+      const hostPlayer = players.find(p => p.side === 'bottom') || players[0];
+      return (hostPlayer?.side ?? 'bottom') as Player['side'];
+    }
+    const nonBottom = players.find(p => p.side !== 'bottom' && !p.computer);
+    if (nonBottom) return nonBottom.side as Player['side'];
+    return (players[0]?.side?? 'bottom') as Player['side'];
+  }, [players, (settings as any).vsComputer, isHost]);
 
-  const mySideForCam = getMySide();
+    const mySideForCam = getMySide();
   const initialCam = useMemo(() => {
-    const sideKey = mySideForCam === 'top'? 'topPlayer' : mySideForCam === 'left'? 'sideLeft' : mySideForCam === 'right'? 'sideRight' : 'bottom';
+    // اللاعب الرئيسي دائماً تحت - الكاميرا دائماً خلف اللاعب الرئيسي
+    // في وضع الأصدقاء، كل جوال يشوف نفسه تحت
+    const actualSide = mySideForCam;
+    // نختار بريست الكاميرا بحيث يكون جانب اللاعب الرئيسي دائماً في الأسفل
+    let sideKey: string;
+    if (actualSide === 'top') {
+      sideKey = 'topPlayer'; // كاميرا خلف الخصم العلوي - تظهره تحت
+    } else if (actualSide === 'left') {
+      sideKey = 'sideLeft'; // كاميرا من اليسار - تظهر اليسار تحت
+    } else if (actualSide === 'right') {
+      sideKey = 'sideRight'; // كاميرا من اليمين - تظهر اليمين تحت
+    } else {
+      sideKey = 'bottom'; // كاميرا خلفك - أنت تحت (الافتراضي)
+    }
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
-    return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: 1 };
+    return {
+      angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: 1
+    };
   }, [world, adaptivePresets, mySideForCam]);
 
   const cam = useRef({...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 });
+  
+  // FIX: تحديث الكاميرا فور تغير جانبي - كل لاعب يرى نفسه تحت (2 و 4 لاعبين)
+  useEffect(() => {
+    const sideKey = mySideForCam === 'top'? 'topPlayer' : mySideForCam === 'left'? 'sideLeft' : mySideForCam === 'right'? 'sideRight' : 'bottom';
+    const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
+    cam.current.angle = preset.angle;
+    cam.current.targetAngle = preset.angle;
+    cam.current.distance = preset.distance;
+    cam.current.targetDistance = preset.distance;
+    cam.current.height = preset.height;
+    cam.current.targetHeight = preset.height;
+    cam.current.targetX = world.w / 2;
+    cam.current.targetZ = world.h / 2;
+    cam.current.lookX = world.w / 2;
+    cam.current.lookZ = world.h / 2;
+    setCurrentPreset(sideKey as any);
+  }, [mySideForCam, adaptivePresets, world.w, world.h]);
   useEffect(() => {
     const saved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
     if (saved) {
       try {
         const s = JSON.parse(saved);
-        cam.current = { ...cam.current, ...s, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 };
+        const sideKey = mySideForCam === 'top'? 'topPlayer' : mySideForCam === 'left'? 'sideLeft' : mySideForCam === 'right'? 'sideRight' : 'bottom';
+        const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
+        cam.current = { 
+          ...cam.current, 
+          distance: s.distance || preset.distance,
+          targetDistance: s.targetDistance || s.distance || preset.distance,
+          height: s.height || preset.height,
+          targetHeight: s.targetHeight || s.height || preset.height,
+          angle: preset.angle,
+          targetAngle: preset.angle,
+          targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 
+        };
       } catch {}
     } else {
-      // لا حفظ - متوسطة تماماً
       cam.current = { ...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 } as any;
     }
-  }, [settings.arenaSize]);
+  }, [settings.arenaSize, mySideForCam]);
 
   const saveCameraSettings = useCallback(() => {
     const settings = {
@@ -672,8 +749,8 @@ export function GameScreen3D({
   const shakeRef = useRef({ intensity: 0 });
   const lastBallEmitRef = useRef(0);
   const stateRef = useRef({
-    ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
-    ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
+  ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
+  ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
     paddles: {
       top: { x: world.w / 2, z: 52 },
       right: { x: world.w - 52, z: world.h / 2 },
@@ -690,7 +767,9 @@ export function GameScreen3D({
       top: { x: world.w / 2, z: 52 },
       right: { x: world.w - 52, z: world.h / 2 },
       bottom: { x: world.w / 2, z: world.h - 52 },
-      left: { x: 52, z: world.h / 2 }
+      left: { x: 52, z: world.h / 2 },
+      worldW: world.w,
+  worldH: world.h,
     } as any,
     last: performance.now(),
     elapsed: 0,
@@ -699,9 +778,22 @@ export function GameScreen3D({
     countdownStart: 0,
     countdownSide: null as Player['side'] | null,
     serving: { active: (settings as any).start === 'paddle', side: 'bottom' as Player['side'], startTime: 0, requested: false }, // إصلاح 4: يبدأ من المضرب إذا اختيار من المضرب
-    paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any
+    paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any,
+     worldW: world.w,
+    worldH: world.h,
   });
-
+useEffect(() => {
+  const s = stateRef.current;
+  s.ball.x = world.w / 2; s.ball.y = world.h / 2; s.ball.vx = 0; s.ball.vy = 0;
+  s.ballTarget.x = world.w / 2; s.ballTarget.y = world.h / 2; s.ballTarget.vx = 0; s.ballTarget.vy = 0;
+  s.paddles.top = { x: world.w / 2, z: 52 };
+  s.paddles.bottom = { x: world.w / 2, z: world.h - 52 };
+  s.paddles.left = { x: 52, z: world.h / 2 };
+  s.paddles.right = { x: world.w - 52, z: world.h / 2 };
+  s.targetPaddles = { ...s.paddles };
+  s.lastPaddles = { ...s.paddles, worldW: world.w, worldH: world.h };
+  s.worldW = world.w; s.worldH = world.h;
+}, [world.w, world.h]);
   // إطلاق الكرة من المضرب بالمسافة
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -729,8 +821,8 @@ export function GameScreen3D({
   // لا انتظار نهائياً في طور ضد الكمبيوتر - فقط في طور مع الأصدقاء (2 أو 4 لاعبين أصدقاء)
   // نعتمد على زر القائمة نفسه: settings.vsComputer + حقل computer في اللاعبين
   const isVsComputer = settings.vsComputer || players.some((p:any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
-  const isFriendsMode = !isVsComputer && !!roomCode && players.length > 1; // فقط عندما vsComputer = false وهناك غرفة (مع الأصدقاء) - ضد الكمبيوتر لا يوجد انتظار نهائياً
-
+  const humanCount = Math.max(1, players.filter((p: any) => !p.computer).length);
+  const isFriendsMode = !isVsComputer && !!roomCode && humanCount > 1;
   const createHatPaddle = useCallback((color: string, style: 'classic' | 'modern' = arenaStyle) => {
     const group = new THREE.Group();
     const isBlue = color.toLowerCase().includes('61e7c2') || color.toLowerCase().includes('00e5ff') || color.toLowerCase().includes('blue') || color === '#61e7c2';
@@ -805,7 +897,9 @@ export function GameScreen3D({
   }, [arenaStyle]);
 
   const resetCamera = useCallback(() => {
-    const sideKey = getMySide() === 'top'? 'topPlayer' : getMySide() === 'left'? 'sideLeft' : getMySide() === 'right'? 'sideRight' : 'bottom';
+    // إعادة الكاميرا بحيث يكون اللاعب الرئيسي دائماً تحت
+    const mySide = getMySide();
+    const sideKey = mySide === 'top'? 'topPlayer' : mySide === 'left'? 'sideLeft' : mySide === 'right'? 'sideRight' : 'bottom';
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
     cam.current = {
       angle: preset.angle,
@@ -870,15 +964,36 @@ export function GameScreen3D({
     cam.current = {...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2} as any;
   }, [initialCam, settings.arenaSize, world.w, world.h]);
 
+  // FIX: مزامنة الكرة - نفس الساحة للجميع، تصحيح فوري إذا الفرق كبير
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
+       if (data.worldW && data.worldH) {
+      const newWorld = { w: data.worldW, h: data.worldH };
+      // تحديث محلي لو احتجت
+      if (stateRef.current.worldW !== newWorld.w || stateRef.current.worldH !== newWorld.h) {
+        stateRef.current.worldW = newWorld.w;
+        stateRef.current.worldH = newWorld.h;
+      }
+    }
       const mySide = getMySide();
+       if (data.worldW && data.worldH) {
+        stateRef.current.worldW = data.worldW;
+        stateRef.current.worldH = data.worldH;
+      }
       if (data.ball) {
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
         stateRef.current.ballTarget.vx = data.ball.vx;
         stateRef.current.ballTarget.vy = data.ball.vy;
+        const dist = Math.hypot(data.ball.x - stateRef.current.ball.x, data.ball.y - stateRef.current.ball.y);
+        if (dist > 120 || data.countdown !== undefined || data.countdownSide !== undefined) {
+          stateRef.current.ball.x = data.ball.x;
+          stateRef.current.ball.y = data.ball.y;
+          stateRef.current.ball.vx = data.ball.vx;
+          stateRef.current.ball.vy = data.ball.vy;
+        }
+
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
@@ -886,24 +1001,21 @@ export function GameScreen3D({
           const p = data.paddles[side];
           if (stateRef.current.targetPaddles[side as Player['side']]) {
             stateRef.current.targetPaddles[side as Player['side']].x = p.x;
-            stateRef.current.targetPaddles[side as Player['side']].z = p.y;
+            stateRef.current.targetPaddles[side as Player['side']].z = p.y ?? p.z;
           }
         });
       }
       if (data.countdown !== undefined) {
         stateRef.current.countdown = data.countdown;
         setCountdown(data.countdown);
+        if (data.countdown > 0) stateRef.current.countdownStart = performance.now();
       }
       if (data.countdownSide !== undefined) {
         stateRef.current.countdownSide = data.countdownSide || null;
         setCountdownSide(data.countdownSide || '');
       }
-      if (data.rally !== undefined) {
-        setRally(data.rally);
-      }
-      if (data.timeLeft !== undefined) {
-        setTimeLeft(data.timeLeft);
-      }
+      if (data.rally !== undefined) setRally(data.rally);
+      if (data.timeLeft !== undefined) setTimeLeft(data.timeLeft);
     };
     socket.on('game-state', handleGameState);
     return () => { socket.off('game-state', handleGameState); };
@@ -953,6 +1065,7 @@ export function GameScreen3D({
     }
   }, [readyPlayers, isHost, isFriendsMode, players.length, roomCode]);
 
+  // FIX: تحكم لمسي - كل لاعب يتحكم من تحت مع OFFSET صحيح لكل جانب (2 و 4 لاعبين)
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -961,7 +1074,6 @@ export function GameScreen3D({
     const mouse = new THREE.Vector2();
     const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
     const handlePointerMove = (e: PointerEvent) => {
-      // إصلاح 5: بدء الكرة من المضرب عند الضغط - حتى لو ثابتة
       if (stateRef.current.serving.active) {
         if (e.type === 'pointerdown') {
           stateRef.current.serving.requested = true;
@@ -976,7 +1088,7 @@ export function GameScreen3D({
       if(hintTextRef.current) hintTextRef.current.style.display='none';
       const mySide = getMySide();
       const isTouch = (e as any).pointerType === 'touch' || (e as any).pointerType === 'pen';
-      const OFFSET = isTouch? 195 : 75; // الإصبع أسفل المضرب ولا يغطيه أبدا - إصلاح 7
+      const OFFSET = isTouch? 195 : 75;
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -985,37 +1097,36 @@ export function GameScreen3D({
       if (raycaster.ray.intersectPlane(plane, target)) {
         let tx = target.x;
         let tz = target.z;
-        // تحديد عدد اللاعبين لتحديد مدى التقدم - 4 لاعبين مربعة يتقدم قليلاً فقط
         const needCount = Math.max(2, players.length, settings.players || 2);
-        const isFourPlayers = needCount >= 4; // مربعة فقط لـ 4 لاعبين
-        // للـ 4 لاعبين: تقدم قليل جداً (22% و 78%)، للـ 2 لاعبين: تقدم أكبر (38% و 62%)
+        const isFourPlayers = needCount >= 4;
         const topLimit = isFourPlayers ? world.h * 0.22 : world.h * 0.38;
         const bottomLimit = isFourPlayers ? world.h * 0.78 : world.h * 0.62;
         const leftLimit = isFourPlayers ? world.w * 0.22 : world.w * 0.38;
         const rightLimit = isFourPlayers ? world.w * 0.78 : world.w * 0.62;
 
-        // نقطة التحريك دائماً أسفل المضرب (جنوب) بمسافة OFFSET - ليظهر المضرب ولا يغطيه الإصبع لكل الجهات
         if (mySide === 'top') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, 45, topLimit); // إصبع أسفل المضرب دائماً
+          const clampedZ = clamp(tz + OFFSET, 45, topLimit);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'bottom') {
           const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, bottomLimit, world.h - 45); // إصبع أسفل المضرب
+          const clampedZ = clamp(tz - OFFSET, bottomLimit, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'left') {
-          const clampedX = clamp(tx, 45, leftLimit);
-          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45); // إصبع أسفل المضرب وليس عليه
+          // يسار: أسفل الشاشة = غرب، المضرب شرق الإصبع
+          const clampedX = clamp(tx + OFFSET, 45, leftLimit + 220);
+          const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'right') {
-          const clampedX = clamp(tx, rightLimit, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45); // إصبع أسفل المضرب لكل الجهات
+          // يمين: أسفل الشاشة = شرق، المضرب غرب الإصبع
+          const clampedX = clamp(tx - OFFSET, rightLimit - 220, world.w - 45);
+          const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
@@ -1028,7 +1139,7 @@ export function GameScreen3D({
       el.removeEventListener('pointerdown', handlePointerMove as any);
       el.removeEventListener('pointermove', handlePointerMove as any);
     };
-  }, [world.w, world.h, getMySide, isOfflineMode, isHost, roomCode]);
+  }, [world.w, world.h, getMySide, isOfflineMode, isHost, roomCode, players.length, settings.players]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -1179,9 +1290,9 @@ export function GameScreen3D({
     const PADDLE_RADIUS = 36;
     const BALL_RADIUS = 14;
     const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
-    const MIN_SPEED = 5.0;
-    const MAX_SPEED = 16; // زيادة للسماح بارتداد بقوة حسب سرعة المضرب
-    const WALL_BOUNCE_DAMP = 0.95;
+    const MIN_SPEED = 6.0; // كان 5.0 - سرعة دنيا أعلى
+    const MAX_SPEED = 24; // كان 16 - الآن 24 للسماح بارتداد قوي جداً حسب سرعة المضرب
+    const WALL_BOUNCE_DAMP = 0.98; // كان 0.95 - ارتداد أقوى
 
     const tick = (now: number) => {
       const rawDelta = (now - state.last) / 16.67;
@@ -1359,74 +1470,95 @@ export function GameScreen3D({
               if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
             }
 
-            // === جدران بدون حاجز عند الفتحة السوداء ===
-            const goalHalfW = Math.min(290, Math.max(160, world.w * 0.30)); // 60% /2 =30%
-            const sideGoalHalfW = Math.min(290, Math.max(160, world.h * 0.30));
+                        // === التحكم في مساحة الهدف + إصلاح الارتداد من الأطراف (الأرقام 1-4 في الصورة) ===
+            // هنا تتحكم في حجم الهدف: 0.20=40% صغير، 0.30=60% متوسط، 0.40=80% كبير
+            const goalHalfW = Math.min(340, Math.max(190, world.w * 0.36)); // كان 0.30 - الآن 0.36 ليطابق الصورة - هدف كبير
+            const sideGoalHalfW = Math.min(340, Math.max(190, world.h * 0.36)); // هدف كبير
             const BORDER = 28;
             const leftBound = BORDER + BALL_RADIUS;
             const rightBound = world.w - BORDER - BALL_RADIUS;
             const topBound = BORDER + BALL_RADIUS;
             const bottomBound = world.h - BORDER - BALL_RADIUS;
             
-            // جدار علوي - لا يوجد جدار عند الفتحة
+            // جدار علوي - مع هامش 12 بكسل لمنع الارتداد من طرف الهدف
             if (state.ball.y <= topBound) {
-              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && active('top')) {
-                // داخل الفتحة - لا جدار
+              const edgeBuffer = 12;
+              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW + edgeBuffer && activeSide('top')) {
+                // داخل الفتحة + هامش - لا جدار - الكرة تدخل من فوق المساحة السوداء وتختفي
               } else {
-                state.ball.y = topBound;
-                state.ball.vy = Math.abs(state.ball.vy) * 0.95;
+                state.ball.y = topBound + 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
+                state.ball.vy = minSpeed;
               }
             }
-            // جدار سفلي
+            // جدار سفلي - مع هامش
             if (state.ball.y >= bottomBound) {
-              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW && active('bottom')) {
+              const edgeBuffer = 12;
+              if (Math.abs(state.ball.x - world.w/2) <= goalHalfW + edgeBuffer && activeSide('bottom')) {
               } else {
-                state.ball.y = bottomBound;
-                state.ball.vy = -Math.abs(state.ball.vy) * 0.95;
+                state.ball.y = bottomBound - 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vy), 2.5);
+                state.ball.vy = -minSpeed;
               }
             }
-            // جدار يسار
+            // جدار يسار - إصلاح الأسهم 1 و 2 - الكرة كانت ترتد من أطراف الأهداف الفارغة
             if (state.ball.x <= leftBound) {
-              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && active('left')) {
+              const edgeBuffer = 12; // يصلح الارتداد عند الأرقام 1 و 2
+              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW + edgeBuffer && activeSide('left')) {
+                // داخل الفتحة + هامش - لا جدار - تدخل من فوق المساحة السوداء وتختفي
               } else {
-                state.ball.x = leftBound;
-                state.ball.vx = Math.abs(state.ball.vx) * 0.95;
+                state.ball.x = leftBound + 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
+                state.ball.vx = minSpeed;
               }
             }
-            // جدار يمين
+            // جدار يمين - إصلاح الأسهم 3 و 4
             if (state.ball.x >= rightBound) {
-              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW && active('right')) {
+              const edgeBuffer = 12; // يصلح الارتداد عند الأرقام 3 و 4
+              if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW + edgeBuffer && activeSide('right')) {
               } else {
-                state.ball.x = rightBound;
-                state.ball.vx = -Math.abs(state.ball.vx) * 0.95;
+                state.ball.x = rightBound - 2;
+                const minSpeed = Math.max(Math.abs(state.ball.vx), 2.5);
+                state.ball.vx = -minSpeed;
               }
             }
 
-            // تسجيل الأهداف
-
-             // إصلاح مشكلة الاختراق بدون تسجيل
+            // تسجيل الأهداف - الكرة تدخل من فوق المساحة السوداء وتختفي
+            // === التحكم في مساحة الهدف - تقدر تغير 0.30 لتكبير أو تصغير الهدف ===
             const goalScoredSide = (() => {
-              // هدف علوي
-              if (state.ball.y < 8) {
+              // هدف علوي - الكرة تدخل من فوق المساحة السوداء وتختفي
+              if (state.ball.y < 25) { // كان 8 - الآن 25 عشان تختفي من فوق المساحة السوداء
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
+                  state.ball.visible = false;
+                  if (threeRef.current?.ball) {
+                    threeRef.current.ball.visible = false;
+                  }
                   return 'top' as const;
                 }
               }
               // هدف سفلي
-              if (state.ball.y > world.h - 8) {
+              if (state.ball.y > world.h - 25) {
                 if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
+                  state.ball.visible = false;
+                  if (threeRef.current?.ball) {
+                    threeRef.current.ball.visible = false;
+                  }
                   return 'bottom' as const;
                 }
               }
               // أهداف جانبية للـ 4 لاعبين فقط
               if (needPlayers >= 4) {
-                if (state.ball.x < 8) {
+                if (state.ball.x < 25) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
+                    state.ball.visible = false;
+                    if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                     return 'left' as const;
                   }
                 }
-                if (state.ball.x > world.w - 8) {
+                if (state.ball.x > world.w - 25) {
                   if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
+                    state.ball.visible = false;
+                    if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                     return 'right' as const;
                   }
                 }
