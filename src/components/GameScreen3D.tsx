@@ -446,8 +446,8 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
   // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين يكون مستطيل - تصحيح حسب طلب المستخدم
-  const base = count >= 4 ? SQUARE : RECT;
-  const sc = ARENA_SCALES[size] || 1;
+  const base = count >= 3 ? SQUARE : RECT;
+    const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
 }
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
@@ -547,35 +547,42 @@ export function GameScreen3D({
   pausedRef.current = paused;
 
   // تم إرجاع خاصية الانتظار لإصلاح الكاميرا - ضد الكمبيوتر يبدأ بعد 3.5 ثانية
-  useEffect(()=>{
-    const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
-    if (vsComp && !localReadyRef.current) {
-      const timer = setTimeout(() => {
-        if (!localReadyRef.current) {
-          setLocalReady(true);
-          localReadyRef.current = true;
-          stateRef.current.countdown = 3;
-          stateRef.current.countdownStart = performance.now();
-          setCountdown(3);
-        }
-      }, 3500);
-      return () => clearTimeout(timer);
-    }
-  }, [players, (settings as any).vsComputer, localReady]);
 
 
-  const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
-const world = useMemo(() => getArenaWorld(settings.players || 2, settings.arenaSize), [settings.players, settings.arenaSize]);
-   if (roomData?.worldW && roomData?.worldH) {
-      return { 
-        w: roomData.worldW, 
-        h: roomData.worldH, 
-        scale: 1, 
-        scaleFactor: 1 
-      };
-    }
+
+ const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
+
+// === إصلاح: كل اللاعبين يلعبون في نفس حجم الساحة بالضبط - نأخذه من السيرفر مباشرة ===
+const localWorld = useMemo(() => getArenaWorld(settings.players || 2, settings.arenaSize), [settings.players, settings.arenaSize]);
+const isVsComputerForWorld = (settings as any).vsComputer || players.some((p: any) => p.computer);
+const isOfflineForWorld = !socket.connected || players.length <= 1 || isVsComputerForWorld;
+
+const initialRemoteWorld = useMemo(() => {
+  if (isOfflineForWorld) return null;
+  const st = (socket as any).room?.state;
+  if (st?.worldW && st?.worldH) return { w: Number(st.worldW), h: Number(st.worldH) };
+  if (roomData?.worldW && roomData?.worldH) return { w: roomData.worldW, h: roomData.worldH };
+  return null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+const [remoteWorld, setRemoteWorld] = useState<{ w: number; h: number } | null>(initialRemoteWorld);
+
+useEffect(() => {
+  if (isOfflineForWorld) return;
+  const applyWorld = (w?: number, h?: number) => {
+    if (!w || !h) return;
+    setRemoteWorld((prev) => (prev && prev.w === w && prev.h === h) ? prev : { w, h });
+  };
+  const onRoomUpdate = (rd: any) => applyWorld(rd?.worldW, rd?.worldH);
+  const onGameStateWorld = (d: any) => applyWorld(d?.worldW, d?.worldH);
+  socket.on('room-update', onRoomUpdate);
+  socket.on('game-state', onGameStateWorld);
+  return () => { socket.off('room-update', onRoomUpdate); socket.off('game-state', onGameStateWorld); };
+}, [isOfflineForWorld]);
+
+// نفس القيمة بالضبط عند كل اللاعبين المتصلين بنفس الغرفة
+const world = remoteWorld ?? localWorld;
 const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
-
   const getMySide = useCallback((): Player['side'] => {
     const mySocketId = (socket as any).id || (socket as any).socketId;
     if (mySocketId) {
@@ -775,7 +782,18 @@ const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, set
      worldW: world.w,
     worldH: world.h,
   });
-
+useEffect(() => {
+  const s = stateRef.current;
+  s.ball.x = world.w / 2; s.ball.y = world.h / 2; s.ball.vx = 0; s.ball.vy = 0;
+  s.ballTarget.x = world.w / 2; s.ballTarget.y = world.h / 2; s.ballTarget.vx = 0; s.ballTarget.vy = 0;
+  s.paddles.top = { x: world.w / 2, z: 52 };
+  s.paddles.bottom = { x: world.w / 2, z: world.h - 52 };
+  s.paddles.left = { x: 52, z: world.h / 2 };
+  s.paddles.right = { x: world.w - 52, z: world.h / 2 };
+  s.targetPaddles = { ...s.paddles };
+  s.lastPaddles = { ...s.paddles, worldW: world.w, worldH: world.h };
+  s.worldW = world.w; s.worldH = world.h;
+}, [world.w, world.h]);
   // إطلاق الكرة من المضرب بالمسافة
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -803,8 +821,8 @@ const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, set
   // لا انتظار نهائياً في طور ضد الكمبيوتر - فقط في طور مع الأصدقاء (2 أو 4 لاعبين أصدقاء)
   // نعتمد على زر القائمة نفسه: settings.vsComputer + حقل computer في اللاعبين
   const isVsComputer = settings.vsComputer || players.some((p:any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
-  const isFriendsMode = !isVsComputer && !!roomCode && players.length > 1; // فقط عندما vsComputer = false وهناك غرفة (مع الأصدقاء) - ضد الكمبيوتر لا يوجد انتظار نهائياً
-
+  const humanCount = Math.max(1, players.filter((p: any) => !p.computer).length);
+  const isFriendsMode = !isVsComputer && !!roomCode && humanCount > 1;
   const createHatPaddle = useCallback((color: string, style: 'classic' | 'modern' = arenaStyle) => {
     const group = new THREE.Group();
     const isBlue = color.toLowerCase().includes('61e7c2') || color.toLowerCase().includes('00e5ff') || color.toLowerCase().includes('blue') || color === '#61e7c2';
