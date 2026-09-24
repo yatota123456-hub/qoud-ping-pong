@@ -56,7 +56,6 @@ class QoudRoom extends Room<QoudRoomState> {
   private paddlePrev = new Map<PlayerSide, { x: number; y: number }>();
   private paddleVel = new Map<PlayerSide, { vx: number; vy: number }>();
   private lastHitSide: PlayerSide | null = null;
-  private lastServeSide: PlayerSide | null = null;
   private lastHitTime = 0;
 
   // Series
@@ -367,18 +366,8 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private startCountdown(scorerSide: PlayerSide | null) {
-    // تناوب الإرسال: لا يبدأ من نفس المضرب مرتين حتى لو 4 لاعبين
-    let finalScorerSide = scorerSide;
-    if (scorerSide && this.lastServeSide && scorerSide === this.lastServeSide) {
-      const alternatives = this.activeSides.filter(s => s !== this.lastServeSide);
-      if (alternatives.length > 0) {
-        finalScorerSide = alternatives[Math.floor(Math.random() * alternatives.length)];
-      }
-    }
-    if (finalScorerSide) this.lastServeSide = finalScorerSide;
-    
     this.state.countdown = 3;
-    this.state.countdownSide = finalScorerSide?? '';
+    this.state.countdownSide = scorerSide?? '';
     this.countdownStartedAt = Date.now();
     this.state.rally = 0;
     this.state.ball.vx = 0;
@@ -553,8 +542,6 @@ class QoudRoom extends Room<QoudRoomState> {
         vy: this.state.ball.vy,
         visible: this.state.ball.visible,
       },
-      worldW: this.state.worldW,
-      worldH: this.state.worldH,
       paddles: Object.fromEntries(
         Array.from(this.state.paddles.entries()).map(([side, paddle]) => [
           side,
@@ -696,14 +683,13 @@ class QoudRoom extends Room<QoudRoomState> {
         const maxAllowedSpeed = 16 + Number(this.settings.ballSpeed || 10) * 0.5;
         targetSpeed = Math.min(targetSpeed, maxAllowedSpeed);
 
-        // ارتداد قوي حسب اتجاه حركة المضرب - لكل اللاعبين
-        let dirVx = bestHit.nx * 0.55 + pVel.vx * 0.45;
-        let dirVy = bestHit.ny * 0.55 + pVel.vy * 0.45;
+        let dirVx = bestHit.nx * 0.75 + pVel.vx * 0.25;
+        let dirVy = bestHit.ny * 0.75 + pVel.vy * 0.25;
 
         const normalDot = dirVx * bestHit.nx + dirVy * bestHit.ny;
-        if (normalDot < 0.15) {
-          dirVx = bestHit.nx * 0.7 + pVel.vx * 0.3;
-          dirVy = bestHit.ny * 0.7 + pVel.vy * 0.3;
+        if (normalDot < 0.1) {
+          dirVx = bestHit.nx * 0.9 + pVel.vx * 0.1;
+          dirVy = bestHit.ny * 0.9 + pVel.vy * 0.1;
         }
 
         const dirMag = Math.hypot(dirVx, dirVy);
