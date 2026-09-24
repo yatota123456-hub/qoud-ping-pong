@@ -67,9 +67,6 @@ class QoudRoom extends Room<QoudRoomState> {
 
   // --- إضافة لحل مشكلة التعليق ---
   private readyPlayers = new Set<string>();
-  private isPaused = false;
-  private lastBallPos = { x: 0, y: 0, time: 0 };
-  private stuckCheckAccum = 0;
 
   onCreate(options: CreateOptions) {
     // --- تعديل وحيد: فلتر أرقام فقط ---
@@ -117,9 +114,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
     this.initWorldAndPaddles();
 
-    // إصلاح 1: لا تضيف كمبيوتر أبداً في وضع الأصدقاء
-    const isVsComputer = (this.settings as any)?.vsComputer === true;
-    if (isVsComputer && options.computerPlayers?.length) {
+    if (options.computerPlayers?.length) {
       options.computerPlayers.forEach((bot, i) => {
         const ps = new PlayerState();
         ps.id = `bot-${i}`;
@@ -175,9 +170,6 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.ball.visible = false;
     this.state.timeLeft = this.settings.mode === 'time'? Number(this.settings.duration || 180) : 0;
     this.lastHitSide = null;
-    this.isPaused = false;
-    this.lastBallPos = { x: world.w/2, y: world.h/2, time: Date.now() };
-    this.stuckCheckAccum = 0;
   }
 
   onJoin(client: { sessionId: string }, options: { name?: string; player?: Partial<PlayerState> } = {}) {
@@ -229,7 +221,6 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private handleMessage(type: string, client: { sessionId: string }, payload: any) {
-    // إصلاح مشكلة التعليق في انتظار الأصدقاء
     if (type === 'player-ready') {
       this.readyPlayers.add(client.sessionId);
       this.broadcast('player-ready', { playerId: client.sessionId, count: this.readyPlayers.size, total: this.humanCount() });
@@ -239,24 +230,10 @@ class QoudRoom extends Room<QoudRoomState> {
       return;
     }
     if (type === 'all-players-ready') {
-      // أي لاعب يمكنه إرسال أنه جاهز، لكن المضيف يبث البدء
-      this.readyPlayers.add(client.sessionId);
-      if (this.readyPlayers.size >= this.humanCount() || client.sessionId === this.state.hostSessionId) {
+      if (client.sessionId === this.state.hostSessionId) {
         this.broadcast('all-players-ready', { count: this.readyPlayers.size });
         this.broadcast('game-started', { settings: this.state.settingsJson });
       }
-      return;
-    }
-
-    // إصلاح 3 & 4: إيقاف مؤقت للكل - Pause for all players
-    if (type === 'pause-toggle' || type === 'pause-state' || type === 'game-paused' || type === 'pause-update') {
-      const paused = typeof payload === 'boolean' ? payload : Boolean(payload?.paused);
-      this.isPaused = paused;
-      // إرسال لكل العملاء بكل الأسماء المحتملة لضمان التوافق
-      this.broadcast('pause-update', { paused });
-      this.broadcast('game-paused', { paused });
-      this.broadcast('pause-state', { paused });
-      this.broadcastRoom(); // لتحديث حالة الغرفة أيضاً
       return;
     }
 
@@ -302,7 +279,6 @@ class QoudRoom extends Room<QoudRoomState> {
 
     if (type === 'paddle-target') {
       if (this.state.status!== 'playing') return;
-      if (this.isPaused) return;
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
       const side = player.side as PlayerSide;
@@ -360,8 +336,7 @@ class QoudRoom extends Room<QoudRoomState> {
         seriesType: this.seriesType,
         seriesWins: Object.fromEntries(this.seriesWinsMap.entries()),
         roundHistory: this.roundHistory,
-      },
-      isPaused: this.isPaused
+      }
     });
   }
 
@@ -377,7 +352,6 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.ball.visible = false;
     this.servingActive = false;
     this.lastHitSide = null;
-    this.isPaused = false;
     this.broadcastGameState();
   }
 
@@ -399,21 +373,10 @@ class QoudRoom extends Room<QoudRoomState> {
       this.state.ball.vy = Math.cos(ang) * speed * dirY;
     }
     this.state.ball.visible = true;
-    this.lastBallPos = { x: this.state.ball.x, y: this.state.ball.y, time: Date.now() };
   }
 
   private tick(deltaMs: number) {
     if (this.state.status!== 'playing') return;
-    // إصلاح الإيقاف المؤقت - لا تحرك الكرة إذا متوقف
-    if (this.isPaused) {
-      this.broadcastAccum += deltaMs;
-      if (this.broadcastAccum >= 100) {
-        this.broadcastAccum = 0;
-        this.broadcastGameState();
-      }
-      return;
-    }
-
     const delta = Math.min(deltaMs / 16.67, 2);
 
     if (this.state.countdown > 0) {
@@ -498,34 +461,6 @@ class QoudRoom extends Room<QoudRoomState> {
     this.moveComputerPaddles(delta);
     this.stepBallImproved(delta);
 
-    // إصلاح توقف الكرة - anti-stuck
-    this.stuckCheckAccum += deltaMs;
-    if (this.stuckCheckAccum > 1000) {
-      this.stuckCheckAccum = 0;
-      const speed = Math.hypot(this.state.ball.vx, this.state.ball.vy);
-      const moved = Math.hypot(this.state.ball.x - this.lastBallPos.x, this.state.ball.y - this.lastBallPos.y);
-      const timeSinceMove = Date.now() - this.lastBallPos.time;
-      
-      if (speed < 2.5) {
-        // الكرة بطيئة جداً - ادفعها
-        const ang = Math.random() * Math.PI * 2;
-        const minSpeed = 4 + Number(this.settings.ballSpeed || 10) * 0.15;
-        this.state.ball.vx = Math.cos(ang) * minSpeed;
-        this.state.ball.vy = Math.sin(ang) * minSpeed;
-        this.lastBallPos = { x: this.state.ball.x, y: this.state.ball.y, time: Date.now() };
-      } else if (moved < 5 && timeSinceMove > 2000) {
-        // الكرة عالقة في مكان - حركها للوسط
-        this.state.ball.x = this.state.worldW / 2 + (Math.random()-0.5)*100;
-        this.state.ball.y = this.state.worldH / 2 + (Math.random()-0.5)*100;
-        const ang = (Math.random()-0.5)*0.8;
-        this.state.ball.vx = Math.sin(ang) * 4;
-        this.state.ball.vy = -Math.abs(Math.cos(ang) * 4) - 1;
-        this.lastBallPos = { x: this.state.ball.x, y: this.state.ball.y, time: Date.now() };
-      } else if (moved > 10) {
-        this.lastBallPos = { x: this.state.ball.x, y: this.state.ball.y, time: Date.now() };
-      }
-    }
-
     this.broadcastAccum += deltaMs;
     if (this.broadcastAccum >= 16) {
       this.broadcastAccum = 0;
@@ -553,8 +488,6 @@ class QoudRoom extends Room<QoudRoomState> {
       rally: this.state.rally,
       scores: Object.fromEntries(this.state.scores.entries()),
       timeLeft: this.state.timeLeft,
-      isPaused: this.isPaused,
-      paused: this.isPaused,
       series: {
         currentRound: this.currentRound,
         totalRounds: this.totalRounds,
@@ -897,4 +830,4 @@ const gameServer = new Server({
 });
 gameServer.define('qoud', QoudRoom);
 await gameServer.listen(port, '0.0.0.0');
-console.log(`[colyseus] Qoud server listening on port ${port} - 6 digits only - Pause fixed - Anti-stuck fixed`);
+console.log(`[colyseus] Qoud server listening on port ${port} - 6 digits only`);
