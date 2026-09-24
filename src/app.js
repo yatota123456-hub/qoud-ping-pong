@@ -1,0 +1,1 @@
+arenaSize = deviceScreenResolution;
