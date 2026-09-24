@@ -445,12 +445,11 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const ARENA_SCALES: any = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 };
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
-  
-  // ✅ استخدم count مباشرة، لا تغيّر حسب players.length
+  // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين يكون مستطيل - تصحيح حسب طلب المستخدم
   const base = count >= 4 ? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
-} 
+}
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
   const isMobileNow = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
   // إصلاح 1: الساحة متوسطة أمام الكاميرا عند بدء اللعبة - مسافة محسوبة من حجم الساحة لضمان التوسيط
@@ -508,17 +507,8 @@ export function GameScreen3D({
   const [arenaStyle, setArenaStyle] = useState<'classic' | 'modern'>('modern');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
-// ✅ استخدم worldW و worldH من roomData إذا توفرت
-  const world = useMemo(() => {
-    // أولاً: استخدم القيم من السيرفر إذا توفرت
-    if (roomData?.worldW && roomData?.worldH) {
-      return { 
-        w: roomData.worldW, 
-        h: roomData.worldH, 
-        scale: 1, 
-        scaleFactor: 1 
-      };
-    }
+ 
+    
   useEffect(() => {
     const savedCam = localStorage.getItem(`qoud_camera_preset_${settings.arenaSize || 'medium'}`);
     if (savedCam) {
@@ -537,13 +527,7 @@ export function GameScreen3D({
     } catch {}
     setShowRestoreModal(false);
   };
-    const ARENA_SCALES: any = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 };
-    const RECT = { w: 700, h: 1050 };
-    const SQUARE = { w: 1000, h: 1000 };
-    const base = (settings.players || 2) >= 3 ? SQUARE : RECT;
-    const sc = ARENA_SCALES[settings.arenaSize] || 1;
-    return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
-  }, [roomData?.worldW, roomData?.worldH, settings.arenaSize, settings.players]);
+  
 
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
