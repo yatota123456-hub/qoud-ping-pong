@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Pause, Play, X, RotateCcw, Camera, Eye, EyeOff, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw,Save, Video, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { socket } from '../socket.tsx';
+import type { RoomData } from '../socket.tsx';
 
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
 type Settings = any;
@@ -444,12 +445,12 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const ARENA_SCALES: any = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 };
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
-  // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين يكون مستطيل - تصحيح حسب طلب المستخدم
+  
+  // ✅ استخدم count مباشرة، لا تغيّر حسب players.length
   const base = count >= 4 ? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
-}
-
+} 
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
   const isMobileNow = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
   // إصلاح 1: الساحة متوسطة أمام الكاميرا عند بدء اللعبة - مسافة محسوبة من حجم الساحة لضمان التوسيط
@@ -495,18 +496,29 @@ const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
 
 export function GameScreen3D({ 
   roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating, 
-  seriesWins = {}, currentRound = 1, onGoal, onTimeUp, onPause, onExit 
+  seriesWins = {}, currentRound = 1, onGoal, onTimeUp, onPause, onExit , roomData 
 }: { 
   roomCode: string; isHost: boolean; players: Player[]; settings: Settings; 
   scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null; 
   seriesWins?: Record<string, number>; currentRound?: number; 
   onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; 
+  roomData?: RoomData; 
 }) {
   const [localReady, setLocalReady] = useState(false);
   const [arenaStyle, setArenaStyle] = useState<'classic' | 'modern'>('modern');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
-
+// ✅ استخدم worldW و worldH من roomData إذا توفرت
+  const world = useMemo(() => {
+    // أولاً: استخدم القيم من السيرفر إذا توفرت
+    if (roomData?.worldW && roomData?.worldH) {
+      return { 
+        w: roomData.worldW, 
+        h: roomData.worldH, 
+        scale: 1, 
+        scaleFactor: 1 
+      };
+    }
   useEffect(() => {
     const savedCam = localStorage.getItem(`qoud_camera_preset_${settings.arenaSize || 'medium'}`);
     if (savedCam) {
@@ -525,6 +537,13 @@ export function GameScreen3D({
     } catch {}
     setShowRestoreModal(false);
   };
+    const ARENA_SCALES: any = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 };
+    const RECT = { w: 700, h: 1050 };
+    const SQUARE = { w: 1000, h: 1000 };
+    const base = (settings.players || 2) >= 3 ? SQUARE : RECT;
+    const sc = ARENA_SCALES[settings.arenaSize] || 1;
+    return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
+  }, [roomData?.worldW, roomData?.worldH, settings.arenaSize, settings.players]);
 
   const { i18n } = useTranslation();
   const mountRef = useRef<HTMLDivElement>(null);
@@ -562,8 +581,16 @@ export function GameScreen3D({
 
 
   const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
-  const world = useMemo(() => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize), [players.length, settings.players, settings.arenaSize]);
-  const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
+const world = useMemo(() => getArenaWorld(settings.players || 2, settings.arenaSize), [settings.players, settings.arenaSize]);
+   if (roomData?.worldW && roomData?.worldH) {
+      return { 
+        w: roomData.worldW, 
+        h: roomData.worldH, 
+        scale: 1, 
+        scaleFactor: 1 
+      };
+    }
+const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
 
   const getMySide = useCallback((): Player['side'] => {
     const mySocketId = (socket as any).id || (socket as any).socketId;
@@ -731,8 +758,8 @@ export function GameScreen3D({
   const shakeRef = useRef({ intensity: 0 });
   const lastBallEmitRef = useRef(0);
   const stateRef = useRef({
-    ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
-    ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
+  ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
+  ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
     paddles: {
       top: { x: world.w / 2, z: 52 },
       right: { x: world.w - 52, z: world.h / 2 },
@@ -749,7 +776,9 @@ export function GameScreen3D({
       top: { x: world.w / 2, z: 52 },
       right: { x: world.w - 52, z: world.h / 2 },
       bottom: { x: world.w / 2, z: world.h - 52 },
-      left: { x: 52, z: world.h / 2 }
+      left: { x: 52, z: world.h / 2 },
+      worldW: world.w,
+  worldH: world.h,
     } as any,
     last: performance.now(),
     elapsed: 0,
@@ -758,7 +787,9 @@ export function GameScreen3D({
     countdownStart: 0,
     countdownSide: null as Player['side'] | null,
     serving: { active: (settings as any).start === 'paddle', side: 'bottom' as Player['side'], startTime: 0, requested: false }, // إصلاح 4: يبدأ من المضرب إذا اختيار من المضرب
-    paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any
+    paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any,
+     worldW: world.w,
+    worldH: world.h,
   });
 
   // إطلاق الكرة من المضرب بالمسافة
@@ -935,7 +966,19 @@ export function GameScreen3D({
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
+       if (data.worldW && data.worldH) {
+      const newWorld = { w: data.worldW, h: data.worldH };
+      // تحديث محلي لو احتجت
+      if (stateRef.current.worldW !== newWorld.w || stateRef.current.worldH !== newWorld.h) {
+        stateRef.current.worldW = newWorld.w;
+        stateRef.current.worldH = newWorld.h;
+      }
+    }
       const mySide = getMySide();
+       if (data.worldW && data.worldH) {
+        stateRef.current.worldW = data.worldW;
+        stateRef.current.worldH = data.worldH;
+      }
       if (data.ball) {
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
@@ -948,6 +991,7 @@ export function GameScreen3D({
           stateRef.current.ball.vx = data.ball.vx;
           stateRef.current.ball.vy = data.ball.vy;
         }
+
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {

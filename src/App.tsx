@@ -51,6 +51,7 @@ function getArenaWorld(playersCount: number, arenaSize: ArenaSize = 'medium') {
   const scale = ARENA_SCALES[arenaSize] || 1.0;
   return { w: baseWorld.w * scale, h: baseWorld.h * scale, };
 }
+import type { RoomData } from './socket.tsx';
 
 function App() {
   const { t, i18n } = useTranslation();
@@ -59,6 +60,7 @@ function App() {
   const [settings, setSettings] = useState<Settings>(() => { try { return {...defaultSettings,...JSON.parse(localStorage.getItem('qoud-ping-pong-settings')?? '{}') as Partial<Settings> }; } catch { return defaultSettings; } });
   const [room, setRoom] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
+  const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [joinName, setJoinName] = useState(() => localStorage.getItem('qoud_name') || '');
   const [names, setNames] = useState(['نورا', 'سامي', 'ليان', 'كريم']);
@@ -100,18 +102,22 @@ function App() {
   }, []);
 
 useEffect(() => {
-  const onRoomUpdate = (roomData: RoomData) => {
-    setRoom(prev => roomData.code || prev || roomRef.current);
-    if (screenRef.current!== 'game' && roomData.players?.length > 0) setPlayers(roomData.players);
-    if (roomData.settings && screenRef.current!== 'game') setSettings((current) => ({...current,...roomData.settings }));
-    if (roomData.hostSocketId) setIsHost(roomData.hostSocketId === socket.id);
-    if (roomData.status === 'playing' && screenRef.current === 'waiting') { setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); setMatchKey((k) => k + 1); setScreen('game'); }
-    if ((roomData as any).series) {
-      const s = (roomData as any).series;
-      if (s.seriesWins) setSeriesWins(s.seriesWins);
-      if (s.currentRound) setCurrentRound(s.currentRound);
-    }
-  };
+    const onRoomUpdate = (data: RoomData) => {
+      setRoomData(data); // ✅ احفظ roomData
+      setRoom(prev => data.code || prev || roomRef.current);
+      if (screenRef.current!== 'game' && data.players?.length > 0) setPlayers(data.players);
+      if (data.settings && screenRef.current!== 'game') setSettings((current) => ({...current,...data.settings }));
+      if (data.hostSocketId) setIsHost(data.hostSocketId === socket.id);
+      if (data.status === 'playing' && screenRef.current === 'waiting') { 
+        setWinner(null); setLastGoal(null); setMatchPaused(false); setCelebrating(null); 
+        setMatchKey((k) => k + 1); setScreen('game'); 
+      }
+      if (data.series) {
+        const s = data.series;
+        if (s.seriesWins) setSeriesWins(s.seriesWins);
+        if (s.currentRound) setCurrentRound(s.currentRound);
+      }
+    };
   const onGameStarted = () => { 
     setWinner(null); 
     setLastGoal(null); 
@@ -190,7 +196,7 @@ useEffect(() => {
     setScreen('setup'); 
   };
   socket.on('room-update', onRoomUpdate);
-  socket.on('game-started', onGameStarted);
+   socket.on('game-started', onGameStarted);
   socket.on('match-finished', onMatchFinished);
   socket.on('goal-scored', onGoalScored);
   socket.on('round-finished', onRoundFinished);
@@ -199,7 +205,7 @@ useEffect(() => {
   socket.on('error', onError);
   socket.on('connection-lost', onLost);
   socket.on('host-left', onHostLeft);
-  return () => {
+    return () => {
     socket.off('room-update', onRoomUpdate);
     socket.off('game-started', onGameStarted);
     socket.off('match-finished', onMatchFinished);
@@ -210,6 +216,7 @@ useEffect(() => {
     socket.off('error', onError);
     socket.off('connection-lost', onLost);
     socket.off('host-left', onHostLeft);
+     return () => { socket.off('room-update', onRoomUpdate); };
   };
 }, []);
   useEffect(() => {
@@ -381,9 +388,27 @@ useEffect(() => {
   if (screen === 'waiting') {
     return <WaitingRoom room={room} players={players} isHost={isHost} error={error} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
   }
-  if (screen === 'game') {
+ if (screen === 'game') {
     if (settings.graphics === '3d') {
-      return <GameScreen3D key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} onGoal={goalScored} onTimeUp={() => {const top = [...players].filter(Boolean).sort((a, b) => (scores[b?.id]?? 0) - (scores[a?.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
+      return <GameScreen3D 
+        key={matchKey} 
+        roomCode={room} 
+        isHost={isHost} 
+        players={players} 
+        settings={settings} 
+        scores={scores} 
+        lastGoal={lastGoal} 
+        paused={matchPaused} 
+        celebrating={celebrating} 
+        seriesWins={seriesWins} 
+        currentRound={currentRound} 
+        onGoal={goalScored} 
+        onTimeUp={() => {const top = [...players].filter(Boolean).sort((a, b) => (scores[b?.id]?? 0) - (scores[a?.id]?? 0))[0]; if (top) finishMatch(top); }} 
+        onPause={() => setMatchPaused((p:any)=>!p)} 
+        onExit={leaveMatch}
+        roomData={roomData} // ✅ مرر roomData
+      />;
+    
     }
     return <GameScreen key={matchKey} roomCode={room} isHost={isHost} players={players} settings={settings} scores={scores} lastGoal={lastGoal} paused={matchPaused} celebrating={celebrating} seriesWins={seriesWins} currentRound={currentRound} roundWinner={roundWinner} onGoal={goalScored} onTimeUp={() => { const top = [...players].sort((a, b) => (scores[b.id]?? 0) - (scores[a.id]?? 0))[0]; if (top) finishMatch(top); }} onPause={() => setMatchPaused((p:any)=>!p)} onExit={leaveMatch} />;
   }
@@ -405,7 +430,6 @@ function Brand() {
 function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinName, computers, error, onChangeName, onChangeSettings, onToggleComputer, onJoinCodeChange, onJoin, onCreate }: any) {
   const { t, i18n } = useTranslation();
   const isAr = i18n.language?.startsWith('ar')?? true;
-  const [showJoinOnly, setShowJoinOnly] = useState(false);
   return (
     <main className="min-h-screen w-full bg-[#e9dfb1] text-black flex justify-center py-4 px-3" dir={isAr? 'rtl' : 'ltr'}>
       <style>{`
@@ -427,44 +451,11 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
             <Brand />
           </div>
         </div>
-
-        {/* شاشة الانضمام فقط - تظهر عند الضغط على زر الانضمام العريض */}
-        {showJoinOnly ? (
-          <>
-            <div className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-4 text-center">
-              <div className="text-[11px] font-black tracking-[0.18em] opacity-50 mb-1.5">انضم لغرفة</div>
-              <h1 className="font-black text-[22px] leading-[1.05] tracking-tight">ادخل بيانات الانضمام</h1>
-            </div>
-            {error && <div className="bg-[#ff2d2d] text-white border-[2.5px] border-black rounded-[14px] p-3 font-black text-[13px] text-center">{error}</div>}
-            <section className="bg-black border-[2.5px] border-black rounded-[20px] p-4 flex flex-col gap-4 animate-[fadeIn_.25s]">
-              <div className="flex flex-col gap-2">
-                <span className="font-black text-[13px] text-[#f6f0d2]">اسمك</span>
-                <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اكتب اسمك" className="w-full h-14 rounded-full border-[2.5px] border-white/20 bg-[#1a1a1a] text-white px-5 font-bold text-[16px] placeholder:text-white/40 outline-none focus:border-white/50" />
-              </div>
-              <div className="flex flex-col gap-2">
-                <span className="font-black text-[13px] text-[#f6f0d2]">رمز الغرفة - 6 أرقام</span>
-                <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.replace(/[^0-9]/g,'').slice(0,6))} placeholder="123456" className="w-full h-14 rounded-full border-[2.5px] border-white bg-white text-black text-center font-black text-[22px] tracking-[0.3em] outline-none" />
-              </div>
-              <button onClick={()=>onJoin(joinName)} className="w-full h-14 rounded-full border-[2.5px] border-white bg-[#ff2d2d] text-white font-black text-[16px] flex items-center justify-center gap-2 hover:bg-[#ff4444] active:scale-[0.98] transition">
-                <LogIn size={20} strokeWidth={2.5} /> دخول الغرفة
-              </button>
-              <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 6 أرقام مختلفة</div>
-            </section>
-            <button onClick={()=>setShowJoinOnly(false)} className="w-full h-12 rounded-full border-[2.5px] border-black bg-white text-black font-black text-[14px] active:scale-[0.98] transition">← رجوع للإعدادات</button>
-          </>
-        ) : (
-          <>
-            <div className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-4 text-center">
-              <div className="text-[11px] font-black tracking-[0.18em] opacity-50 mb-1.5">طاولة LED</div>
-              <h1 className="font-black text-[26px] leading-[1.05] tracking-tight">صمم مباراتك<br/>البطولية</h1>
-            </div>
-            {error && <div className="bg-[#ff2d2d] text-white border-[2.5px] border-black rounded-[14px] p-3 font-black text-[13px] text-center">{error}</div>}
-
-            {/* زر انضمام عريض في الأعلى - يخفي كل القائمة */}
-            <button onClick={()=>setShowJoinOnly(true)} className="w-full h-[56px] rounded-[16px] border-[2.5px] border-black bg-[#0a0a0a] text-white font-black text-[16px] flex items-center justify-center gap-2 hover:bg-black active:scale-[0.98] transition shadow-[0_3px_0_#000]">
-              <LogIn size={20} strokeWidth={2.5} /> انضمام لغرفة موجودة
-            </button>
-
+        <div className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-4 text-center">
+          <div className="text-[11px] font-black tracking-[0.18em] opacity-50 mb-1.5">طاولة LED</div>
+          <h1 className="font-black text-[26px] leading-[1.05] tracking-tight">صمم مباراتك<br/>البطولية</h1>
+        </div>
+        {error && <div className="bg-[#ff2d2d] text-white border-[2.5px] border-black rounded-[14px] p-3 font-black text-[13px] text-center">{error}</div>}
 
         {/* 1- نموذج 2D / 3D فقط */}
         <section className="bg-[#fff9dc] border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
@@ -609,11 +600,23 @@ function SetupScreen({ settings, names, roomsCount, joinCode, joinName, setJoinN
           </div>
         </section>
 
+        {/* 7- انضمام للغرف - في الأخير */}
+        <section className="bg-black border-[2.5px] border-black rounded-[20px] p-3.5 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="bg-[#ffcf5a] text-black text-[11px] font-black px-3 h-7 rounded-full grid place-items-center">JOIN ROOM</span>
+            <span className="font-black text-[14px] text-[#f6f0d2]">انضم لغرفة موجودة؟</span>
+          </div>
+          <div className="grid grid-cols-[1fr_90px_48px] gap-2">
+            <input value={joinName} onChange={(e)=>{const v=e.target.value.slice(0,15); setJoinName(v); localStorage.setItem('qoud_name',v); onChangeName(0,v);}} placeholder="اسمك" className="w-full h-11 rounded-full border-[2px] border-white/20 bg-[#1a1a1a] text-white px-4 font-bold text-[14px] placeholder:text-white/40 outline-none focus:border-white/40" />
+            <input value={joinCode} onChange={(e)=>onJoinCodeChange(e.target.value.replace(/[^0-9]/g,'').slice(0,6))} placeholder="123456" className="w-full h-11 rounded-full border-[2px] border-white bg-white text-black text-center font-black text-[15px] tracking-[0.2em] outline-none" />
+            <button onClick={()=>onJoin(joinName)} className="w-12 h-11 rounded-full border-[2px] border-white bg-[#ff2d2d] grid place-items-center text-white hover:bg-[#ff4444] active:scale-95 transition"><LogIn size={18} strokeWidth={2.5} /></button>
+          </div>
+          <div className="text-[11px] font-bold text-white/50 text-center">اكتب اسمك + كود الغرفة 6 أرقام مختلفة ثم انضم</div>
+        </section>
+
         <button onClick={onCreate} className="h-[52px] rounded-[16px] border-[2.5px] border-black bg-black text-[#f6f0d2] font-black text-[16px] active:scale-[0.98] transition hover:bg-[#1a1a1a]">بدء اللعب • انشئ غرفة</button>
         <div className="text-center text-[11px] font-black opacity-50">طاولة LED - تصميم البطولة</div>
         <div className="h-6" />
-          </>
-        )}
       </div>
     </main>
   );
