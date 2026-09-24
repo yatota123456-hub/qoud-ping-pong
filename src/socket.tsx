@@ -1,7 +1,7 @@
 import { Client } from '@colyseus/sdk';
 
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
-type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: any; series?: any; isPaused?: boolean; worldW?: number; worldH?: number };
+type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: any; series?: any };
 
 type SocketListener = (...args: any[]) => void;
 
@@ -34,46 +34,32 @@ class ColyseusBridge {
     const dx = x - this.lastPaddlePos.x;
     const dy = y - this.lastPaddlePos.y;
     const distSq = dx*dx + dy*dy;
-    if (distSq < 1 && now - this.lastPaddleEmit < 16) return;
-    if (now - this.lastPaddleEmit < 10) return;
+    if (distSq < 4 && now - this.lastPaddleEmit < 32) return;
+    if (now - this.lastPaddleEmit < 16) return;
     this.lastPaddleEmit = now;
     this.lastPaddlePos = { x, y };
     this.emit('paddle-target', { x: Math.round(x), y: Math.round(y) });
   }
   attach(room: any) {
     this.room = room;
-    const messageTypes = [
-      'room-update','game-started','goal-scored','round-finished',
-      'next-round','series-started','match-finished','host-left',
-      'hit-effect','countdown','game-state','paddle-input',
-      'player-ready','all-players-ready',
-      'pause-update','game-paused','pause-state'
-    ];
+ const messageTypes = [
+  'room-update','game-started','goal-scored','round-finished',
+  'next-round','series-started','match-finished','host-left',
+  'hit-effect','countdown','game-state','paddle-input',
+  'player-ready','all-players-ready' // <-- مهم
+];
     for (const messageType of messageTypes) {
       room.onMessage(messageType, (payload: unknown) => this.dispatch(messageType, payload));
     }
     room.onStateChange((state: any) => this.dispatch('room-update', this.roomData(state)));
     room.onError?.((code: number, message: string) => this.dispatch('error', message || `Connection error (${code})`));
-    room.onLeave?.((code: number) => { 
-      if (this.room !== room) return;
-      if (code === 1000 || (code as any) === 4000) {
-        this.room = null;
-        return;
-      }
-      if (this.room === room) this.dispatch('connection-lost', code); 
-    });
+    room.onLeave?.((code: number) => { if (this.room === room) this.dispatch('connection-lost', code); });
     if (room.state) this.dispatch('room-update', this.roomData(room.state));
   }
   async leave() {
     const room = this.room;
     this.room = null;
-    if (room) { 
-      try { 
-        (room as any)._reconnectionToken = null;
-        (room as any).connection?.close();
-        await room.leave(true); 
-      } catch {} 
-    }
+    if (room) { try { await room.leave(true); } catch {} }
   }
   private dispatch(event: string, ...args: any[]) {
     this.listeners.get(event)?.forEach((l) => { try { l(...args); } catch {} });
@@ -99,25 +85,27 @@ class ColyseusBridge {
       hostSocketId: state?.hostSessionId,
       hostName: players.find((p: Player) => p.id === state?.hostSessionId)?.name,
       players, settings, series,
-      isPaused: Boolean(state?.isPaused),
-      // ✅ حجم الساحة من السيرفر
-      worldW: state?.worldW ? Number(state.worldW) : undefined,
-      worldH: state?.worldH ? Number(state.worldH) : undefined,
     };
   }
 }
 
 function getColyseusEndpoint() {
+  // الرابط الجديد الصحيح الذي ظهر في الـ Terminal الخاص بك
   const FLY_URL = 'wss://qoud-ping-pong-tqk-6q.fly.dev';
+  
   const envUrl = (import.meta as any).env?.VITE_COLYSEUS_URL;
   if (envUrl) return envUrl;
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+  
+  // إذا كنا في بيئة الإنتاج، نستخدم الرابط الصحيح
+  if (window.location.hostname !== 'localhost') {
     return FLY_URL;
   }
-  return `ws://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:2567`;
+  
+  // للبيئة المحلية
+  return `ws://${window.location.hostname}:2567`;
 }
 
+
+
 export const colyseus = new Client(getColyseusEndpoint());
-(colyseus as any).reconnectionAttempts = 1;
 export const socket = new ColyseusBridge();
-export type { RoomData };
