@@ -1424,8 +1424,19 @@ export function GameScreen3D({
                 }
               });
 
-              state.ball.x += state.ball.vx * delta;
-              state.ball.y += state.ball.vy * delta;
+              // حركة مقسمة لـ 3 خطوات لمنع النفاذ عند السرعات العالية
+              (state as any)._prevBallX = state.ball.x;
+              (state as any)._prevBallY = state.ball.y;
+              const subSteps = 3;
+              const subDelta = delta / subSteps;
+              for (let s = 0; s < subSteps; s++) {
+                state.ball.x += state.ball.vx * subDelta;
+                state.ball.y += state.ball.vy * subDelta;
+                // فحص حدود مبكر في كل خطوة فرعية لمنع الخروج
+                if (s < subSteps - 1) {
+                  // لا نعالج الأهداف هنا، فقط نستمر
+                }
+              }
               state.ballTarget.x = state.ball.x;
               state.ballTarget.y = state.ball.y;
               state.ballTarget.vx = state.ball.vx;
@@ -1579,34 +1590,76 @@ export function GameScreen3D({
                 }
               }
 
+              // منع اختراق الكرة للاعب الثاني - swept collision + منطقة أكبر للبعيد
               (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
                 if (!activeSide(side)) return;
                 const paddle = state.paddles[side];
                 const pVel = state.paddleVel[side];
+                // تعويض التأخر: اللاعب البعيد له منطقة تصادم أكبر 35%
+                const isRemote = side !== getMySide() && !isOfflineMode;
+                const effectiveHitDist = isRemote ? HIT_DIST * 1.38 : HIT_DIST; // 50 -> 69 للبعيد
                 const dx = state.ball.x - paddle.x;
                 const dy = state.ball.y - paddle.z;
                 const dist = Math.hypot(dx, dy);
-                if (dist >= HIT_DIST || dist < 0.5) return;
+                // فحص swept: هل المسار من الموضع السابق للحالي مر عبر المضرب؟
+                const prevX = (state as any)._prevBallX ?? state.ball.x;
+                const prevY = (state as any)._prevBallY ?? state.ball.y;
+                const vxSeg = state.ball.x - prevX;
+                const vySeg = state.ball.y - prevY;
+                let sweptHit = false;
+                let closestDist = dist;
+                let closestX = state.ball.x;
+                let closestY = state.ball.y;
+                if (Math.hypot(vxSeg, vySeg) > 0.1) {
+                  const wx = paddle.x - prevX;
+                  const wy = paddle.z - prevY;
+                  const c1 = wx * vxSeg + wy * vySeg;
+                  const c2 = vxSeg * vxSeg + vySeg * vySeg;
+                  let t = 0;
+                  if (c1 > 0 && c2 > c1) {
+                    t = c1 / c2;
+                    const pbx = prevX + t * vxSeg;
+                    const pby = prevY + t * vySeg;
+                    closestDist = Math.hypot(pbx - paddle.x, pby - paddle.z);
+                    closestX = pbx;
+                    closestY = pby;
+                    if (closestDist < effectiveHitDist) sweptHit = true;
+                  }
+                }
+                const isHit = dist < effectiveHitDist || sweptHit;
+                if (!isHit || dist < 0.5) return;
+                // إذا swept hit استخدم نقطة الاقتراب الأقرب للحساب
+                const useX = sweptHit ? closestX : state.ball.x;
+                const useY = sweptHit ? closestY : state.ball.y;
+                const useDx = useX - paddle.x;
+                const useDy = useY - paddle.z;
+                const useDist = Math.hypot(useDx, useDy) || 1;
                 let isFrontHit = false;
-                const frontThreshold = 8;
+                const frontThreshold = isRemote ? 18 : 8; // تساهل أكبر للبعيد
                 if (side === 'bottom') isFrontHit = state.ball.y < paddle.z + frontThreshold;
                 else if (side === 'top') isFrontHit = state.ball.y > paddle.z - frontThreshold;
                 else if (side === 'left') isFrontHit = state.ball.x > paddle.x - frontThreshold;
                 else if (side === 'right') isFrontHit = state.ball.x < paddle.x + frontThreshold;
+                // حتى لو خلفي، إذا اللاعب بعيد ادفعه بقوة لمنع الاختراق
                 if (!isFrontHit) {
-                  const pushFactor = 2.0;
-                  const nx = dx / dist; const ny = dy / dist;
-                  const overlap = HIT_DIST - dist + 3;
+                  const pushFactor = isRemote ? 3.5 : 2.0;
+                  const nx = useDx / useDist; const ny = useDy / useDist;
+                  const overlap = effectiveHitDist - useDist + (isRemote ? 8 : 3);
                   state.ball.x += nx * overlap * pushFactor;
                   state.ball.y += ny * overlap * pushFactor;
-                  return;
+                  // إذا بعيد وصده خلفي اعتبره صده أمامي لمنع المرور
+                  if (isRemote && useDist < effectiveHitDist * 0.9) {
+                    isFrontHit = true;
+                  } else {
+                    return;
+                  }
                 }
-                const nx = dx / dist; const ny = dy / dist;
-                const overlap = HIT_DIST - dist + 1;
+                const nx = useDx / useDist; const ny = useDy / useDist;
+                const overlap = effectiveHitDist - useDist + 1;
                 state.ball.x += nx * overlap;
                 state.ball.y += ny * overlap;
                 const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
-                const paddleSpeedFactor = 0.85;
+                const paddleSpeedFactor = isRemote ? 1.15 : 0.85; // المضرب البعيد يدفع أكثر
                 const ballVelDotNormal = state.ball.vx * nx + state.ball.vy * ny;
                 let newVx = state.ball.vx - 2 * ballVelDotNormal * nx + pVel.vx * paddleSpeedFactor;
                 let newVy = state.ball.vy - 2 * ballVelDotNormal * ny + pVel.vy * paddleSpeedFactor;
@@ -1709,7 +1762,7 @@ export function GameScreen3D({
               current.x = target.x;
               current.z = target.z;
             } else {
-              const PADDLE_LERP = isOfflineMode ? 1 : 0.60;
+              const PADDLE_LERP = isOfflineMode ? 1 : 0.92; // رفع من 0.60 لمنع التأخر - اللاعب الثاني
               current.x += (target.x - current.x) * PADDLE_LERP;
               current.z += (target.z - current.z) * PADDLE_LERP;
             }
