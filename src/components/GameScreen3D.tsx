@@ -1161,7 +1161,7 @@ useEffect(() => {
     };
   }, [world.w, world.h, playersKey, arenaStyle]);
 
-  useEffect(() => {
+   useEffect(() => {
     const state = stateRef.current;
     const needPlayers = Math.max(2, players.length, settings.players || 2);
     const sidesForCount: Player['side'][] = needPlayers === 2 ? ['bottom','top'] : ['bottom','top','right','left'];
@@ -1180,7 +1180,7 @@ useEffect(() => {
       state.last = now;
 
       if (threeRef.current) {
-        const { ball, paddles, camera } = threeRef.current;
+        const { ball, paddles, camera, renderer } = threeRef.current;
         const c = cam.current as any;
         c.angle += (c.targetAngle - c.angle) * 0.1;
         c.distance += (c.targetDistance - c.distance) * 0.1;
@@ -1513,7 +1513,7 @@ useEffect(() => {
 
         ball.position.x = state.ball.x;
         ball.position.z = state.ball.y;
-        ball.visible = localReadyRef.current ? (state.countdown === 0 && !state.serving.active) || (state.countdown === 0 && isOfflineMode) ? true : state.countdown > 0 ? false : true : true;
+        ball.visible = localReadyRef.current ? state.countdown === 0 : true;
         if (paddles['bottom']) paddles['bottom'].position.set(state.paddles.bottom.x, 12, state.paddles.bottom.z);
         if (paddles['top']) paddles['top'].position.set(state.paddles.top.x, 12, state.paddles.top.z);
         if (paddles['left']) paddles['left'].position.set(state.paddles.left.x, 12, state.paddles.left.z);
