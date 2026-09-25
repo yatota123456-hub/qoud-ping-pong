@@ -854,44 +854,40 @@ export function GameScreen3D({
     cam.current = {...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2} as any;
   }, [initialCam, settings.arenaSize, world.w, world.h]);
 
-  useEffect(() => {
-    const handleGameState = (data: any) => {
-      if (!data) return;
-      const mySide = getMySide();
-      if (data.ball) {
-        stateRef.current.ballTarget.x = data.ball.x;
-        stateRef.current.ballTarget.y = data.ball.y;
-        stateRef.current.ballTarget.vx = data.ball.vx;
-        stateRef.current.ballTarget.vy = data.ball.vy;
+ const handleGameState = (data: any) => {
+  if (!data) return;
+  const mySide = getMySide();
+  if (data.ball) {
+    stateRef.current.ballTarget.x = data.ball.x;
+    stateRef.current.ballTarget.y = data.ball.y;
+    stateRef.current.ballTarget.vx = data.ball.vx;
+    stateRef.current.ballTarget.vy = data.ball.vy;
+  }
+  if (data.serving) {
+    stateRef.current.serving.active = data.serving.active;
+    stateRef.current.serving.side = data.serving.side;
+  }
+  if (data.paddles) {
+    Object.keys(data.paddles).forEach((side) => {
+      if (side === mySide) return;
+      const p = data.paddles[side];
+      if (stateRef.current.targetPaddles[side as Player['side']]) {
+        stateRef.current.targetPaddles[side as Player['side']].x = p.x;
+        stateRef.current.targetPaddles[side as Player['side']].z = p.y;
       }
-      if (data.paddles) {
-        Object.keys(data.paddles).forEach((side) => {
-          if (side === mySide) return;
-          const p = data.paddles[side];
-          if (stateRef.current.targetPaddles[side as Player['side']]) {
-            stateRef.current.targetPaddles[side as Player['side']].x = p.x;
-            stateRef.current.targetPaddles[side as Player['side']].z = p.y;
-          }
-        });
-      }
-      if (data.countdown !== undefined) {
-        stateRef.current.countdown = data.countdown;
-        setCountdown(data.countdown);
-      }
-      if (data.countdownSide !== undefined) {
-        stateRef.current.countdownSide = data.countdownSide || null;
-        setCountdownSide(data.countdownSide || '');
-      }
-      if (data.rally !== undefined) {
-        setRally(data.rally);
-      }
-      if (data.timeLeft !== undefined) {
-        setTimeLeft(data.timeLeft);
-      }
-    };
-    socket.on('game-state', handleGameState);
-    return () => { socket.off('game-state', handleGameState); };
-  }, [getMySide]);
+    });
+  }
+  if (data.countdown!== undefined) {
+    stateRef.current.countdown = data.countdown;
+    setCountdown(data.countdown);
+  }
+  if (data.countdownSide!== undefined) {
+    stateRef.current.countdownSide = data.countdownSide || null;
+    setCountdownSide(data.countdownSide || '');
+  }
+  if (data.rally!== undefined) setRally(data.rally);
+  if (data.timeLeft!== undefined) setTimeLeft(data.timeLeft);
+};
 
 // مع الأصدقاء: كل واحد كاميرته خلفه تلقائياً
 useEffect(() => {
@@ -1203,7 +1199,7 @@ useEffect(() => {
         camera.position.set(cx, cy, cz);
         camera.lookAt(c.lookX, 0, c.lookZ);
 
-        if (localReadyRef.current && !pausedRef.current && !gameEndedRef.current) {
+        if (localReadyRef.current &&!pausedRef.current &&!gameEndedRef.current) {
           // === العداد قبل اللعب وبعد كل هدف - إصلاح مطلوب ===
           if (state.countdown > 0) {
             const elapsed = (now - state.countdownStart) / 1000;
@@ -1237,8 +1233,8 @@ useEffect(() => {
                 }
                 state.ballTarget.vx = state.ball.vx;
                 state.ballTarget.vy = state.ball.vy;
-                if (isHost && !isOfflineMode) {
-                  socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy }, countdown: 0 });
+                if (isHost &&!isOfflineMode) {
+                  socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy }, countdown: 0, serving: { active: false, side: state.serving.side } });
                 }
               }
             }
@@ -1250,7 +1246,8 @@ useEffect(() => {
             // لا نحرك المضارب أثناء العد؟ نسمح بالتحكم
           }
 
-          // حساب سرعة المضارب - مهم لمنع الاختراق
+          // حساب سرعة المضارب - مهم لمنع الاختراق - Host فقط
+          if (isOfflineMode || isHost) {
           (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
             const prev = state.lastPaddles[side];
@@ -1260,9 +1257,10 @@ useEffect(() => {
             prev.x = curr.x;
             prev.z = curr.z;
           });
+          }
 
-          // === إذا من المضرب - الكرة تتبع المضرب ===
-          if (state.serving.active) {
+          // === إذا من المضرب - الكرة تتبع المضرب - Host فقط ===
+          if (state.serving.active && (isOfflineMode || isHost)) {
             const servingSide = state.serving.side;
             const servingPaddle = state.paddles[servingSide];
             if (servingPaddle) {
@@ -1271,6 +1269,7 @@ useEffect(() => {
               else if (servingSide === 'left') { state.ball.x = servingPaddle.x + 60; state.ball.y = servingPaddle.z; }
               else { state.ball.x = servingPaddle.x - 60; state.ball.y = servingPaddle.z; }
               state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
+              state.ballTarget.vx = 0; state.ballTarget.vy = 0;
             }
             if (state.serving.requested) {
               state.serving.active = false;
@@ -1279,6 +1278,7 @@ useEffect(() => {
               else if (servingSide === 'top') { state.ball.vx = (Math.random()-0.5)*spd; state.ball.vy = Math.abs(spd)+1; }
               else if (servingSide === 'left') { state.ball.vx = Math.abs(spd)+1; state.ball.vy = (Math.random()-0.5)*spd; }
               else { state.ball.vx = -Math.abs(spd)-1; state.ball.vy = (Math.random()-0.5)*spd; }
+              state.ballTarget.vx = state.ball.vx; state.ballTarget.vy = state.ball.vy;
             }
           }
 
@@ -1295,6 +1295,7 @@ useEffect(() => {
         else if (servingSide === 'left') { state.ball.x = servingPaddle.x + 60; state.ball.y = servingPaddle.z; }
         else { state.ball.x = servingPaddle.x - 60; state.ball.y = servingPaddle.z; }
         state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
+        state.ballTarget.vx = 0; state.ballTarget.vy = 0;
       }
       if (state.serving.requested) {
         state.serving.active = false;
@@ -1306,9 +1307,11 @@ useEffect(() => {
         state.ballTarget.vx = state.ball.vx; state.ballTarget.vy = state.ball.vy;
       }
     } else {
-      // Client مع الأصدقاء: فقط اتبع السيرفر
+      // Client مع الأصدقاء: فقط اتبع السيرفر - لا تحسب
       state.ball.x += (state.ballTarget.x - state.ball.x) * 0.35;
       state.ball.y += (state.ballTarget.y - state.ball.y) * 0.35;
+      state.ball.vx += (state.ballTarget.vx - state.ball.vx) * 0.35;
+      state.ball.vy += (state.ballTarget.vy - state.ball.vy) * 0.35;
     }
   }
   // --- حالة اللعب العادية ---
@@ -1489,7 +1492,6 @@ useEffect(() => {
       state.ball.vy += (state.ballTarget.vy - state.ball.vy) * velLerp;
     }
   }
-
             // منع الكرة من التعلق أفقياً يمين ويسار
             const speed = Math.hypot(state.ball.vx, state.ball.vy);
             if (speed < MIN_SPEED) {
