@@ -10,8 +10,9 @@ type Scores = Record<string | number, number>;
 
 function createAirHockeySurface(worldW: number, worldH: number) {
   const canvas = document.createElement('canvas');
-  canvas.width = 2048;
-  canvas.height = 4096;
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  canvas.width = isMobile ? 1024 : 1536;
+  canvas.height = isMobile ? 1024 : 2048;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   ctx.fillStyle = '#fefefe';
@@ -124,7 +125,7 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.ClampToEdgeWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.anisotropy = 16;
+  tex.anisotropy = 4;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
   tex.generateMipmaps = true;
@@ -1126,7 +1127,7 @@ export function GameScreen3D({
     const camera = new THREE.PerspectiveCamera(fov, mount.clientWidth / mount.clientHeight, 10, 5000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
     renderer.setSize(mount.clientWidth, mount.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // كان 2 يسبب 291ms على الجوال
     renderer.shadowMap.enabled = false;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1229,7 +1230,7 @@ export function GameScreen3D({
       camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // كان 2 يسبب 291ms على الجوال
     });
     ro.observe(mount);
     return () => {
@@ -1424,18 +1425,14 @@ export function GameScreen3D({
                 }
               });
 
-              // حركة مقسمة لـ 3 خطوات لمنع النفاذ عند السرعات العالية
+              // حركة مقسمة لـ 2 خطوات فقط - أداء أفضل ويمنع النفاذ
               (state as any)._prevBallX = state.ball.x;
               (state as any)._prevBallY = state.ball.y;
-              const subSteps = 3;
+              const subSteps = 2;
               const subDelta = delta / subSteps;
               for (let s = 0; s < subSteps; s++) {
                 state.ball.x += state.ball.vx * subDelta;
                 state.ball.y += state.ball.vy * subDelta;
-                // فحص حدود مبكر في كل خطوة فرعية لمنع الخروج
-                if (s < subSteps - 1) {
-                  // لا نعالج الأهداف هنا، فقط نستمر
-                }
               }
               state.ballTarget.x = state.ball.x;
               state.ballTarget.y = state.ball.y;
@@ -1458,8 +1455,8 @@ export function GameScreen3D({
                 if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
               }
 
-              const goalHalfW = Math.min(340, Math.max(190, world.w * 0.36));
-              const sideGoalHalfW = Math.min(340, Math.max(190, world.h * 0.36));
+              const goalHalfW = Math.min(180, Math.max(110, world.w * 0.22)); // تصغير الهدف - كان يدخل قبل وصول اللاعب
+              const sideGoalHalfW = Math.min(180, Math.max(110, world.h * 0.22));
               const BORDER = 28;
               const leftBound = BORDER + BALL_RADIUS;
               const rightBound = world.w - BORDER - BALL_RADIUS;
@@ -1496,14 +1493,14 @@ export function GameScreen3D({
               }
 
               const goalScoredSide = (() => {
-                if (state.ball.y < 25) {
+                if (state.ball.y < -BALL_RADIUS) { // يجب أن تخرج كامل خارج الساحة
                   if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                     state.ball.visible = false;
                     if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                     return 'top' as const;
                   }
                 }
-                if (state.ball.y > world.h - 25) {
+                if (state.ball.y > world.h + BALL_RADIUS) {
                   if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
                     state.ball.visible = false;
                     if (threeRef.current?.ball) threeRef.current.ball.visible = false;
@@ -1511,14 +1508,14 @@ export function GameScreen3D({
                   }
                 }
                 if (needPlayers >= 4) {
-                  if (state.ball.x < 25) {
+                  if (state.ball.x < -BALL_RADIUS) {
                     if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                       state.ball.visible = false;
                       if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                       return 'left' as const;
                     }
                   }
-                  if (state.ball.x > world.w - 25) {
+                  if (state.ball.x > world.w + BALL_RADIUS) {
                     if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
                       state.ball.visible = false;
                       if (threeRef.current?.ball) threeRef.current.ball.visible = false;
@@ -1684,9 +1681,13 @@ export function GameScreen3D({
                 state.ball.vy = Math.sin(finalAngle) * newSpeed;
                 state.ballTarget.vx = state.ball.vx;
                 state.ballTarget.vy = state.ball.vy;
-                try { playHitSound3D(Math.min(1, state.rally/12)); } catch {}
+                try { 
+                  if (state.rally % 2 === 0) playHitSound3D(Math.min(1, state.rally/12)); // صوت كل ضربتين لتخفيف الحمل
+                } catch {}
                 state.rally++;
-                setRally(state.rally);
+                // تحديث الـ UI كل 3 ضربات فقط لتجنب re-render كل فريم
+                if (state.rally % 3 === 0) setRally(state.rally);
+                else (state as any)._pendingRally = state.rally;
                 if (!isOfflineMode) {
                   socket.sendBallState?.(state.ball.x, state.ball.y, state.ball.vx, state.ball.vy);
                 }
@@ -1777,7 +1778,7 @@ export function GameScreen3D({
         if (paddles['left']) paddles['left'].position.set(state.paddles.left.x, 12, state.paddles.left.z);
         if (paddles['right']) paddles['right'].position.set(state.paddles.right.x, 12, state.paddles.right.z);
 
-        if (hitEffectsRef.current.length > 0) {
+        if (hitEffectsRef.current.length > 0 && hitEffectsRef.current.length < 30) { // حد أقصى لتجنب lag
           for (let i=hitEffectsRef.current.length-1;i>=0;i--) {
             const eff = hitEffectsRef.current[i];
             if (eff.type === 'star') {
