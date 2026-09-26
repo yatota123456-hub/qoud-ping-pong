@@ -728,6 +728,12 @@ export function GameScreen3D({
   };
 
 
+  // ===== Fixed Timestep Constants =====
+  // الثوابت الأساسية لحساب الفيزياء بشكل ثابت على جميع الأجهزة
+  const FIXED_DELTA = 1 / 120;  // Fixed timestep: 1/120 ثانية (نفس السيرفر)
+  const BASE_FRAME_TIME = 16.67;  // Base frame time بالميلي ثانية (افتراض 60Hz baseline)
+  const MAX_DELTA_CLAMP = 2.5;  // الحد الأقصى للـ delta لمنع القفزات الكبيرة
+
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
   const lastBallEmitRef = useRef(0);
@@ -1260,9 +1266,14 @@ export function GameScreen3D({
 
     let rafId: number;
     const tick = (now: number) => {
-      const rawDelta = (now - state.last) / 16.67;
-      const delta = Math.min(rawDelta, 2.5);
+      // حساب الوقت المنقضي بالميلي ثانية
+      const elapsedMs = now - state.last;
       state.last = now;
+      
+      // حساب delta: الفرق الزمني بالميلي ثانية مقسوماً على الـ baseline
+      // هذا يعطينا نسبة مئوية من الفريم الواحد (الذي يفترض أنه 16.67ms في 60Hz)
+      const rawDelta = elapsedMs / BASE_FRAME_TIME;
+      const delta = Math.min(rawDelta, MAX_DELTA_CLAMP);
 
       if (threeRef.current) {
         const { ball, paddles, camera, renderer } = threeRef.current;
@@ -1331,8 +1342,13 @@ export function GameScreen3D({
             if (!activeSide(side)) return;
             const prev = state.lastPaddles[side];
             const curr = state.paddles[side];
-            state.paddleVel[side].vx = (curr.x - prev.x) / (delta || 1);
-            state.paddleVel[side].vy = (curr.z - prev.z) / (delta || 1);
+            
+            // توحيد حساب السرعة: استخدام الوقت المنقضي الفعلي بالثواني
+            // بدلاً من delta النسبية لضمان توافق مع SERVER
+            const elapsedSec = Math.max(elapsedMs / 1000, 1 / 120);  // تجنب القسمة على قيم صغيرة جداً
+            
+            state.paddleVel[side].vx = (curr.x - prev.x) / elapsedSec;
+            state.paddleVel[side].vy = (curr.z - prev.z) / elapsedSec;
             prev.x = curr.x;
             prev.z = curr.z;
           });
@@ -1425,11 +1441,20 @@ export function GameScreen3D({
                 }
               });
 
-              // حركة مقسمة لـ 2 خطوات فقط - أداء أفضل ويمنع النفاذ
+              // حركة الكرة: قسمها إلى خطوات صغيرة لمنع النفاذ عبر العوائق
+              // تم توحيد الحسابات لضمان نفس النتيجة على جميع الأجهزة
               (state as any)._prevBallX = state.ball.x;
               (state as any)._prevBallY = state.ball.y;
-              const subSteps = 2;
-              const subDelta = delta / subSteps;
+              
+              // حساب الوقت المنقضي بالثواني
+              const elapsedSec = elapsedMs / 1000;
+              
+              // تحديد عدد الخطوات الفرعية بناءً على المسافة المتوقع تحريكها
+              const totalDistance = Math.hypot(state.ball.vx * elapsedSec, state.ball.vy * elapsedSec);
+              const maxStepDistance = 4;  // أقصى مسافة لكل خطوة فرعية
+              const subSteps = Math.max(1, Math.ceil(totalDistance / maxStepDistance));
+              const subDelta = elapsedSec / subSteps;
+              
               for (let s = 0; s < subSteps; s++) {
                 state.ball.x += state.ball.vx * subDelta;
                 state.ball.y += state.ball.vy * subDelta;

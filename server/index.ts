@@ -51,6 +51,12 @@ class QoudRoom extends Room<QoudRoomState> {
   private servingRequested = false;
   private broadcastAccum = 0;
 
+  // ===== Fixed Timestep Constants =====
+  // الثوابت الأساسية لحساب الفيزياء بشكل متطابق مع CLIENT
+  private readonly SIMULATION_RATE = 120;  // Hz - معدل المحاكاة
+  private readonly BASE_MS = 1000 / this.SIMULATION_RATE;  // 8.33ms
+  private readonly FIXED_DELTA = 1 / this.SIMULATION_RATE;  // 1/120
+
   // Physics
   private paddleTargets = new Map<PlayerSide, { x: number; y: number }>();
   private paddlePrev = new Map<PlayerSide, { x: number; y: number }>();
@@ -425,7 +431,12 @@ class QoudRoom extends Room<QoudRoomState> {
       return;
     }
 
-    const delta = Math.min(deltaMs / 16.67, 2);
+    // حساب delta: الوقت المنقضي مقسوماً على وقت الـ baseline للمحاكاة
+    // يجب أن يكون deltaMs حوالي 8.33ms (1000/120) في الحالة الطبيعية
+    const delta = Math.min(deltaMs / this.BASE_MS, 2);
+    
+    // تعليق توضيحي: هذا الحساب مطابق لما يفعله CLIENT
+    // بحيث تكون الفيزياء موحدة بين SERVER و CLIENT
 
     if (this.state.countdown > 0) {
       const elapsed = (Date.now() - this.countdownStartedAt) / 1000;
@@ -479,18 +490,28 @@ class QoudRoom extends Room<QoudRoomState> {
       }
     }
 
+    // حساب الوقت المنقضي بالثواني مع حد أقصى لمنع القيم غير المعقولة
     const dtSec = Math.min(deltaMs, 50) / 1000;
+    
     for (const side of this.activeSides) {
       const paddle = this.state.paddles.get(side)!;
       const target = this.paddleTargets.get(side);
       if (!target) continue;
       const player = [...this.state.players.values()].find(p => p.side === side);
       if (player?.computer) continue;
+      
       const prev = this.paddlePrev.get(side) || { x: paddle.x, y: paddle.y };
+      
+      // حساب الحركة: تقريب المضرب نحو الموقع المستهدف
       paddle.x += (target.x - paddle.x) * Math.min(1, dtSec * 14);
       paddle.y += (target.y - paddle.y) * Math.min(1, dtSec * 14);
+      
+      // حساب السرعة: الفرق في الموقع مقسوماً على الوقت المنقضي
+      // نفس الطريقة المستخدمة في CLIENT لضمان التطابق
       const vx = (paddle.x - prev.x) / dtSec;
       const vy = (paddle.y - prev.y) / dtSec;
+      
+      // تطبيق damping factor
       this.paddleVel.set(side, { vx: vx * 0.5, vy: vy * 0.5 });
       this.paddlePrev.set(side, { x: paddle.x, y: paddle.y });
     }
@@ -606,16 +627,22 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private stepBallImproved(delta: number) {
+    // دالة حساب حركة الكرة والاصطدامات
+    // delta: النسبة الزمنية (يجب أن تكون حوالي 1.0 في الحالة الطبيعية)
+    
     const ball = this.state.ball;
     const w = this.state.worldW, h = this.state.worldH;
     const BALL_R = 14;
     const PADDLE_R = 26;
     const HIT_DIST = BALL_R + PADDLE_R;
 
+    // حساب المسافة الكلية التي ستتحركها الكرة في هذا الـ frame
     const totalVx = ball.vx * delta;
     const totalVy = ball.vy * delta;
     const dist = Math.hypot(totalVx, totalVy);
-    const maxStep = 4;
+    
+    // تقسيم الحركة إلى خطوات صغيرة لمنع النفاذ عبر العوائق
+    const maxStep = 4;  // أقصى مسافة للخطوة الواحدة
     const steps = Math.max(1, Math.ceil(dist / maxStep));
     const stepVx = totalVx / steps;
     const stepVy = totalVy / steps;
