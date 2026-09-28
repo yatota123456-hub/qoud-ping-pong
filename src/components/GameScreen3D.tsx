@@ -14,112 +14,66 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   canvas.height = 4096;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.fillStyle = '#fefefe';
+  // خلفية بيضاء نقية مثل الصورة
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  grad.addColorStop(0, 'rgba(0,0,0,0.02)');
-  grad.addColorStop(0.5, 'rgba(255,255,255,0)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.03)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = 'rgba(10,10,10,0.85)';
+  // نقاط رمادية فاتحة صغيرة جداً منتشرة - مثل الصورة الأصلية تماماً
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
   const dotSize = 2.2;
-  const spacing = 32;
-  for (let y = spacing/2; y < canvas.height; y += spacing) {
-    const isEvenRow = Math.floor(y / spacing) % 2 === 0;
-    for (let x = spacing/2; x < canvas.width; x += spacing) {
-      const offset = isEvenRow ? 0 : spacing/2;
-      if (x + offset >= canvas.width - spacing/2) continue;
+  const spacing = 42;
+  for (let y = spacing; y < canvas.height; y += spacing) {
+    for (let x = spacing; x < canvas.width; x += spacing) {
       ctx.beginPath();
-      ctx.arc(x + offset, y, dotSize, 0, Math.PI * 2);
+      ctx.arc(x, y, dotSize, 0, Math.PI * 2);
       ctx.fill();
     }
   }
-  // خط المنتصف - مثل الصورة - أحمر متقطع رفيع
-  ctx.strokeStyle = 'rgba(255, 60, 60, 0.85)';
-  ctx.lineWidth = 4;
-  ctx.setLineDash([30, 20]);
+  // خط المنتصف أحمر متقطع رفيع مثل الصورة
+  ctx.strokeStyle = '#ff3b3b';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([28, 24]);
   ctx.beginPath();
   ctx.moveTo(0, canvas.height/2);
   ctx.lineTo(canvas.width, canvas.height/2);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // الأهداف - نفس شكل الصورة تماماً: فتح في الأعلى والأسفل - قوس أحمر صغير في الحافة
-  ctx.strokeStyle = '#ff2d2d';
-  ctx.lineWidth = 8;
-  ctx.shadowBlur = 0;
-  ctx.shadowColor = 'transparent';
-  const goalRadius = 360;
-  // هدف علوي - قوس أحمر فتحه للأسفل
+  // أقواس الأهداف - أحمر فاتح مثل الصورة تماماً
+  const goalRadius = 380;
+  ctx.strokeStyle = 'rgba(255,45,45,0.9)';
+  ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
   ctx.stroke();
-  // هدف سفلي - قوس أحمر فتحه للأعلى
   ctx.beginPath();
   ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
   ctx.stroke();
 
-  // خط داخلي خفيف للتأكيد (قوس داخلي أرفع)
-  ctx.strokeStyle = 'rgba(255, 45, 45, 0.5)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, 0, goalRadius-12, 0, Math.PI, false);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height, goalRadius-12, Math.PI, Math.PI*2, false);
-  ctx.stroke();
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.shadowColor = 'transparent';
-
-  // إضافة تعبئة واضحة داخل الأهداف لإبرازها
-  ctx.fillStyle = 'rgba(255, 30, 30, 0.14)';
+  // تعبئة وردية خفيفة جداً داخل الأقواس مثل الصورة
+  ctx.fillStyle = 'rgba(255,80,80,0.10)';
   ctx.beginPath();
   ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
-  ctx.lineTo(canvas.width/2 + goalRadius, 0);
-  ctx.lineTo(canvas.width/2 - goalRadius, 0);
   ctx.closePath();
   ctx.fill();
   ctx.beginPath();
   ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
-  ctx.lineTo(canvas.width/2 - goalRadius, canvas.height);
-  ctx.lineTo(canvas.width/2 + goalRadius, canvas.height);
   ctx.closePath();
   ctx.fill();
 
-  // خط داخلي إضافي للتأكيد - يجعل الهدف ظاهر أكثر
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, 0, goalRadius-10, 0, Math.PI, false);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height, goalRadius-10, Math.PI, Math.PI*2, false);
-  ctx.stroke();
-
-  // أهداف جانبية للـ 4 لاعبين فقط - مربعة فقط إذا مربعة
+  // أهداف جانبية للـ 4 لاعبين
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
   if (isSquareArena) {
     const sideGoalRadius = 360;
-    ctx.strokeStyle = '#ff2d2d';
-    ctx.lineWidth = 8;
-    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,45,45,0.9)';
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(0, canvas.height/2, sideGoalRadius, -Math.PI/2, Math.PI/2, false);
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(canvas.width, canvas.height/2, sideGoalRadius, Math.PI/2, -Math.PI/2, false);
     ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.shadowColor = 'transparent';
   }
 
-  ctx.strokeStyle = 'rgba(255, 45, 45, 0.35)';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height/2, 70, 0, Math.PI*2);
-  ctx.stroke();
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.ClampToEdgeWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -302,62 +256,34 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
 
 function createArenaFrameModern(worldW: number, worldH: number) {
   const group = new THREE.Group();
-  const bezelThickness = Math.max(38, Math.min(worldW, worldH) * 0.065);
-  const bezelHeight = 36;
+  // إطار أحمر سميك مثل الصورة تماماً
+  const bezelThickness = Math.max(42, Math.min(worldW, worldH) * 0.07);
+  const bezelHeight = 38;
   const bezelY = 18;
-  const bezelMat = new THREE.MeshStandardMaterial({
-    color: '#ff1a1a',
-    roughness: 0.22,
-    metalness: 0.15,
-    emissive: '#ff0000',
-    emissiveIntensity: 0.08,
+  const redMat = new THREE.MeshStandardMaterial({
+    color: '#e81e25',
+    roughness: 0.35,
+    metalness: 0.1,
   });
-  const createBeveledSide = (w: number, h: number, d: number, x: number, z: number) => {
-    const shape = new THREE.Shape();
-    shape.moveTo(-w/2, -d/2);
-    shape.lineTo(w/2, -d/2);
-    shape.lineTo(w/2 - 8, d/2);
-    shape.lineTo(-w/2 + 8, d/2);
-    shape.lineTo(-w/2, -d/2);
-    const extrudeSettings = {
-      steps: 1,
-      depth: bezelHeight,
-      bevelEnabled: true,
-      bevelThickness: 6,
-      bevelSize: 4,
-      bevelSegments: 4
-    };
-    const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    geo.rotateX(-Math.PI/2);
-    const mesh = new THREE.Mesh(geo, bezelMat);
-    mesh.position.set(x, bezelY, z);
-    return mesh;
-  };
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.60;
-  const goalGapH = worldH * 0.60;
+  const goalGapW = worldW * 0.42;
+  const goalGapH = worldH * 0.42;
 
   const bezelPieces: any[] = [];
-
-  // إطار علوي مقسوم لفتحة في المنتصف
-  const topSideWidth = (worldW - goalGapW) / 2 + bezelThickness;
-  const topLeftX = -bezelThickness + topSideWidth/2;
-  const topRightX = worldW + bezelThickness - topSideWidth/2;
+  const topSideWidth = (worldW - goalGapW) / 2 + bezelThickness * 0.2;
+  const topLeftX = -bezelThickness * 0.1 + topSideWidth/2;
+  const topRightX = worldW + bezelThickness * 0.1 - topSideWidth/2;
   bezelPieces.push(
     { w: topSideWidth, d: bezelThickness, x: topLeftX, z: -bezelThickness / 2 },
-    { w: topSideWidth, d: bezelThickness, x: topRightX, z: -bezelThickness / 2 }
-  );
-
-  // إطار سفلي مقسوم لفتحة في المنتصف
-  bezelPieces.push(
+    { w: topSideWidth, d: bezelThickness, x: topRightX, z: -bezelThickness / 2 },
     { w: topSideWidth, d: bezelThickness, x: topLeftX, z: worldH + bezelThickness / 2 },
     { w: topSideWidth, d: bezelThickness, x: topRightX, z: worldH + bezelThickness / 2 }
   );
 
   if (isSquareArena) {
-    const sideWidth = (worldH - goalGapH) / 2 + bezelThickness;
-    const leftTopZ = -bezelThickness + sideWidth/2;
-    const leftBottomZ = worldH + bezelThickness - sideWidth/2;
+    const sideWidth = (worldH - goalGapH) / 2 + bezelThickness * 0.2;
+    const leftTopZ = -bezelThickness * 0.1 + sideWidth/2;
+    const leftBottomZ = worldH + bezelThickness * 0.1 - sideWidth/2;
     bezelPieces.push(
       { w: bezelThickness, d: sideWidth, x: -bezelThickness / 2, z: leftTopZ },
       { w: bezelThickness, d: sideWidth, x: -bezelThickness / 2, z: leftBottomZ },
@@ -366,63 +292,33 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     );
   } else {
     bezelPieces.push(
-      { w: bezelThickness, d: worldH, x: -bezelThickness / 2, z: worldH / 2 },
-      { w: bezelThickness, d: worldH, x: worldW + bezelThickness / 2, z: worldH / 2 }
+      { w: bezelThickness, d: worldH * 0.92, x: -bezelThickness / 2, z: worldH / 2 },
+      { w: bezelThickness, d: worldH * 0.92, x: worldW + bezelThickness / 2, z: worldH / 2 }
     );
   }
   bezelPieces.forEach((p) => {
-    const mesh = createBeveledSide(p.w, bezelHeight, p.d, p.x, p.z);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, bezelHeight, p.d), redMat);
+    mesh.position.set(p.x, bezelY, p.z);
     group.add(mesh);
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: '#ff4444',
-      transparent: true,
-      opacity: 0.15
-    });
-    const glowMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(p.w * 0.98, 4, p.d * 0.98),
-      glowMat
-    );
-    glowMesh.position.set(p.x, bezelY + bezelHeight/2 + 2, p.z);
-    group.add(glowMesh);
   });
-  const goalW = Math.min(360, Math.max(180, worldW * 0.60));
-  const goalH = 32;
-  const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.2, metalness: 0.1, emissive: '#111111', emissiveIntensity: 0.15 });
-  const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 6), goalMat);
-  goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2 - 3);
+  const goalW = Math.min(280, Math.max(160, worldW * 0.32));
+  const goalH = 34;
+  const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.4, metalness: 0.1 });
+  const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 8), goalMat);
+  goalTop.position.set(worldW/2, bezelY+1, -bezelThickness/2);
   group.add(goalTop);
-  const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 6), goalMat);
-  goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2 + 3);
+  const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 8), goalMat);
+  goalBottom.position.set(worldW/2, bezelY+1, worldH + bezelThickness/2 + 3);
   group.add(goalBottom);
-  const goalLightTop = new THREE.PointLight(0xff1a1a, 0.9, 300);
-  goalLightTop.position.set(worldW/2, bezelY, -bezelThickness/2);
-  group.add(goalLightTop);
-  const goalLightBottom = new THREE.PointLight(0xff1a1a, 0.9, 300);
-  goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
-  group.add(goalLightBottom);
   if (worldW >= 800) {
-    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.60));
-    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 6, goalH, sideGoalW), goalMat);
-    goalLeft.position.set(-bezelThickness/2 - 3, bezelY+2, worldH/2);
+    const sideGoalW = Math.min(280, Math.max(160, worldH * 0.32));
+    const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 8, goalH, sideGoalW), goalMat);
+    goalLeft.position.set(-bezelThickness/2 - 3, bezelY+1, worldH/2);
     group.add(goalLeft);
-    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 6, goalH, sideGoalW), goalMat);
-    goalRight.position.set(worldW + bezelThickness/2 + 3, bezelY+2, worldH/2);
+    const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 8, goalH, sideGoalW), goalMat);
+    goalRight.position.set(worldW + bezelThickness/2 + 3, bezelY+1, worldH/2);
     group.add(goalRight);
-    const leftLight = new THREE.PointLight(0xff1a1a, 0.7, 250);
-    leftLight.position.set(-bezelThickness/2, bezelY, worldH/2);
-    group.add(leftLight);
-    const rightLight = new THREE.PointLight(0xff1a1a, 0.7, 250);
-    rightLight.position.set(worldW + bezelThickness/2, bezelY, worldH/2);
-    group.add(rightLight);
   }
-  const innerLineMat = new THREE.MeshBasicMaterial({ color: '#ff0000', transparent: true, opacity: 0.9 });
-  const lineThickness = 3;
-  const topLine = new THREE.Mesh(new THREE.BoxGeometry(worldW, lineThickness, lineThickness), innerLineMat);
-  topLine.position.set(worldW/2, 22, 1);
-  group.add(topLine);
-  const bottomLine = new THREE.Mesh(new THREE.BoxGeometry(worldW, lineThickness, lineThickness), innerLineMat);
-  bottomLine.position.set(worldW/2, 22, worldH - 1);
-  group.add(bottomLine);
   return group;
 }
 
@@ -531,21 +427,10 @@ export function GameScreen3D({
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
-  // ضد الكمبيوتر يبدأ بعد 3.5 ثانية
+  // تم التعديل: لا يوجد بدء تلقائي - يجب أن يضغط كل اللاعبين ابدأ بعد تعديل الكاميرا
+  // اللعبة لا تبدأ حتى يضغط المستخدم زر ابدأ
   useEffect(()=>{
-    const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
-    if (vsComp && !localReadyRef.current) {
-      const timer = setTimeout(() => {
-        if (!localReadyRef.current) {
-          setLocalReady(true);
-          localReadyRef.current = true;
-          stateRef.current.countdown = 3;
-          stateRef.current.countdownStart = performance.now();
-          setCountdown(3);
-        }
-      }, 3500);
-      return () => clearTimeout(timer);
-    }
+    // معطل - البدء يدوي فقط عبر زر ابدأ
   }, [players, (settings as any).vsComputer, localReady]);
 
 
@@ -767,7 +652,7 @@ export function GameScreen3D({
 
   const playersKey = useMemo(() => players.map(p => `${p.side}:${p.color}`).join(','), [players]);
 
-  const [showCamMenu, setShowCamMenu] = useState(false);
+  const [showCamMenu, setShowCamMenu] = useState(true); // مفتوحة افتراضياً لتعديل الكاميرا قبل البدء
   const [hideUI, setHideUI] = useState(false);
   const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('bottom');
   const [readyPlayers, setReadyPlayers] = useState<string[]>([]);
@@ -1838,48 +1723,63 @@ export function GameScreen3D({
         </div>
       )}
 
-      {/* شريط صغير للبدء في الأسفل - ضد الكمبيوتر يبدأ فوراً، مع الأصدقاء ينتظر الكل */}
+      {/* لوبي البداية الجديد - لا تبدأ اللعبة حتى تعديل الكاميرا والضغط على ابدأ */}
       {!localReady && (
         <div style={{
-          position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 9997, display: 'flex', gap: '12px', alignItems: 'center',
-          background: 'rgba(15,15,20,0.88)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255,255,255,0.15)', borderRadius: '999px', padding: '10px 18px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.6)', pointerEvents: 'auto'
+          position: 'absolute', inset: 0, zIndex: 9997,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.85) 100%)',
+          backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '18px', padding: '20px'
         }}>
-          <button onClick={()=>{
-            if (!isFriendsMode) {
-              setLocalReady(true);
-              localReadyRef.current = true;
-              stateRef.current.countdown = 3;
-              stateRef.current.countdownStart = performance.now();
-              setCountdown(3);
-            } else {
-              const myId = socket.id || 'local_' + Math.random().toString(36).slice(2,7);
-              if (!readyPlayers.includes(myId)) {
-                const newReady = [...readyPlayers, myId];
-                setReadyPlayers(newReady);
-                if (newReady.length >= players.length) {
-                  setLocalReady(true);
-                  localReadyRef.current = true;
-                  stateRef.current.countdown = 3;
-                  stateRef.current.countdownStart = performance.now();
-                  setCountdown(3);
-                  if (isHost) {
-                    socket.emit('all-players-ready', { roomCode });
-                    socket.emit('game-started', { roomCode });
+          <div style={{
+            background: 'rgba(20,20,25,0.95)', border: '1.5px solid rgba(255,255,255,0.14)',
+            borderRadius: '22px', padding: '26px 28px', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', gap: '14px', minWidth: '320px', maxWidth: '90vw',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.9)', direction: 'rtl'
+          }}>
+            <div style={{ width: '58px', height: '58px', borderRadius: '50%', background: '#1a1a1a', border: '2px solid #00e5ff', display: 'grid', placeItems: 'center' }}>
+              <Camera size={28} color="#00e5ff" />
+            </div>
+            <h3 style={{ color: '#fff', fontWeight: 900, fontSize: '19px', margin: 0 }}>عدّل الكاميرا قبل البدء</h3>
+            <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px', textAlign: 'center', lineHeight: 1.7, margin: 0 }}>
+              استخدم أزرار الكاميرا على اليمين لتعديل الزاوية والتقريب<br/>مثل شكل الساحة في الصورة
+            </p>
+            <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
+            <button onClick={()=>{
+              if (!isFriendsMode) {
+                setLocalReady(true);
+                localReadyRef.current = true;
+                setShowCamMenu(false);
+                stateRef.current.countdown = 3;
+                stateRef.current.countdownStart = performance.now();
+                setCountdown(3);
+              } else {
+                const myId = (socket as any).id || 'local_' + Math.random().toString(36).slice(2,7);
+                if (!readyPlayers.includes(myId)) {
+                  const newReady = [...readyPlayers, myId];
+                  setReadyPlayers(newReady);
+                  socket.emit('player-ready', { playerId: myId, roomCode, side: getMySide() });
+                  if (newReady.length >= players.length) {
+                    setLocalReady(true);
+                    localReadyRef.current = true;
+                    setShowCamMenu(false);
+                    stateRef.current.countdown = 3;
+                    stateRef.current.countdownStart = performance.now();
+                    setCountdown(3);
+                    if (isHost) {
+                      socket.emit('all-players-ready', { roomCode });
+                      socket.emit('game-started', { roomCode });
+                    }
                   }
                 }
               }
-              socket.emit('player-ready', { playerId: myId, roomCode, side: getMySide() });
-            }
-          }} style={{padding:'10px 22px', borderRadius:'999px', background: isFriendsMode ? '#00e5ff' : '#4CAF50', color: isFriendsMode ? '#000' : '#fff', fontWeight:900, border:'none', cursor:'pointer', boxShadow: isFriendsMode ? '0 4px 12px rgba(0,229,255,0.4)' : '0 4px 12px rgba(76,175,80,0.4)', fontSize:'14px'}}>
-            {isFriendsMode ? `▶ جاهز (${readyPlayers.length}/${players.length})` : `▶ ابدأ بـ ${arenaStyle==='classic' ? 'أ' : 'ب'}`}
-          </button>
-          <div style={{width:'1px', height:'22px', background:'rgba(255,255,255,0.15)'}}/>
-          <span style={{color:'rgba(255,255,255,0.6)', fontSize:'11px', whiteSpace:'nowrap'}}>
-            {isFriendsMode ? 'مع الأصدقاء: انتظر الكل يضغط ابدأ' : 'اختر الشكل من اليمين ←'}
-          </span>
+            }} style={{marginTop: '6px', padding: '14px 38px', borderRadius: '999px', background: 'linear-gradient(135deg, #00e5ff 0%, #1e90ff 100%)', color: '#000', fontWeight: 900, fontSize: '16px', border: 'none', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,229,255,0.5)', display: 'flex', alignItems: 'center', gap: '8px'}}>
+              <Play size={18} fill="#000" /> {isFriendsMode ? `جاهز (${readyPlayers.length}/${players.length})` : 'ابدأ اللعبة'}
+            </button>
+            <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: '11px' }}>
+              {isFriendsMode ? 'مع الأصدقاء: لن تبدأ حتى يضغط الجميع ابدأ' : 'الساحة لن تبدأ حتى تضغط ابدأ'}
+            </span>
+          </div>
         </div>
       )}
 
