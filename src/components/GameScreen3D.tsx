@@ -46,22 +46,21 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   ctx.setLineDash([]);
 
   // الأهداف - نفس شكل الصورة تماماً: فتح في الأعلى والأسفل - قوس أحمر صغير في الحافة
-  // في الصورة: هدف علوي فتحه للأسفل، وهدف سفلي فتحه للأعلى - مثل حرف U مقلوب
-  ctx.strokeStyle = '#ff2d2d'; // أحمر مثل الإطار في الصورة
-  ctx.lineWidth = 8; // رفيع مثل الصورة - ليس سميك جداً
+  ctx.strokeStyle = '#ff2d2d';
+  ctx.lineWidth = 8;
   ctx.shadowBlur = 0;
   ctx.shadowColor = 'transparent';
-  const goalRadius = 360; // حجم مثل الصورة - قوس صغير ليس كبير جداً (في الصورة القوس صغير)
-  // هدف علوي - قوس أحمر فتحه للأسفل (مثل الصورة - في الأعلى)
+  const goalRadius = 360;
+  // هدف علوي - قوس أحمر فتحه للأسفل
   ctx.beginPath();
   ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
   ctx.stroke();
-  // هدف سفلي - قوس أحمر فتحه للأعلى (مثل الصورة - في الأسفل)
+  // هدف سفلي - قوس أحمر فتحه للأعلى
   ctx.beginPath();
   ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
   ctx.stroke();
-  
-  // خط داخلي خفيف للتأكيد مثل الصورة (قوس داخلي أرفع)
+
+  // خط داخلي خفيف للتأكيد (قوس داخلي أرفع)
   ctx.strokeStyle = 'rgba(255, 45, 45, 0.5)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -73,9 +72,9 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   ctx.stroke();
   ctx.shadowBlur = 0;
   ctx.shadowColor = 'transparent';
-  
+
   // إضافة تعبئة واضحة داخل الأهداف لإبرازها
-  ctx.fillStyle = 'rgba(255, 30, 30, 0.14)'; // أوضح من قبل
+  ctx.fillStyle = 'rgba(255, 30, 30, 0.14)';
   ctx.beginPath();
   ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
   ctx.lineTo(canvas.width/2 + goalRadius, 0);
@@ -100,9 +99,9 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   ctx.stroke();
 
   // أهداف جانبية للـ 4 لاعبين فقط - مربعة فقط إذا مربعة
-  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150; // مربعة = 4 لاعبين
+  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
   if (isSquareArena) {
-    const sideGoalRadius = 360; // نفس حجم الأهداف العلوية
+    const sideGoalRadius = 360;
     ctx.strokeStyle = '#ff2d2d';
     ctx.lineWidth = 8;
     ctx.shadowBlur = 0;
@@ -202,14 +201,13 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
     metalness: 0.85,
     envMapIntensity: 1.2
   });
-  // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.60; // مثل الصورة - فتحة سوداء 32% فقط // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
-  const goalGapH = worldH * 0.60; // مثل الصورة // أكبر
-  
+  const goalGapW = worldW * 0.60;
+  const goalGapH = worldH * 0.60;
+
   const bezelPieces: any[] = [];
 
-  // إطار علوي مقسوم لفتحة في المنتصف - فتح مثل الصورة (الأسود في الصورة هو الفتحة)
+  // إطار علوي مقسوم لفتحة في المنتصف
   const topSideWidth = (worldW - goalGapW) / 2 + bezelThickness;
   const topLeftX = -bezelThickness + topSideWidth/2;
   const topRightX = worldW + bezelThickness - topSideWidth/2;
@@ -275,8 +273,7 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   const outerTube = new THREE.Mesh(outerGeo, outerMat);
   outerTube.position.y = 26;
   group.add(outerTube);
-  // الأهداف - تكبير كبير مثل الصورة المرفقة - مهمة جداً
-  const goalW = Math.min(360, Math.max(180, worldW * 0.60)); // أكبر من فوق الإطار - 2 - أكبر
+  const goalW = Math.min(360, Math.max(180, worldW * 0.60));
   const goalH = 36;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
@@ -285,7 +282,6 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
   goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2);
   group.add(goalBottom);
-  // إضافة إضاءة حمراء داخل الأهداف مثل الصورة
   const goalLightTop = new THREE.PointLight(0xff1a1a, 0.8, 250);
   goalLightTop.position.set(worldW/2, bezelY, -bezelThickness/2);
   group.add(goalLightTop);
@@ -337,14 +333,13 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     mesh.position.set(x, bezelY, z);
     return mesh;
   };
-  // الأهداف فتح حقيقي في الإطار - مثل الصورة: فتحة في المنتصف أعلى وأسفل - نفس شكل لقطة الشاشة
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.60; // مثل الصورة - فتحة سوداء 32% فقط // أكبر من فوق الإطار على كل الساحات - 2 - أكبر
-  const goalGapH = worldH * 0.60; // مثل الصورة // أكبر
-  
+  const goalGapW = worldW * 0.60;
+  const goalGapH = worldH * 0.60;
+
   const bezelPieces: any[] = [];
 
-  // إطار علوي مقسوم لفتحة في المنتصف - فتح مثل الصورة (الأسود في الصورة هو الفتحة)
+  // إطار علوي مقسوم لفتحة في المنتصف
   const topSideWidth = (worldW - goalGapW) / 2 + bezelThickness;
   const topLeftX = -bezelThickness + topSideWidth/2;
   const topRightX = worldW + bezelThickness - topSideWidth/2;
@@ -390,19 +385,15 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     glowMesh.position.set(p.x, bezelY + bezelHeight/2 + 2, p.z);
     group.add(glowMesh);
   });
-  // الأهداف - تكبير كبير مثل الصورة المرفقة - تمت إضافتها الآن
-  const goalW = Math.min(360, Math.max(180, worldW * 0.60)); // فتحة سوداء 32% مثل الصورة // أكبر من فوق الإطار - 2 - أكبر
+  const goalW = Math.min(360, Math.max(180, worldW * 0.60));
   const goalH = 32;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.2, metalness: 0.1, emissive: '#111111', emissiveIntensity: 0.15 });
-  // هدف علوي - كبير مثل الصورة
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 6), goalMat);
   goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2 - 3);
   group.add(goalTop);
-  // هدف سفلي - كبير مثل الصورة
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness + 6), goalMat);
   goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2 + 3);
   group.add(goalBottom);
-  // إضاءة حمراء قوية داخل الهدف مثل الصورة
   const goalLightTop = new THREE.PointLight(0xff1a1a, 0.9, 300);
   goalLightTop.position.set(worldW/2, bezelY, -bezelThickness/2);
   group.add(goalLightTop);
@@ -410,14 +401,13 @@ function createArenaFrameModern(worldW: number, worldH: number) {
   goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
   group.add(goalLightBottom);
   if (worldW >= 800) {
-    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.60)); // 32% مثل الصورة
+    const sideGoalW = Math.min(360, Math.max(180, worldH * 0.60));
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 6, goalH, sideGoalW), goalMat);
     goalLeft.position.set(-bezelThickness/2 - 3, bezelY+2, worldH/2);
     group.add(goalLeft);
     const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness + 6, goalH, sideGoalW), goalMat);
     goalRight.position.set(worldW + bezelThickness/2 + 3, bezelY+2, worldH/2);
     group.add(goalRight);
-    // إضاءة جانبية
     const leftLight = new THREE.PointLight(0xff1a1a, 0.7, 250);
     leftLight.position.set(-bezelThickness/2, bezelY, worldH/2);
     group.add(leftLight);
@@ -444,7 +434,7 @@ function getArenaWorld(count: number, size: any = 'medium') {
   const ARENA_SCALES: any = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 };
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
-  // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين يكون مستطيل - تصحيح حسب طلب المستخدم
+  // فقط إذا 4 لاعبين يكون مربع، 2 لاعبين يكون مستطيل
   const base = count >= 4 ? SQUARE : RECT;
   const sc = ARENA_SCALES[size] || 1;
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
@@ -452,7 +442,6 @@ function getArenaWorld(count: number, size: any = 'medium') {
 
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
   const isMobileNow = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
-  // إصلاح 1: الساحة متوسطة أمام الكاميرا عند بدء اللعبة - مسافة محسوبة من حجم الساحة لضمان التوسيط
   const maxDim = Math.max(world.w, world.h);
   const PRESET_BY_SIZE: any = {
     small:  { distance: Math.max(980, maxDim * 1.15), height: 680, fov: 52 },
@@ -476,7 +465,6 @@ function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string,
   const adapted: any = {};
   for (const k in basePresets) {
     const b: any = (basePresets as any)[k];
-    // إصلاح 1: تأكد أن الكاميرا متوسطة تماماً أمام الساحة
     adapted[k] = { ...b, baseDistance: b.distance, baseHeight: b.height, scaleFactor: 1, isMobile: isMobileNow, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
   }
   return adapted;
@@ -543,7 +531,7 @@ export function GameScreen3D({
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
-  // تم إرجاع خاصية الانتظار لإصلاح الكاميرا - ضد الكمبيوتر يبدأ بعد 3.5 ثانية
+  // ضد الكمبيوتر يبدأ بعد 3.5 ثانية
   useEffect(()=>{
     const vsComp = (settings as any).vsComputer || players.some((p:any)=>p.computer);
     if (vsComp && !localReadyRef.current) {
@@ -587,18 +575,16 @@ export function GameScreen3D({
     const mySideForCam = getMySide();
   const initialCam = useMemo(() => {
     // اللاعب الرئيسي دائماً تحت - الكاميرا دائماً خلف اللاعب الرئيسي
-    // في وضع الأصدقاء، كل جوال يشوف نفسه تحت
     const actualSide = mySideForCam;
-    // نختار بريست الكاميرا بحيث يكون جانب اللاعب الرئيسي دائماً في الأسفل
     let sideKey: string;
     if (actualSide === 'top') {
-      sideKey = 'topPlayer'; // كاميرا خلف الخصم العلوي - تظهره تحت
+      sideKey = 'topPlayer';
     } else if (actualSide === 'left') {
-      sideKey = 'sideLeft'; // كاميرا من اليسار - تظهر اليسار تحت
+      sideKey = 'sideLeft';
     } else if (actualSide === 'right') {
-      sideKey = 'sideRight'; // كاميرا من اليمين - تظهر اليمين تحت
+      sideKey = 'sideRight';
     } else {
-      sideKey = 'bottom'; // كاميرا خلفك - أنت تحت (الافتراضي)
+      sideKey = 'bottom';
     }
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
     return {
@@ -726,6 +712,10 @@ export function GameScreen3D({
     }
   };
 
+  // ===== Fixed Timestep Constants (من الكود الثاني) =====
+  const FIXED_DELTA = 1 / 120;  // Fixed timestep: 1/120 ثانية (نفس السيرفر)
+  const BASE_FRAME_TIME = 16.67;  // Base frame time بالميلي ثانية (60Hz baseline)
+  const MAX_DELTA_CLAMP = 2.5;  // الحد الأقصى للـ delta لمنع القفزات الكبيرة
 
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
@@ -757,7 +747,7 @@ export function GameScreen3D({
     countdown: 0,
     countdownStart: 0,
     countdownSide: null as Player['side'] | null,
-    serving: { active: (settings as any).start === 'paddle', side: 'bottom' as Player['side'], startTime: 0, requested: false }, // إصلاح 4: يبدأ من المضرب إذا اختيار من المضرب
+    serving: { active: (settings as any).start === 'paddle', side: 'bottom' as Player['side'], startTime: 0, requested: false },
     paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any
   });
 
@@ -780,15 +770,13 @@ export function GameScreen3D({
   const [showCamMenu, setShowCamMenu] = useState(false);
   const [hideUI, setHideUI] = useState(false);
   const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('bottom');
-  const [readyPlayers, setReadyPlayers] = useState<string[]>([]); // طور الأصدقاء فقط - من ضغط ابدأ
+  const [readyPlayers, setReadyPlayers] = useState<string[]>([]);
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
   const isOfflineMode =!socket.connected || players.length <= 1 || settings.vsComputer || players.some((p:any)=>p.computer);
-  // لا انتظار نهائياً في طور ضد الكمبيوتر - فقط في طور مع الأصدقاء (2 أو 4 لاعبين أصدقاء)
-  // نعتمد على زر القائمة نفسه: settings.vsComputer + حقل computer في اللاعبين
   const isVsComputer = settings.vsComputer || players.some((p:any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
-  const isFriendsMode = !isVsComputer && !!roomCode && players.length > 1; // فقط عندما vsComputer = false وهناك غرفة (مع الأصدقاء) - ضد الكمبيوتر لا يوجد انتظار نهائياً
+  const isFriendsMode = !isVsComputer && !!roomCode && players.length > 1;
 
   const createHatPaddle = useCallback((color: string, style: 'classic' | 'modern' = arenaStyle) => {
     const group = new THREE.Group();
@@ -796,7 +784,6 @@ export function GameScreen3D({
     const baseColor = isBlue ? '#0a84ff' : (color === '#ffcf5a' ? '#0a84ff' : color);
     
     if (style === 'classic') {
-      // شكل أ - القديم: مضرب كلاسيكي مسطح مع نيون
       const baseMat = new THREE.MeshStandardMaterial({ color: '#080808', roughness: 0.2, metalness: 0.85 });
       const baseGeo = new THREE.CylinderGeometry(34, 34, 10, 48);
       const base = new THREE.Mesh(baseGeo, baseMat);
@@ -813,7 +800,6 @@ export function GameScreen3D({
       ring.position.y = 8;
       group.add(ring);
     } else {
-      // شكل ب - الجديد: مضرب زجاجي حديث أحمر/أزرق مع توهج
       const baseMat = new THREE.MeshStandardMaterial({
         color: baseColor,
         roughness: 0.12,
@@ -855,7 +841,6 @@ export function GameScreen3D({
       const glow = new THREE.Mesh(new THREE.CylinderGeometry(36, 36, 2, 32), glowMat);
       glow.position.y = 2;
       group.add(glow);
-      // إضاءة إضافية للشكل الجديد
       const pointLight = new THREE.PointLight(baseColor, 0.4, 80);
       pointLight.position.set(0, 15, 0);
       group.add(pointLight);
@@ -864,7 +849,6 @@ export function GameScreen3D({
   }, [arenaStyle]);
 
   const resetCamera = useCallback(() => {
-    // إعادة الكاميرا بحيث يكون اللاعب الرئيسي دائماً تحت
     const mySide = getMySide();
     const sideKey = mySide === 'top'? 'topPlayer' : mySide === 'left'? 'sideLeft' : mySide === 'right'? 'sideRight' : 'bottom';
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
@@ -906,12 +890,10 @@ export function GameScreen3D({
   }, []);
 
   useEffect(() => {
-    // إصلاح 1+4: الساحة متوسطة أمام الكاميرا + الحفظ لكل حجم
     const hasSaved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
     if (hasSaved) {
       try {
         const s = JSON.parse(hasSaved);
-        // تأكد أن lookAt متوسطة دائماً للساحة الحالية - إصلاح 1
         cam.current = { 
           ...cam.current, 
           ...initialCam, 
@@ -919,7 +901,7 @@ export function GameScreen3D({
           targetAngle: s.targetAngle ?? s.angle ?? initialCam.angle, 
           targetDistance: s.targetDistance ?? s.distance ?? initialCam.distance, 
           targetHeight: s.targetHeight ?? s.height ?? initialCam.height,
-          targetX: initialCam.targetX, // دائماً متوسطة
+          targetX: initialCam.targetX,
           targetZ: initialCam.targetZ,
           lookX: initialCam.lookX,
           lookZ: initialCam.lookZ
@@ -927,7 +909,6 @@ export function GameScreen3D({
         return;
       } catch {}
     }
-    // إذا لا يوجد حفظ لهذا الحجم - متوسطة تماماً أمام الكاميرا
     cam.current = {...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2} as any;
   }, [initialCam, settings.arenaSize, world.w, world.h]);
 
@@ -986,9 +967,9 @@ export function GameScreen3D({
     };
   }, [getMySide, isHost]);
 
-  // طور الأصدقاء فقط (مع الأصدقاء) - نظام الجاهزية: لا تبدأ حتى يضغط الكل ابدأ - ضد الكمبيوتر لا يوجد انتظار
+  // طور الأصدقاء فقط - نظام الجاهزية
   useEffect(() => {
-    if (!isFriendsMode) return; // فقط في طور الأصدقاء
+    if (!isFriendsMode) return;
     const handlePlayerReady = (data: any) => {
       const playerId = data.playerId || data.id || data.socketId;
       if (playerId && !readyPlayers.includes(playerId)) {
@@ -1014,12 +995,10 @@ export function GameScreen3D({
 
   useEffect(() => {
     if (isFriendsMode && readyPlayers.length >= players.length && players.length > 1) {
-      // عندما يصبح الكل جاهز - ابدأ للكل، ليس فقط للمضيف - إصلاح التعليق
       if (isHost) {
         socket.emit('all-players-ready', { roomCode });
         socket.emit('game-started', { roomCode });
       }
-      // أي لاعب يرى الكل جاهز يبدأ فوراً - يمنع التعليق
       if (!localReadyRef.current) {
         setLocalReady(true);
         localReadyRef.current = true;
@@ -1082,14 +1061,12 @@ export function GameScreen3D({
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'left') {
-          // يسار: أسفل الشاشة = غرب، المضرب شرق الإصبع
           const clampedX = clamp(tx + OFFSET, 45, leftLimit + 220);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
           stateRef.current.targetPaddles[mySide].z = clampedZ;
           if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
         } else if (mySide === 'right') {
-          // يمين: أسفل الشاشة = شرق، المضرب غرب الإصبع
           const clampedX = clamp(tx - OFFSET, rightLimit - 220, world.w - 45);
           const clampedZ = clamp(tz, 45, world.h - 45);
           stateRef.current.targetPaddles[mySide].x = clampedX;
@@ -1150,7 +1127,6 @@ export function GameScreen3D({
     scene.add(frame);
     
     const puckGroup = new THREE.Group();
-    // إصلاح: الساحة البيضاء الكرة داكنة لا مضيئة - 2
     const isWhiteArena = arenaStyle === 'classic';
     const puckMat = new THREE.MeshStandardMaterial({
       color: isWhiteArena ? '#111111' : '#ffffff',
@@ -1194,7 +1170,6 @@ export function GameScreen3D({
       ballLight.position.set(0, 22, 0);
       puckGroup.add(ballLight);
     } else {
-      // ساحة بيضاء - حلقة داكنة بسيطة بدون توهج
       const darkRingMat = new THREE.MeshStandardMaterial({
         color: '#222222',
         roughness: 0.5,
@@ -1259,9 +1234,13 @@ export function GameScreen3D({
 
     let rafId: number;
     const tick = (now: number) => {
-      const rawDelta = (now - state.last) / 16.67;
-      const delta = Math.min(rawDelta, 2.5);
+      // حساب الوقت المنقضي بالميلي ثانية (من الكود الثاني)
+      const elapsedMs = now - state.last;
       state.last = now;
+
+      // delta: نسبة من الفريم الواحد (baseline 60Hz)
+      const rawDelta = elapsedMs / BASE_FRAME_TIME;
+      const delta = Math.min(rawDelta, MAX_DELTA_CLAMP);
 
       if (threeRef.current) {
         const { ball, paddles, camera, renderer } = threeRef.current;
@@ -1330,11 +1309,18 @@ export function GameScreen3D({
             if (!activeSide(side)) return;
             const prev = state.lastPaddles[side];
             const curr = state.paddles[side];
-            state.paddleVel[side].vx = (curr.x - prev.x) / (delta || 1);
-            state.paddleVel[side].vy = (curr.z - prev.z) / (delta || 1);
+
+            // توحيد حساب السرعة: الوقت الفعلي بالثواني (من الكود الثاني)
+            const elapsedSec = Math.max(elapsedMs / 1000, 1 / 120);
+
+            state.paddleVel[side].vx = (curr.x - prev.x) / elapsedSec;
+            state.paddleVel[side].vy = (curr.z - prev.z) / elapsedSec;
             prev.x = curr.x;
             prev.z = curr.z;
           });
+
+          // ملاحظة: تم نقل هذا التعريف للأعلى لأنه كان يُستخدم قبل تعريفه (خطأ TDZ) عند الإرسال من المضرب
+          const isAuthoritative = isOfflineMode || isHost;
 
           if (state.serving.active) {
             const servingSide = state.serving.side;
@@ -1361,7 +1347,7 @@ export function GameScreen3D({
               }
             }
             if (state.serving.requested) {
-              // فقط صاحب الإرسال يطلق الكرة - يحل مشكلة ثبات الكرة عند اللاعب الثاني
+              // فقط صاحب الإرسال يطلق الكرة
               if (servingSide === getMySide() || isOfflineMode || isHost) {
                 state.serving.active = false;
                 state.serving.requested = false;
@@ -1389,8 +1375,6 @@ export function GameScreen3D({
               }
             }
           }
-
-          const isAuthoritative = isOfflineMode || isHost;
 
           if (state.countdown === 0 && !state.serving.active) {
             if (isAuthoritative) {
@@ -1424,8 +1408,23 @@ export function GameScreen3D({
                 }
               });
 
-              state.ball.x += state.ball.vx * delta;
-              state.ball.y += state.ball.vy * delta;
+              // حركة الكرة: خطوات فرعية حسب المسافة (من الكود الثاني)
+              (state as any)._prevBallX = state.ball.x;
+              (state as any)._prevBallY = state.ball.y;
+
+              // الوقت المنقضي بالثواني
+              const elapsedSec = elapsedMs / 1000;
+
+              // عدد الخطوات الفرعية حسب المسافة المتوقعة
+              const totalDistance = Math.hypot(state.ball.vx * elapsedSec, state.ball.vy * elapsedSec);
+              const maxStepDistance = 4;
+              const subSteps = Math.max(1, Math.ceil(totalDistance / maxStepDistance));
+              const subDelta = elapsedSec / subSteps;
+
+              for (let s = 0; s < subSteps; s++) {
+                state.ball.x += state.ball.vx * subDelta;
+                state.ball.y += state.ball.vy * subDelta;
+              }
               state.ballTarget.x = state.ball.x;
               state.ballTarget.y = state.ball.y;
               state.ballTarget.vx = state.ball.vx;
@@ -1447,8 +1446,9 @@ export function GameScreen3D({
                 if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
               }
 
-              const goalHalfW = Math.min(340, Math.max(190, world.w * 0.36));
-              const sideGoalHalfW = Math.min(340, Math.max(190, world.h * 0.36));
+              // عرض الهدف من الكود الثاني (أصغر - لا يدخل قبل وصول اللاعب)
+              const goalHalfW = Math.min(180, Math.max(110, world.w * 0.22));
+              const sideGoalHalfW = Math.min(180, Math.max(110, world.h * 0.22));
               const BORDER = 28;
               const leftBound = BORDER + BALL_RADIUS;
               const rightBound = world.w - BORDER - BALL_RADIUS;
@@ -1485,31 +1485,31 @@ export function GameScreen3D({
               }
 
               const goalScoredSide = (() => {
-                if (state.ball.y < 25) {
+                if (state.ball.y < -BALL_RADIUS) { // يجب أن تخرج كاملة خارج الساحة
                   if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
-                    state.ball.visible = false;
+                    (state.ball as any).visible = false;
                     if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                     return 'top' as const;
                   }
                 }
-                if (state.ball.y > world.h - 25) {
+                if (state.ball.y > world.h + BALL_RADIUS) {
                   if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
-                    state.ball.visible = false;
+                    (state.ball as any).visible = false;
                     if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                     return 'bottom' as const;
                   }
                 }
                 if (needPlayers >= 4) {
-                  if (state.ball.x < 25) {
+                  if (state.ball.x < -BALL_RADIUS) {
                     if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
-                      state.ball.visible = false;
+                      (state.ball as any).visible = false;
                       if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                       return 'left' as const;
                     }
                   }
-                  if (state.ball.x > world.w - 25) {
+                  if (state.ball.x > world.w + BALL_RADIUS) {
                     if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
-                      state.ball.visible = false;
+                      (state.ball as any).visible = false;
                       if (threeRef.current?.ball) threeRef.current.ball.visible = false;
                       return 'right' as const;
                     }
@@ -1579,34 +1579,71 @@ export function GameScreen3D({
                 }
               }
 
+              // swept collision + منطقة أكبر للاعب البعيد
               (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
                 if (!activeSide(side)) return;
                 const paddle = state.paddles[side];
                 const pVel = state.paddleVel[side];
+                const isRemote = side !== getMySide() && !isOfflineMode;
+                const effectiveHitDist = isRemote ? HIT_DIST * 1.38 : HIT_DIST;
                 const dx = state.ball.x - paddle.x;
                 const dy = state.ball.y - paddle.z;
                 const dist = Math.hypot(dx, dy);
-                if (dist >= HIT_DIST || dist < 0.5) return;
+                const prevX = (state as any)._prevBallX ?? state.ball.x;
+                const prevY = (state as any)._prevBallY ?? state.ball.y;
+                const vxSeg = state.ball.x - prevX;
+                const vySeg = state.ball.y - prevY;
+                let sweptHit = false;
+                let closestDist = dist;
+                let closestX = state.ball.x;
+                let closestY = state.ball.y;
+                if (Math.hypot(vxSeg, vySeg) > 0.1) {
+                  const wx = paddle.x - prevX;
+                  const wy = paddle.z - prevY;
+                  const c1 = wx * vxSeg + wy * vySeg;
+                  const c2 = vxSeg * vxSeg + vySeg * vySeg;
+                  let t = 0;
+                  if (c1 > 0 && c2 > c1) {
+                    t = c1 / c2;
+                    const pbx = prevX + t * vxSeg;
+                    const pby = prevY + t * vySeg;
+                    closestDist = Math.hypot(pbx - paddle.x, pby - paddle.z);
+                    closestX = pbx;
+                    closestY = pby;
+                    if (closestDist < effectiveHitDist) sweptHit = true;
+                  }
+                }
+                const isHit = dist < effectiveHitDist || sweptHit;
+                if (!isHit || dist < 0.5) return;
+                const useX = sweptHit ? closestX : state.ball.x;
+                const useY = sweptHit ? closestY : state.ball.y;
+                const useDx = useX - paddle.x;
+                const useDy = useY - paddle.z;
+                const useDist = Math.hypot(useDx, useDy) || 1;
                 let isFrontHit = false;
-                const frontThreshold = 8;
+                const frontThreshold = isRemote ? 18 : 8;
                 if (side === 'bottom') isFrontHit = state.ball.y < paddle.z + frontThreshold;
                 else if (side === 'top') isFrontHit = state.ball.y > paddle.z - frontThreshold;
                 else if (side === 'left') isFrontHit = state.ball.x > paddle.x - frontThreshold;
                 else if (side === 'right') isFrontHit = state.ball.x < paddle.x + frontThreshold;
                 if (!isFrontHit) {
-                  const pushFactor = 2.0;
-                  const nx = dx / dist; const ny = dy / dist;
-                  const overlap = HIT_DIST - dist + 3;
+                  const pushFactor = isRemote ? 3.5 : 2.0;
+                  const nx = useDx / useDist; const ny = useDy / useDist;
+                  const overlap = effectiveHitDist - useDist + (isRemote ? 8 : 3);
                   state.ball.x += nx * overlap * pushFactor;
                   state.ball.y += ny * overlap * pushFactor;
-                  return;
+                  if (isRemote && useDist < effectiveHitDist * 0.9) {
+                    isFrontHit = true;
+                  } else {
+                    return;
+                  }
                 }
-                const nx = dx / dist; const ny = dy / dist;
-                const overlap = HIT_DIST - dist + 1;
+                const nx = useDx / useDist; const ny = useDy / useDist;
+                const overlap = effectiveHitDist - useDist + 1;
                 state.ball.x += nx * overlap;
                 state.ball.y += ny * overlap;
                 const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
-                const paddleSpeedFactor = 0.85;
+                const paddleSpeedFactor = isRemote ? 1.15 : 0.85;
                 const ballVelDotNormal = state.ball.vx * nx + state.ball.vy * ny;
                 let newVx = state.ball.vx - 2 * ballVelDotNormal * nx + pVel.vx * paddleSpeedFactor;
                 let newVy = state.ball.vy - 2 * ballVelDotNormal * ny + pVel.vy * paddleSpeedFactor;
@@ -1631,9 +1668,13 @@ export function GameScreen3D({
                 state.ball.vy = Math.sin(finalAngle) * newSpeed;
                 state.ballTarget.vx = state.ball.vx;
                 state.ballTarget.vy = state.ball.vy;
-                try { playHitSound3D(Math.min(1, state.rally/12)); } catch {}
+                try {
+                  if (state.rally % 2 === 0) playHitSound3D(Math.min(1, state.rally/12)); // صوت كل ضربتين لتخفيف الحمل
+                } catch {}
                 state.rally++;
-                setRally(state.rally);
+                // تحديث الـ UI كل 3 ضربات فقط لتجنب re-render كل فريم
+                if (state.rally % 3 === 0) setRally(state.rally);
+                else (state as any)._pendingRally = state.rally;
                 if (!isOfflineMode) {
                   socket.sendBallState?.(state.ball.x, state.ball.y, state.ball.vx, state.ball.vy);
                 }
@@ -1709,7 +1750,7 @@ export function GameScreen3D({
               current.x = target.x;
               current.z = target.z;
             } else {
-              const PADDLE_LERP = isOfflineMode ? 1 : 0.60;
+              const PADDLE_LERP = isOfflineMode ? 1 : 0.92;
               current.x += (target.x - current.x) * PADDLE_LERP;
               current.z += (target.z - current.z) * PADDLE_LERP;
             }
@@ -1797,7 +1838,7 @@ export function GameScreen3D({
         </div>
       )}
 
-      {/* لا نغطي الساحة - شريط صغير للبدء في الأسفل - ضد الكمبيوتر يبدأ فوراً، مع الأصدقاء ينتظر الكل */}
+      {/* شريط صغير للبدء في الأسفل - ضد الكمبيوتر يبدأ فوراً، مع الأصدقاء ينتظر الكل */}
       {!localReady && (
         <div style={{
           position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
@@ -1842,7 +1883,7 @@ export function GameScreen3D({
         </div>
       )}
 
-      {/* في طور مع الأصدقاء فقط - شاشة انتظار حتى يصبح الكل جاهز - ضد الكمبيوتر لا يوجد انتظار */}
+      {/* في طور مع الأصدقاء فقط - شاشة انتظار حتى يصبح الكل جاهز */}
       {!localReady && isFriendsMode && readyPlayers.length > 0 && readyPlayers.length < players.length && (
         <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:9996, background:'rgba(0,0,0,0.88)', backdropFilter:'blur(12px)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:'20px', padding:'24px 32px', display:'flex', flexDirection:'column', alignItems:'center', gap:'12px' }}>
           <div style={{width:'48px', height:'48px', borderRadius:'50%', border:'3px solid rgba(255,255,255,0.2)', borderTopColor:'#00e5ff', animation:'spin 1s linear infinite'}}/>
@@ -1861,7 +1902,6 @@ export function GameScreen3D({
       {hideUI && (<button onClick={() => setHideUI(false)} style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, background: '#00e5ff', color: '#000', borderRadius: 999, padding: '8px 14px', fontWeight: 900, display: 'flex', gap: 6, alignItems: 'center', border: 'none', cursor: 'pointer' }}><Eye size={16} /> {isAr? 'اظهار' : 'Show'}</button>)}
       {!hideUI && (
         <>
-          {/* شريط علوي احترافي مثل الصورة - 3D AIR HOCKEY / SCORE / TIME / PAUSE / RESET */}
           <header style={{
             display: 'flex',
             alignItems: 'center',
@@ -1877,7 +1917,6 @@ export function GameScreen3D({
             zIndex: 20,
             position: 'relative'
           }}>
-            {/* قسم الشعار - مثل الصورة */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -1898,7 +1937,6 @@ export function GameScreen3D({
               <span style={{color:'#000', fontWeight:900, fontSize:'17px', letterSpacing:0.5, fontFamily:'system-ui'}}>3D AIR HOCKEY</span>
             </div>
 
-            {/* قسم النقاط والوقت */}
             <div style={{display:'flex', alignItems:'center', gap:'18px', padding:'0 12px', flex:1, justifyContent:'center'}}>
               <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
                 <span style={{color:'rgba(255,255,255,0.5)', fontSize:'10px', fontWeight:700, letterSpacing:1}}>SCORE</span>
@@ -1924,7 +1962,6 @@ export function GameScreen3D({
               )}
             </div>
 
-            {/* أزرار التحكم */}
             <div style={{display:'flex', alignItems:'center', gap:'6px', padding:'0 8px 0 0'}}>
               <button onClick={()=>setShowCamMenu(v=>!v)} style={{
                 background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.08)', 
@@ -1981,10 +2018,9 @@ export function GameScreen3D({
         <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
         <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
         <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>👆 حرك المضرب من هنا</div>
-        {/* إصلاح 3: اخفي اضغط في مكان لضرب الكرة يظهر فقط عند تأخر اللاعب بالضغط */}
         {localReady && stateRef.current?.serving?.active && (() => {
           const elapsed = performance.now() - (stateRef.current?.serving?.startTime || 0);
-          const showHint = elapsed > 2500; // يظهر فقط بعد 2.5 ثانية تأخر
+          const showHint = elapsed > 2500;
           if (!showHint) return null;
           return (
             <div style={{ position: 'absolute', left: '50%', bottom: '22%', transform: 'translateX(-50%)', zIndex: 25, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, animation: 'fadeIn 0.3s ease' }}>
@@ -2025,7 +2061,7 @@ export function GameScreen3D({
         )}
         {paused && (
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 12, gap: '16px' }}>
-            <span style={{ fontSize: '48px', fontWeight: 900, color: '#fff' }}>⏸️ {isAr ? 'متوقف' : 'PAUSED'}</span>
+            <span style={{ fontSize: '48px', fontWeight: 900, color: '#fff' }}>⏸ {isAr ? 'متوقف' : 'PAUSED'}</span>
             <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px' }}>{isAr ? 'تم إيقاف اللعبة لكل اللاعبين' : 'Game paused for all players'}</span>
             <button onClick={onPause} style={{ padding: '12px 28px', borderRadius: '999px', background: '#00e5ff', color: '#000', fontWeight: 900, border: 'none', cursor: 'pointer' }}>{isAr ? 'متابعة' : 'Resume'}</button>
           </div>
@@ -2049,7 +2085,6 @@ export function GameScreen3D({
         <button onClick={() => window.location.reload()} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: '#ff2d2d', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize:'11px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
           <ArrowLeft size={14} /> EXIT
         </button>
-        {/* إصلاح 3: زر كاميرا عائم للجوال - يظهر دائماً */}
         <button onClick={()=>setShowCamMenu(v=>!v)} style={{
           position: 'absolute', top: 12, right: 12, zIndex: 10006,
           background: showCamMenu ? '#00e5ff' : 'rgba(10,10,12,0.9)', 
@@ -2062,7 +2097,6 @@ export function GameScreen3D({
           <Camera size={14}/> كاميرا
         </button>
 
-        {/* إصلاح 2: ألغي شكل الساحة عند بدء اللعبة - shape - مخفي */}
         {false && !hideUI && !localReady && (
           <div style={{
             position: 'absolute', right: 12, top: 12, zIndex: 10004,
@@ -2101,11 +2135,9 @@ export function GameScreen3D({
             alignItems: 'center',
             gap: 0,
             boxShadow: '0 16px 48px rgba(0,0,0,0.9)',
-            /* إصلاح 3: أزرار الكاميرا في الجوال تظهر */
             touchAction: 'auto',
             pointerEvents: 'auto',
           }}>
-            {/* X في الأعلى مثل الرسمة */}
             <button onClick={()=>setShowCamMenu(false)} style={{
               width:36, height:28, borderRadius:8, background:'#1a1a1a', border:'1.5px solid #333',
               color:'#fff', display:'grid', placeItems:'center', cursor:'pointer', flexShrink:0,
@@ -2114,7 +2146,6 @@ export function GameScreen3D({
               <X size={14}/>
             </button>
 
-            {/* عمود الأيقونات بنفس شكل الرسمة - مع scroll إذا زادت */}
             <div style={{
               flex:1, width:'100%', overflowY:'auto', overflowX:'hidden',
               display:'flex', flexDirection:'column', alignItems:'center', gap:6,
@@ -2128,7 +2159,6 @@ export function GameScreen3D({
                 div::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
               `}</style>
 
-              {/* Save - سماوي */}
               <button onClick={saveCameraSettings} title="حفظ الكاميرا" style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#00e5ff', border:'2px solid #000', borderRadius:12,
@@ -2138,7 +2168,6 @@ export function GameScreen3D({
                 <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Save</span>
               </button>
 
-              {/* Rest / Reset - برتقالي */}
               <button onClick={resetCameraToDefault} title="إعادة ضبط" style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#ff8a3d', border:'2px solid #000', borderRadius:12,
@@ -2148,7 +2177,6 @@ export function GameScreen3D({
                 <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Rest</span>
               </button>
 
-              {/* <- Left - أخضر */}
               <button onClick={() => rotateCam('left')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#61e7c2', border:'2px solid #000', borderRadius:12,
@@ -2157,7 +2185,6 @@ export function GameScreen3D({
                 <ArrowLeft size={22} strokeWidth={2.8} color="#000"/>
               </button>
 
-              {/* -> Right - أخضر */}
               <button onClick={() => rotateCam('right')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#61e7c2', border:'2px solid #000', borderRadius:12,
@@ -2166,7 +2193,6 @@ export function GameScreen3D({
                 <ArrowRight size={22} strokeWidth={2.8} color="#000"/>
               </button>
 
-              {/* Up - أصفر ملون */}
               <button onClick={() => rotateCam('up')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#ffcf5a', border:'2px solid #000', borderRadius:12,
@@ -2175,7 +2201,6 @@ export function GameScreen3D({
                 <ArrowUp size={22} strokeWidth={2.8} color="#000"/>
               </button>
 
-              {/* Down - وردي ملون */}
               <button onClick={() => rotateCam('down')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#ff6b8b', border:'2px solid #000', borderRadius:12,
@@ -2184,7 +2209,6 @@ export function GameScreen3D({
                 <ArrowDown size={22} strokeWidth={2.8} color="#000"/>
               </button>
 
-              {/* Zoom+ مع دائرة و Z - بنفسجي */}
               <button onClick={() => zoomCam(1)} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#9b8cff', border:'2px solid #000', borderRadius:12,
@@ -2197,7 +2221,6 @@ export function GameScreen3D({
                 <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:900, color:'#000'}}>Z</span>
               </button>
 
-              {/* Zoom- - بنفسجي */}
               <button onClick={() => zoomCam(-1)} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#9b8cff', border:'2px solid #000', borderRadius:12,
@@ -2210,7 +2233,6 @@ export function GameScreen3D({
                 <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:900, color:'#000'}}>Z</span>
               </button>
 
-              {/* Bot - Bottom - أزرق */}
               <button onClick={() => applyPreset('bottom')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background: currentPreset==='bottom' ? '#00e5ff' : '#1e90ff',
@@ -2221,7 +2243,6 @@ export function GameScreen3D({
                 <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Bot</span>
               </button>
 
-              {/* Enm - Enemy / TopPlayer - أحمر فاتح */}
               <button onClick={() => applyPreset('topPlayer')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background: currentPreset==='topPlayer' ? '#00e5ff' : '#ff7a7a',
@@ -2232,7 +2253,6 @@ export function GameScreen3D({
                 <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Enm</span>
               </button>
 
-              {/* Top - برتقالي فاتح */}
               <button onClick={() => applyPreset('top')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background: currentPreset==='top' ? '#00e5ff' : '#ffb86b',
@@ -2243,7 +2263,6 @@ export function GameScreen3D({
                 <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Top</span>
               </button>
 
-              {/* Bot ثاني - مثل الرسمة - أزرق فاتح */}
               <button onClick={() => applyPreset('bottom')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background:'#1e90ff', border:'2px solid #000', borderRadius:12,
@@ -2253,7 +2272,6 @@ export function GameScreen3D({
                 <span style={{fontSize:12, fontWeight:900, color:'#fff'}}>Bot</span>
               </button>
 
-              {/* Iso - أخضر مصفر */}
               <button onClick={() => applyPreset('iso')} style={{
                 width:64, height:52, minHeight:52, flexShrink:0,
                 background: currentPreset==='iso' ? '#00e5ff' : '#a8e6a0',
@@ -2264,7 +2282,6 @@ export function GameScreen3D({
                 <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Iso</span>
               </button>
 
-              {/* إضافي: Left / Right للـ 4 لاعبين - ملون */}
               <button onClick={() => applyPreset('sideLeft')} style={{
                 width:64, height:48, minHeight:48, flexShrink:0,
                 background: currentPreset==='sideLeft' ? '#00e5ff' : '#ffd166',
@@ -2285,7 +2302,6 @@ export function GameScreen3D({
                 <span style={{fontSize:10, fontWeight:900, color:'#000'}}>RIGHT</span>
               </button>
 
-              {/* Reset */}
               <button onClick={resetCamera} style={{
                 width:64, height:40, minHeight:40, flexShrink:0,
                 background:'#ff4081', border:'none', borderRadius:10,
@@ -2295,7 +2311,6 @@ export function GameScreen3D({
                 <span style={{fontSize:10, fontWeight:900, color:'#fff'}}>RESET</span>
               </button>
 
-              {/* Hide UI */}
               <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{
                 width:64, height:36, minHeight:36, flexShrink:0,
                 background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10,
