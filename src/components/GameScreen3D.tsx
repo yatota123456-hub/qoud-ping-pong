@@ -880,7 +880,6 @@ export function GameScreen3D({
     };
   }, [getMySide, world.w, world.h]);
 
-  // 🛑 إضافة مستمع paddle-target للمضيف فقط
   useEffect(() => {
     if (!isHost || isOfflineMode) return;
     
@@ -928,12 +927,11 @@ export function GameScreen3D({
         socket.emit('all-players-ready', { roomCode });
         socket.emit('game-started', { roomCode });
       }
+      // 🛑 إصلاح: إزالة تعيين العداد محلياً هنا، الاعتماد فقط على handleAllReady من رسالة game-started
       if (!localReadyRef.current) {
         setLocalReady(true);
         localReadyRef.current = true;
-        stateRef.current.countdown = 3;
-        stateRef.current.countdownStart = performance.now();
-        setCountdown(3);
+        // لا نعيّن العداد هنا - سيُعيّن عند استقبال game-started من المضيف
       }
     }
   }, [readyPlayers, isHost, isFriendsMode, players.length, roomCode]);
@@ -1256,7 +1254,6 @@ export function GameScreen3D({
           }
 
           if (state.countdown === 0 && !state.serving.active) {
-            // 🛑 الإصلاح الجذري: المضيف/أوفلاين يحسب الفيزياء، العميل فقط يعرض
             if (isOfflineMode || isHost) {
               if (isOfflineMode) {
                 const predX = state.ball.x + state.ball.vx * 10;
@@ -1308,7 +1305,6 @@ export function GameScreen3D({
                 if (Math.abs(state.ball.vy) < 1) state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
               }
 
-              // 🛑 إصلاح حاسم: منطق الجدران والأهداف الصحيح
               const goalHalfW = (world.w * 0.68) / 2;
               const sideGoalHalfW = (world.h * 0.58) / 2;
               
@@ -1317,7 +1313,6 @@ export function GameScreen3D({
               const topBound = BALL_RADIUS;
               const bottomBound = world.h - BALL_RADIUS;
               
-              // جدار يسار
               if (state.ball.x < leftBound) {
                 const distFromCenter = Math.abs(state.ball.y - world.h/2);
                 if (needPlayers < 4 || distFromCenter > sideGoalHalfW) {
@@ -1332,7 +1327,6 @@ export function GameScreen3D({
                 }
               }
               
-              // جدار يمين
               if (state.ball.x > rightBound) {
                 const distFromCenter = Math.abs(state.ball.y - world.h/2);
                 if (needPlayers < 4 || distFromCenter > sideGoalHalfW) {
@@ -1347,26 +1341,21 @@ export function GameScreen3D({
                 }
               }
               
-              // 🛑 جدار علوي - الإصلاح الجذري: لا ترتد إذا كانت داخل فتحة الهدف
               if (state.ball.y < topBound) {
                 const distFromCenter = Math.abs(state.ball.x - world.w/2);
                 if (distFromCenter > goalHalfW) {
-                  // خارج فتحة الهدف - ارتداد من الجدار
                   state.ball.y = topBound;
                   state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
                   state.ball.vx += (Math.random() - 0.5) * 1.5;
                   
-                  // إذا كانت قريبة من الحافة، إضافة دفع جانبي لمنع الاختراق
                   const edgeDist = distFromCenter - goalHalfW;
                   if (edgeDist < 20) {
                     const pushDir = state.ball.x > world.w/2 ? 1 : -1;
                     state.ball.vx += pushDir * 3;
                   }
                 }
-                // إذا كانت داخل فتحة الهدف (distFromCenter <= goalHalfW)، لا نفعل شيئاً - دعها تدخل
               }
               
-              // 🛑 جدار سفلي - نفس المنطق
               if (state.ball.y > bottomBound) {
                 const distFromCenter = Math.abs(state.ball.x - world.w/2);
                 if (distFromCenter > goalHalfW) {
@@ -1382,7 +1371,6 @@ export function GameScreen3D({
                 }
               }
 
-              // تسجيل الأهداف
               const goalScoredSide = (() => {
                 if (state.ball.y < -BALL_RADIUS * 1.5) {
                   if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
@@ -1439,7 +1427,7 @@ export function GameScreen3D({
                 state.ball.x = world.w / 2;
                 state.ball.y = world.h / 2;
                 state.ballTarget.x = state.ball.x;
-                state.ball.y = state.ball.y;
+                state.ballTarget.y = state.ball.y;
                 state.ball.vx = 0;
                 state.ball.vy = 0;
                 state.ballTarget.vx = 0;
@@ -1496,7 +1484,6 @@ export function GameScreen3D({
                 return;
               }
 
-              // اصطدام بالمضارب
               (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
                 if (!activeSide(side)) return;
                 const paddle = state.paddles[side];
@@ -1580,16 +1567,25 @@ export function GameScreen3D({
                 }
               });
             } else {
-              // 🛑 العميل - فقط interpolation سلس من المضيف، لا فيزياء محلية
-              const lerpFactor = 0.15;
-              state.ball.x += (state.ballTarget.x - state.ball.x) * lerpFactor;
-              state.ball.y += (state.ballTarget.y - state.ball.y) * lerpFactor;
-              state.ball.vx += (state.ballTarget.vx - state.ball.vx) * lerpFactor;
-              state.ball.vy += (state.ballTarget.vy - state.ball.vy) * lerpFactor;
+              // 🛑 إصلاح جذري: العميل يستخدم Client-side prediction بدلاً من lerp بسيط
+              // يتنبأ بالحركة بناءً على آخر سرعة معروفة، ثم يصحح تدريجياً عند وصول تحديث
+              const predictionFactor = 0.92; // كم نثق بالتنبؤ المحلي
+              const correctionFactor = 0.08; // كم نصحح من المضيف
+              
+              // تنبؤ بالحركة بناءً على السرعة الحالية
+              const predictedX = state.ball.x + state.ball.vx * delta;
+              const predictedY = state.ball.y + state.ball.vy * delta;
+              
+              // مزج بين التنبؤ والموقع المستهدف من المضيف
+              state.ball.x = predictedX * predictionFactor + state.ballTarget.x * correctionFactor;
+              state.ball.y = predictedY * predictionFactor + state.ballTarget.y * correctionFactor;
+              
+              // تصحيح السرعة تدريجياً
+              state.ball.vx += (state.ballTarget.vx - state.ball.vx) * correctionFactor;
+              state.ball.vy += (state.ballTarget.vy - state.ball.vy) * correctionFactor;
             }
           }
 
-          // 🛑 المضيف يرسل paddles أيضاً
           if (isHost && !isOfflineMode && state.countdown === 0) {
             const nowMs = performance.now();
             if (nowMs - lastBallEmitRef.current > 50) {
@@ -1692,6 +1688,13 @@ export function GameScreen3D({
   const totalScore = Object.values(scores as any).reduce((a:any,b:any)=>a+b,0) as number;
   const myScore = scores[players.find(p=>p.side===mySideForCam)?.id || players[0]?.id] ?? 0;
   const opponentScore = totalScore - myScore;
+
+  // 🛑 دالة الخروج مع تأكيد
+  const handleExit = () => {
+    if (window.confirm('هل أنت متأكد من الخروج من اللعبة؟')) {
+      window.location.reload();
+    }
+  };
 
   return (
     <main className="game-shell" style={{ background: '#0a0a0a', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
@@ -1951,7 +1954,8 @@ export function GameScreen3D({
             </div>
           </div>
         )}
-        <button onClick={() => window.location.reload()} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: '#ff2d2d', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize:'11px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+        {/* 🛑 زر EXIT مع تأكيد */}
+        <button onClick={handleExit} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: '#ff2d2d', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize:'11px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
           <ArrowLeft size={14} /> EXIT
         </button>
         <button onClick={()=>setShowCamMenu(v=>!v)} style={{
