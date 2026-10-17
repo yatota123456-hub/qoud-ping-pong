@@ -1,9 +1,4 @@
-# fly.toml app configuration file generated for qoud-ping-pong-tqk-6q on 2026-09-13T13:37:10Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
-app = 'qoud-ping-pong-tqk-6q'
+﻿app = 'qoud-ping-pong-tqk-6q'
 primary_region = 'fra'
 
 [build]
@@ -19,7 +14,3 @@ primary_region = 'fra'
   auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
-  processes = ['app']
-
-[experimental]
-  entrypoint = ["pnpm", "start"]
