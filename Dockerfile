@@ -1,21 +1,20 @@
-# Use Node.js as base image
-FROM node:20-slim AS base
+﻿FROM oven/bun:1
 WORKDIR /app
-RUN npm install -g pnpm
 
-# Install dependencies
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-RUN pnpm install
+# انسخ ملفات الحزم فقط أولاً للكاش
+COPY package.json bun.lock* pnpm-lock.yaml* pnpm-workspace.yaml* .npmrc* ./
 
-# Copy all source files
+# ثبت - يشتغل مع bun أو pnpm
+RUN bun install
+
+# انسخ باقي المشروع
 COPY . .
 
-# Build the project
-RUN pnpm run build
+# ابنِ الواجهة - يخرج إلى dist/public حسب vite.config.ts
+RUN bun run build
 
-# Expose the port
 EXPOSE 2567
+ENV NODE_ENV=production
+ENV PORT=2567
 
-# تحديث المسار ليشير للمكان الذي سيتم بناء الملف فيه
-# غالباً يكون في dist/index.js أو server/dist/index.js
-CMD ["node", "dist/index.js"] 
+CMD ["bun", "run", "start"]
