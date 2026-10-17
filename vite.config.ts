@@ -22,19 +22,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 5001,
+    port: 3000,
     strictPort: false,
     host: '0.0.0.0',
-    proxy: {
-      '/matchmake': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-        ws: true,
-      },
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-      },
-    },
+    allowedHosts: true,
   },
 });

@@ -3,6 +3,14 @@ import * as THREE from 'three';
 import { Pause, Play, X, RotateCcw, Camera, Eye, EyeOff, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw,Save, Video, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { socket } from '../socket.tsx';
+import {
+  getArenaWorld,
+  clampPaddlePosition,
+  BALL_RADIUS,
+  PADDLE_RADIUS,
+  BORDER_THICKNESS,
+  ARENA_SCALES,
+} from '../shared/roomSchema';
 
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
 type Settings = any;
@@ -418,15 +426,6 @@ function createArenaFrame(worldW: number, worldH: number, style: 'classic' | 'mo
   return style === 'classic' ? createArenaFrameClassic(worldW, worldH) : createArenaFrameModern(worldW, worldH);
 }
 
-function getArenaWorld(count: number, size: any = 'medium') {
-  const ARENA_SCALES: any = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 };
-  const RECT = { w: 700, h: 1050 };
-  const SQUARE = { w: 1000, h: 1000 };
-  const base = count >= 4 ? SQUARE : RECT;
-  const sc = ARENA_SCALES[size] || 1;
-  return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
-}
-
 function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
   const isMobileNow = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
   const maxDim = Math.max(world.w, world.h);
@@ -547,7 +546,7 @@ export function GameScreen3D({
   }, [settings.arenaSize]);
 
   const saveCameraSettings = useCallback(() => {
-    const settings = {
+    const cameraSettings = {
       angle: cam.current.angle,
       distance: cam.current.distance,
       height: cam.current.height,
@@ -555,8 +554,8 @@ export function GameScreen3D({
       targetDistance: cam.current.targetDistance,
       targetHeight: cam.current.targetHeight,
     };
-    localStorage.setItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`, JSON.stringify(settings));
-  }, []);
+    localStorage.setItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`, JSON.stringify(cameraSettings));
+  }, [settings.arenaSize]);
 
   const resetCameraToDefault = useCallback(() => {
     cam.current = { ...initialCam };
@@ -681,7 +680,7 @@ export function GameScreen3D({
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
-  const isOfflineMode =!socket.connected || players.length <= 1 || settings.vsComputer || players.some((p:any)=>p.computer);
+  const isOfflineMode = !socket.connected || !roomCode;
   const isVsComputer = settings.vsComputer || players.some((p:any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
   const isFriendsMode = !isVsComputer && !!roomCode && players.length > 1;
 
@@ -827,6 +826,17 @@ export function GameScreen3D({
         stateRef.current.ballTarget.y = data.ball.y;
         stateRef.current.ballTarget.vx = data.ball.vx;
         stateRef.current.ballTarget.vy = data.ball.vy;
+
+        const dist = Math.hypot(stateRef.current.ball.x - data.ball.x, stateRef.current.ball.y - data.ball.y);
+        if (dist > 45 || !data.ball.visible) {
+          stateRef.current.ball.x = data.ball.x;
+          stateRef.current.ball.y = data.ball.y;
+        } else {
+          stateRef.current.ball.x += (data.ball.x - stateRef.current.ball.x) * 0.4;
+          stateRef.current.ball.y += (data.ball.y - stateRef.current.ball.y) * 0.4;
+        }
+        stateRef.current.ball.vx = data.ball.vx;
+        stateRef.current.ball.vy = data.ball.vy;
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
@@ -854,12 +864,18 @@ export function GameScreen3D({
       }
     };
 
+    const handleHitEffect = (data: any) => {
+      playHitSound3D(data.power || 0.5);
+      createGoalStars3D(data.x, data.y);
+      shakeRef.current.intensity = Math.min(8, 2 + (data.power || 0.5) * 6);
+    };
+
     const handleGoalScored = (data: any) => {
       stateRef.current.countdown = 3;
       stateRef.current.countdownStart = performance.now();
-      stateRef.current.countdownSide = data.side;
+      stateRef.current.countdownSide = data.missedSide || data.side;
       setCountdown(3);
-      setCountdownSide(data.side);
+      setCountdownSide(data.missedSide || data.side);
       stateRef.current.rally = 0;
       setRally(0);
       
@@ -869,13 +885,18 @@ export function GameScreen3D({
       stateRef.current.ball.vy = 0;
       stateRef.current.ballTarget.x = world.w / 2;
       stateRef.current.ballTarget.y = world.h / 2;
+      playGoalSound3D();
+      createGoalStars3D(world.w / 2, world.h / 2);
+      shakeRef.current.intensity = 18;
     };
 
     socket.on('game-state', handleGameState);
+    socket.on('hit-effect', handleHitEffect);
     socket.on('goal-scored', handleGoalScored);
 
     return () => { 
       socket.off('game-state', handleGameState); 
+      socket.off('hit-effect', handleHitEffect);
       socket.off('goal-scored', handleGoalScored); 
     };
   }, [getMySide, world.w, world.h]);
@@ -966,39 +987,15 @@ export function GameScreen3D({
       const target = new THREE.Vector3();
       if (raycaster.ray.intersectPlane(plane, target)) {
         let tx = target.x;
-        let tz = target.z;
+        let tz = target.z - OFFSET;
         const needCount = Math.max(2, players.length, settings.players || 2);
-        const isFourPlayers = needCount >= 4;
-        const topLimit = isFourPlayers ? world.h * 0.22 : world.h * 0.38;
-        const bottomLimit = isFourPlayers ? world.h * 0.78 : world.h * 0.62;
-        const leftLimit = isFourPlayers ? world.w * 0.22 : world.w * 0.38;
-        const rightLimit = isFourPlayers ? world.w * 0.78 : world.w * 0.62;
-
-        if (mySide === 'top') {
-          const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, 45, topLimit);
-          stateRef.current.targetPaddles[mySide].x = clampedX;
-          stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.emit('paddle-target', { socketId: socket.id, x: clampedX, z: clampedZ });
-        } else if (mySide === 'bottom') {
-          const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, bottomLimit, world.h - 45);
-          stateRef.current.targetPaddles[mySide].x = clampedX;
-          stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.emit('paddle-target', { socketId: socket.id, x: clampedX, z: clampedZ });
-        } else if (mySide === 'left') {
-          const clampedX = clamp(tx, 45, leftLimit);
-          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45);
-          stateRef.current.targetPaddles[mySide].x = clampedX;
-          stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.emit('paddle-target', { socketId: socket.id, x: clampedX, z: clampedZ });
-        } else if (mySide === 'right') {
-          const clampedX = clamp(tx, rightLimit, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45);
-          stateRef.current.targetPaddles[mySide].x = clampedX;
-          stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.emit('paddle-target', { socketId: socket.id, x: clampedX, z: clampedZ });
-        }
+        const isMultiplayer4 = needCount >= 3;
+        const clamped = clampPaddlePosition(mySide, tx, tz, world.w, world.h, isMultiplayer4);
+        stateRef.current.targetPaddles[mySide].x = clamped.x;
+        stateRef.current.targetPaddles[mySide].z = clamped.y;
+        stateRef.current.paddles[mySide].x = clamped.x;
+        stateRef.current.paddles[mySide].z = clamped.y;
+        socket.sendPaddleTarget(clamped.x, clamped.y);
       }
     };
     el.addEventListener('pointerdown', handlePointerMove as any);
@@ -1764,7 +1761,9 @@ export function GameScreen3D({
           <span style={{color:'rgba(255,255,255,0.6)', fontSize:'13px'}}>{readyPlayers.length} / {players.length} جاهزين - مع الأصدقاء فقط</span>
           <div style={{display:'flex', gap:'8px', marginTop:'8px'}}>
             {players.map(p => {
-              const isReady = readyPlayers.includes(p.socketId || p.id) || readyPlayers.includes(p.id);
+              const sid = String(p.socketId || p.id);
+              const pid = String(p.id);
+              const isReady = readyPlayers.includes(sid) || readyPlayers.includes(pid);
               return <div key={p.id} style={{width:'36px', height:'36px', borderRadius:'50%', background: isReady ? '#4CAF50' : '#333', border: `2px solid ${p.color}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:'12px'}}>{isReady ? '✓' : '...'}</div>
             })}
           </div>

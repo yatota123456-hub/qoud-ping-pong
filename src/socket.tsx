@@ -29,8 +29,11 @@ class ColyseusBridge {
     this.room.send(event, payload); 
     return true; 
   }
-  sendPaddleTarget(x: number, y: number) {
+  sendPaddleTarget(x: number, y: number, vx?: number, vy?: number) {
     const now = performance.now();
+    const dt = Math.max(0.005, (now - this.lastPaddleEmit) / 1000);
+    const computedVx = vx !== undefined ? vx : (x - this.lastPaddlePos.x) / dt;
+    const computedVy = vy !== undefined ? vy : (y - this.lastPaddlePos.y) / dt;
     const dx = x - this.lastPaddlePos.x;
     const dy = y - this.lastPaddlePos.y;
     const distSq = dx*dx + dy*dy;
@@ -38,7 +41,12 @@ class ColyseusBridge {
     if (now - this.lastPaddleEmit < 10) return;
     this.lastPaddleEmit = now;
     this.lastPaddlePos = { x, y };
-    this.emit('paddle-target', { x: Math.round(x), y: Math.round(y) });
+    this.emit('paddle-target', {
+      x: Math.round(x),
+      y: Math.round(y),
+      vx: Math.round(computedVx),
+      vy: Math.round(computedVy)
+    });
   }
   attach(room: any) {
     this.room = room;
@@ -108,13 +116,13 @@ class ColyseusBridge {
 }
 
 function getColyseusEndpoint() {
-  const FLY_URL = 'wss://qoud-ping-pong-tqk-6q.fly.dev';
   const envUrl = (import.meta as any).env?.VITE_COLYSEUS_URL;
   if (envUrl) return envUrl;
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-    return FLY_URL;
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}`;
   }
-  return `ws://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:2567`;
+  return 'ws://localhost:3000';
 }
 
 export const colyseus = new Client(getColyseusEndpoint());

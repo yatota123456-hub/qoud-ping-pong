@@ -1,0 +1,8 @@
+{
+  "name": "Qoud Ping Pong",
+  "description": "Multiplayer 3D Quad Ping Pong arcade game with real-time paddle and ball physics.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ],
+  "permissions": []
+}
