@@ -1,10 +1,10 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Pause, Play, X, RotateCcw, Camera, Eye, EyeOff, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw,Save, Video, Maximize2 } from 'lucide-react';
+import { Pause, Play, X, RotateCcw, Camera, Eye, EyeOff, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw, Save, Video, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { socket } from '../socket.tsx';
 import {
-  getArenaWorld,
+  getArenaWorld as getArenaWorldImported,
   clampPaddlePosition,
   BALL_RADIUS,
   PADDLE_RADIUS,
@@ -16,12 +16,32 @@ type Player = { id: number | string; name: string; color: string; side: 'top' | 
 type Settings = any;
 type Scores = Record<string | number, number>;
 
-function createAirHockeySurface(worldW: number, worldH: number) {
+// ===== دالة مساعدة: هل الجهاز جوال؟ =====
+const isMobileDevice = () => {
+  if (typeof window === 'undefined') return false;
+  return window.innerWidth < 768 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+};
+
+function safeGetMaxAnisotropy(renderer?: THREE.WebGLRenderer): number {
+  try {
+    if (!renderer) return 1;
+    const max = renderer.capabilities.getMaxAnisotropy();
+    return Math.min(max, isMobileDevice() ? 2 : 4);
+  } catch {
+    return 1;
+  }
+}
+
+function createAirHockeySurface(worldW: number, worldH: number, renderer?: THREE.WebGLRenderer) {
+  const mobile = isMobileDevice();
+  // 🔧 تصغير حجم الـ canvas للجوال من 2048x4096 إلى 1024x2048 لتوفير 75% ذاكرة
   const canvas = document.createElement('canvas');
-  canvas.width = 2048;
-  canvas.height = 4096;
-  const ctx = canvas.getContext('2d');
+  canvas.width = mobile ? 1024 : 2048;
+  canvas.height = mobile ? 2048 : 2048; // كان 4096، الآن 2048 حتى للديسكتوب، و 2048 للجوال نسبة 1:2 محفوظة عبر الرسم
+  // للحفاظ على نسبة الطول، نرسم بنفس المنطق لكن بجودة أقل للجوال
+  const ctx = canvas.getContext('2d', { alpha: false } as any);
   if (!ctx) return null;
+
   ctx.fillStyle = '#fefefe';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -30,99 +50,102 @@ function createAirHockeySurface(worldW: number, worldH: number) {
   grad.addColorStop(1, 'rgba(0,0,0,0.03)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+
   ctx.fillStyle = 'rgba(10,10,10,0.85)';
-  const dotSize = 2.2;
-  const spacing = 32;
-  for (let y = spacing/2; y < canvas.height; y += spacing) {
+  const dotSize = mobile ? 1.6 : 2.2;
+  const spacing = mobile ? 28 : 32;
+  // تقليل عدد النقاط للجوال
+  for (let y = spacing / 2; y < canvas.height; y += spacing) {
     const isEvenRow = Math.floor(y / spacing) % 2 === 0;
-    for (let x = spacing/2; x < canvas.width; x += spacing) {
-      const offset = isEvenRow ? 0 : spacing/2;
-      if (x + offset >= canvas.width - spacing/2) continue;
+    for (let x = spacing / 2; x < canvas.width; x += spacing) {
+      const offset = isEvenRow ? 0 : spacing / 2;
+      if (x + offset >= canvas.width - spacing / 2) continue;
       ctx.beginPath();
       ctx.arc(x + offset, y, dotSize, 0, Math.PI * 2);
       ctx.fill();
     }
   }
   ctx.strokeStyle = 'rgba(255, 60, 60, 0.85)';
-  ctx.lineWidth = 4;
+  ctx.lineWidth = mobile ? 2.5 : 4;
   ctx.setLineDash([30, 20]);
   ctx.beginPath();
-  ctx.moveTo(0, canvas.height/2);
-  ctx.lineTo(canvas.width, canvas.height/2);
+  ctx.moveTo(0, canvas.height / 2);
+  ctx.lineTo(canvas.width, canvas.height / 2);
   ctx.stroke();
   ctx.setLineDash([]);
 
   ctx.strokeStyle = '#ff2d2d';
-  ctx.lineWidth = 8;
+  ctx.lineWidth = mobile ? 5 : 8;
   ctx.shadowBlur = 0;
   ctx.shadowColor = 'transparent';
-  const goalRadius = 360;
+  const goalRadius = mobile ? 180 : 360;
   ctx.beginPath();
-  ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
+  ctx.arc(canvas.width / 2, 0, goalRadius, 0, Math.PI, false);
   ctx.stroke();
   ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
+  ctx.arc(canvas.width / 2, canvas.height, goalRadius, Math.PI, Math.PI * 2, false);
   ctx.stroke();
->>>>>>> 34fc226 (add server and yt-dlp integration)
+
   ctx.fillStyle = 'rgba(255, 30, 30, 0.14)';
   ctx.beginPath();
-  ctx.arc(canvas.width/2, 0, goalRadius, 0, Math.PI, false);
-  ctx.lineTo(canvas.width/2 + goalRadius, 0);
-  ctx.lineTo(canvas.width/2 - goalRadius, 0);
+  ctx.arc(canvas.width / 2, 0, goalRadius, 0, Math.PI, false);
+  ctx.lineTo(canvas.width / 2 + goalRadius, 0);
+  ctx.lineTo(canvas.width / 2 - goalRadius, 0);
   ctx.closePath();
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height, goalRadius, Math.PI, Math.PI*2, false);
-  ctx.lineTo(canvas.width/2 - goalRadius, canvas.height);
-  ctx.lineTo(canvas.width/2 + goalRadius, canvas.height);
+  ctx.arc(canvas.width / 2, canvas.height, goalRadius, Math.PI, Math.PI * 2, false);
+  ctx.lineTo(canvas.width / 2 - goalRadius, canvas.height);
+  ctx.lineTo(canvas.width / 2 + goalRadius, canvas.height);
   ctx.closePath();
   ctx.fill();
 
   ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = mobile ? 2 : 3;
   ctx.beginPath();
-  ctx.arc(canvas.width/2, 0, goalRadius-10, 0, Math.PI, false);
+  ctx.arc(canvas.width / 2, 0, goalRadius - 10, 0, Math.PI, false);
   ctx.stroke();
   ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height, goalRadius-10, Math.PI, Math.PI*2, false);
+  ctx.arc(canvas.width / 2, canvas.height, goalRadius - 10, Math.PI, Math.PI * 2, false);
   ctx.stroke();
 
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
   if (isSquareArena) {
-    const sideGoalRadius = 360;
+    const sideGoalRadius = mobile ? 180 : 360;
     ctx.strokeStyle = '#ff2d2d';
-    ctx.lineWidth = 8;
+    ctx.lineWidth = mobile ? 5 : 8;
     ctx.shadowBlur = 0;
     ctx.beginPath();
-    ctx.arc(0, canvas.height/2, sideGoalRadius, -Math.PI/2, Math.PI/2, false);
+    ctx.arc(0, canvas.height / 2, sideGoalRadius, -Math.PI / 2, Math.PI / 2, false);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(canvas.width, canvas.height/2, sideGoalRadius, Math.PI/2, -Math.PI/2, false);
+    ctx.arc(canvas.width, canvas.height / 2, sideGoalRadius, Math.PI / 2, -Math.PI / 2, false);
     ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.shadowColor = 'transparent';
   }
 
   ctx.strokeStyle = 'rgba(255, 45, 45, 0.35)';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = mobile ? 2 : 3;
   ctx.beginPath();
-  ctx.arc(canvas.width/2, canvas.height/2, 70, 0, Math.PI*2);
+  ctx.arc(canvas.width / 2, canvas.height / 2, mobile ? 35 : 70, 0, Math.PI * 2);
   ctx.stroke();
+
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.ClampToEdgeWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.anisotropy = 16;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.anisotropy = safeGetMaxAnisotropy(renderer);
+  tex.minFilter = mobile ? THREE.LinearFilter : THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
-  tex.generateMipmaps = true;
+  tex.generateMipmaps = !mobile;
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
   return tex;
 }
 
-function createNeonGradientTexture() {
+function createNeonGradientTexture(renderer?: THREE.WebGLRenderer) {
+  const mobile = isMobileDevice();
   const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 64;
+  canvas.width = mobile ? 512 : 1024;
+  canvas.height = mobile ? 32 : 64;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
@@ -137,7 +160,7 @@ function createNeonGradientTexture() {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = 8;
+  tex.anisotropy = safeGetMaxAnisotropy(renderer);
   return tex;
 }
 
@@ -158,30 +181,31 @@ function buildRoundedRectPoints(w: number, h: number, r: number, segmentsPerCorn
 
 function setup3DArenaLighting(scene: THREE.Scene, worldWidth: number, worldHeight: number) {
   scene.background = new THREE.Color('#0a0a0a');
-  scene.fog = new THREE.Fog('#0a0a0a', worldWidth*1.8, worldWidth*4);
+  scene.fog = new THREE.Fog('#0a0a0a', worldWidth * 1.8, worldWidth * 4);
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
   scene.add(ambientLight);
   const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
-  mainLight.position.set(worldWidth/2, 1200, worldHeight/2);
+  mainLight.position.set(worldWidth / 2, 1200, worldHeight / 2);
   scene.add(mainLight);
   const fillLight = new THREE.DirectionalLight(0xffffff, 0.45);
-  fillLight.position.set(-worldWidth*0.3, 800, -worldHeight*0.2);
+  fillLight.position.set(-worldWidth * 0.3, 800, -worldHeight * 0.2);
   scene.add(fillLight);
-  const edgeLight1 = new THREE.PointLight(0xff2d2d, 0.6, worldWidth*1.5);
-  edgeLight1.position.set(worldWidth*0.5, 80, -40);
+  const edgeLight1 = new THREE.PointLight(0xff2d2d, 0.6, worldWidth * 1.5);
+  edgeLight1.position.set(worldWidth * 0.5, 80, -40);
   scene.add(edgeLight1);
-  const edgeLight2 = new THREE.PointLight(0xff2d2d, 0.6, worldWidth*1.5);
-  edgeLight2.position.set(worldWidth*0.5, 80, worldHeight+40);
+  const edgeLight2 = new THREE.PointLight(0xff2d2d, 0.6, worldWidth * 1.5);
+  edgeLight2.position.set(worldWidth * 0.5, 80, worldHeight + 40);
   scene.add(edgeLight2);
-  const centerLight = new THREE.PointLight(0xffffff, 0.35, worldWidth*2);
-  centerLight.position.set(worldWidth/2, 600, worldHeight/2);
+  const centerLight = new THREE.PointLight(0xffffff, 0.35, worldWidth * 2);
+  centerLight.position.set(worldWidth / 2, 600, worldHeight / 2);
   scene.add(centerLight);
 }
 
-function createArenaFrameClassic(worldW: number, worldH: number) {
+function createArenaFrameClassic(worldW: number, worldH: number, renderer?: THREE.WebGLRenderer) {
+  const mobile = isMobileDevice();
   const group = new THREE.Group();
   const bezelThickness = Math.max(32, Math.min(worldW, worldH) * 0.055);
-  const bezelHeight = 28;
+  const bezelHeight = mobile ? 22 : 28;
   const bezelY = 13;
   const bezelMat = new THREE.MeshStandardMaterial({
     color: '#080808',
@@ -192,29 +216,23 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
   const goalGapW = worldW * 0.68;
   const goalGapH = worldH * 0.58;
-<<<<<<< HEAD
-  
-=======
 
   const bezelPieces: any[] = [];
-
   const topSideWidth = (worldW - goalGapW) / 2 + bezelThickness;
-  const topLeftX = -bezelThickness + topSideWidth/2;
-  const topRightX = worldW + bezelThickness - topSideWidth/2;
+  const topLeftX = -bezelThickness + topSideWidth / 2;
+  const topRightX = worldW + bezelThickness - topSideWidth / 2;
   bezelPieces.push(
     { w: topSideWidth, d: bezelThickness, x: topLeftX, z: -bezelThickness / 2 },
     { w: topSideWidth, d: bezelThickness, x: topRightX, z: -bezelThickness / 2 }
   );
-
   bezelPieces.push(
     { w: topSideWidth, d: bezelThickness, x: topLeftX, z: worldH + bezelThickness / 2 },
     { w: topSideWidth, d: bezelThickness, x: topRightX, z: worldH + bezelThickness / 2 }
   );
-
   if (isSquareArena) {
     const sideWidth = (worldH - goalGapH) / 2 + bezelThickness;
-    const leftTopZ = -bezelThickness + sideWidth/2;
-    const leftBottomZ = worldH + bezelThickness - sideWidth/2;
+    const leftTopZ = -bezelThickness + sideWidth / 2;
+    const leftBottomZ = worldH + bezelThickness - sideWidth / 2;
     bezelPieces.push(
       { w: bezelThickness, d: sideWidth, x: -bezelThickness / 2, z: leftTopZ },
       { w: bezelThickness, d: sideWidth, x: -bezelThickness / 2, z: leftBottomZ },
@@ -232,11 +250,14 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
     mesh.position.set(p.x, bezelY, p.z);
     group.add(mesh);
   });
+
   const neonRadius = Math.min(42, Math.min(worldW, worldH) * 0.065);
-  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, 16);
+  const segCorner = mobile ? 8 : 16;
+  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, segCorner);
   const neonCurve = new THREE.CatmullRomCurve3(neonPts, true, 'catmullrom', 0.15);
-  const neonGeo = new THREE.TubeGeometry(neonCurve, 220, 6.5, 16, true);
-  const neonTex = createNeonGradientTexture();
+  const tubeSegs = mobile ? 80 : 160;
+  const neonGeo = new THREE.TubeGeometry(neonCurve, tubeSegs, mobile ? 4.5 : 6.5, mobile ? 8 : 16, true);
+  const neonTex = createNeonGradientTexture(renderer);
   const neonMat = new THREE.MeshStandardMaterial({
     map: neonTex || undefined,
     emissive: new THREE.Color(0xffffff),
@@ -248,12 +269,13 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   const neonTube = new THREE.Mesh(neonGeo, neonMat);
   neonTube.position.y = 22.5;
   group.add(neonTube);
+
   const outerRadius = neonRadius + bezelThickness * 0.6;
   const outerW = worldW + bezelThickness * 0.8;
   const outerH = worldH + bezelThickness * 0.8;
-  const outerPts = buildRoundedRectPoints(outerW, outerH, outerRadius, 16);
-  const outerCurve = new THREE.CatmullRomCurve3(outerPts.map(p => new THREE.Vector3(p.x - bezelThickness*0.4, 0, p.z - bezelThickness*0.4)), true, 'catmullrom', 0.15);
-  const outerGeo = new THREE.TubeGeometry(outerCurve, 220, 1.8, 12, true);
+  const outerPts = buildRoundedRectPoints(outerW, outerH, outerRadius, segCorner);
+  const outerCurve = new THREE.CatmullRomCurve3(outerPts.map(p => new THREE.Vector3(p.x - bezelThickness * 0.4, 0, p.z - bezelThickness * 0.4)), true, 'catmullrom', 0.15);
+  const outerGeo = new THREE.TubeGeometry(outerCurve, tubeSegs, 1.8, mobile ? 8 : 12, true);
   const outerMat = new THREE.MeshBasicMaterial({
     map: neonTex || undefined,
     transparent: true,
@@ -262,37 +284,39 @@ function createArenaFrameClassic(worldW: number, worldH: number) {
   const outerTube = new THREE.Mesh(outerGeo, outerMat);
   outerTube.position.y = 26;
   group.add(outerTube);
+
   const goalW = Math.max(680, worldW * 0.78);
   const goalH = 36;
   const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
   const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalTop.position.set(worldW/2, bezelY+2, -bezelThickness/2);
+  goalTop.position.set(worldW / 2, bezelY + 2, -bezelThickness / 2);
   group.add(goalTop);
   const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
-  goalBottom.position.set(worldW/2, bezelY+2, worldH + bezelThickness/2);
+  goalBottom.position.set(worldW / 2, bezelY + 2, worldH + bezelThickness / 2);
   group.add(goalBottom);
   const goalLightTop = new THREE.PointLight(0xff1a1a, 0.8, 250);
-  goalLightTop.position.set(worldW/2, bezelY, -bezelThickness/2);
+  goalLightTop.position.set(worldW / 2, bezelY, -bezelThickness / 2);
   group.add(goalLightTop);
   const goalLightBottom = new THREE.PointLight(0xff1a1a, 0.8, 250);
-  goalLightBottom.position.set(worldW/2, bezelY, worldH + bezelThickness/2);
+  goalLightBottom.position.set(worldW / 2, bezelY, worldH + bezelThickness / 2);
   group.add(goalLightBottom);
   if (worldW >= 900) {
     const sideGoalW = Math.max(320, worldH * 0.42);
     const goalLeft = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, sideGoalW), goalMat);
-    goalLeft.position.set(-bezelThickness/2, bezelY+2, worldH/2);
+    goalLeft.position.set(-bezelThickness / 2, bezelY + 2, worldH / 2);
     group.add(goalLeft);
     const goalRight = new THREE.Mesh(new THREE.BoxGeometry(bezelThickness, goalH, sideGoalW), goalMat);
-    goalRight.position.set(worldW + bezelThickness/2, bezelY+2, worldH/2);
+    goalRight.position.set(worldW + bezelThickness / 2, bezelY + 2, worldH / 2);
     group.add(goalRight);
   }
   return group;
 }
 
-function createArenaFrameModern(worldW: number, worldH: number) {
+function createArenaFrameModern(worldW: number, worldH: number, renderer?: THREE.WebGLRenderer) {
+  const mobile = isMobileDevice();
   const group = new THREE.Group();
   const bezelThickness = Math.max(38, Math.min(worldW, worldH) * 0.065);
-  const bezelHeight = 36;
+  const bezelHeight = mobile ? 28 : 36;
   const bezelY = 18;
   const bezelMat = new THREE.MeshStandardMaterial({
     color: '#ff1a1a',
@@ -301,47 +325,103 @@ function createArenaFrameModern(worldW: number, worldH: number) {
     emissive: '#ff0000',
     emissiveIntensity: 0.08,
   });
-  const createBeveledSide = (w: number, h: number, d: number, x: number, z: number) => {
-    const shape = new THREE.Shape();
-    shape.moveTo(-w/2, -d/2);
-    shape.lineTo(w/2, -d/2);
-    shape.lineTo(w/2 - 8, d/2);
-    shape.lineTo(-w/2 + 8, d/2);
-    shape.lineTo(-w/2, -d/2);
-    const extrudeSettings = {
-      steps: 1,
-      depth: bezelHeight,
-      bevelEnabled: true,
-      bevelThickness: 6,
-      bevelSize: 4,
-      bevelSegments: 4
-    };
-    const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    geo.rotateX(-Math.PI/2);
+
+  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
+  const goalGapW = worldW * 0.68;
+  const goalGapH = worldH * 0.58;
+
+  const createBoxSide = (w: number, d: number, x: number, z: number) => {
+    const geo = new THREE.BoxGeometry(w, bezelHeight, d);
     const mesh = new THREE.Mesh(geo, bezelMat);
     mesh.position.set(x, bezelY, z);
     return mesh;
   };
-  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.68;
-  const goalGapH = worldH * 0.58;
-// === ط¥طµظ„ط§ط­: ط­ط¯ظ‘ ط§ظ„طھط­ظˆظ„ ظ„ط³ط§ط­ط© ظ…ط±ط¨ط¹ط© 3 ظ„ط§ط¹ط¨ظٹظ† ظپط£ظƒط«ط± - ظ…ط·ط§ط¨ظ‚ طھظ…ط§ظ…ط§ظ‹ ظ„ظ…ظ†ط·ظ‚ ط§ظ„ط³ظٹط±ظپط± ===
-function getArenaWorld(count: number, size: any = 'medium') {
-  const ARENA_SCALES: any = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 };
+
+  // نفس منطق الكلاسيك لكن بستايل مودرن
+  const topSideWidth = (worldW - goalGapW) / 2 + bezelThickness;
+  const topLeftX = -bezelThickness + topSideWidth / 2;
+  const topRightX = worldW + bezelThickness - topSideWidth / 2;
+
+  group.add(createBoxSide(topSideWidth, bezelThickness, topLeftX, -bezelThickness / 2));
+  group.add(createBoxSide(topSideWidth, bezelThickness, topRightX, -bezelThickness / 2));
+  group.add(createBoxSide(topSideWidth, bezelThickness, topLeftX, worldH + bezelThickness / 2));
+  group.add(createBoxSide(topSideWidth, bezelThickness, topRightX, worldH + bezelThickness / 2));
+
+  if (isSquareArena) {
+    const sideWidth = (worldH - goalGapH) / 2 + bezelThickness;
+    const leftTopZ = -bezelThickness + sideWidth / 2;
+    const leftBottomZ = worldH + bezelThickness - sideWidth / 2;
+    group.add(createBoxSide(bezelThickness, sideWidth, -bezelThickness / 2, leftTopZ));
+    group.add(createBoxSide(bezelThickness, sideWidth, -bezelThickness / 2, leftBottomZ));
+    group.add(createBoxSide(bezelThickness, sideWidth, worldW + bezelThickness / 2, leftTopZ));
+    group.add(createBoxSide(bezelThickness, sideWidth, worldW + bezelThickness / 2, leftBottomZ));
+  } else {
+    group.add(createBoxSide(bezelThickness, worldH, -bezelThickness / 2, worldH / 2));
+    group.add(createBoxSide(bezelThickness, worldH, worldW + bezelThickness / 2, worldH / 2));
+  }
+
+  // نيون محيطي
+  const neonRadius = Math.min(42, Math.min(worldW, worldH) * 0.065);
+  const segCorner = mobile ? 8 : 16;
+  const neonPts = buildRoundedRectPoints(worldW, worldH, neonRadius, segCorner);
+  const neonCurve = new THREE.CatmullRomCurve3(neonPts, true, 'catmullrom', 0.15);
+  const tubeSegs = mobile ? 64 : 140;
+  const neonGeo = new THREE.TubeGeometry(neonCurve, tubeSegs, mobile ? 5 : 7, mobile ? 8 : 16, true);
+  const neonTex = createNeonGradientTexture(renderer);
+  const neonMat = new THREE.MeshStandardMaterial({
+    map: neonTex || undefined,
+    emissive: new THREE.Color(0xffffff),
+    emissiveMap: neonTex || undefined,
+    emissiveIntensity: 2.0,
+    roughness: 0.2,
+    metalness: 0.1
+  });
+  const neonTube = new THREE.Mesh(neonGeo, neonMat);
+  neonTube.position.y = 28;
+  group.add(neonTube);
+
+  // أهداف
+  const goalW = Math.max(680, worldW * 0.78);
+  const goalH = 38;
+  const goalMat = new THREE.MeshStandardMaterial({ color: '#020202', roughness: 0.1, metalness: 0.9 });
+  const goalTop = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
+  goalTop.position.set(worldW / 2, bezelY + 2, -bezelThickness / 2);
+  group.add(goalTop);
+  const goalBottom = new THREE.Mesh(new THREE.BoxGeometry(goalW, goalH, bezelThickness), goalMat);
+  goalBottom.position.set(worldW / 2, bezelY + 2, worldH + bezelThickness / 2);
+  group.add(goalBottom);
+
+  return group;
+}
+
+function createArenaFrame(worldW: number, worldH: number, style: 'classic' | 'modern' = 'modern', renderer?: THREE.WebGLRenderer) {
+  if (style === 'classic') return createArenaFrameClassic(worldW, worldH, renderer);
+  return createArenaFrameModern(worldW, worldH, renderer);
+}
+
+// Wrapper آمن لـ getArenaWorld المستورد مع fallback محلي
+function getArenaWorldSafe(count: number, size: any = 'medium') {
+  try {
+    if (typeof getArenaWorldImported === 'function') {
+      return getArenaWorldImported(count, size);
+    }
+  } catch {}
+  // fallback مطابق لمنطق السيرفر
+  const ARENA_SCALES_LOCAL: any = { small: 0.85, medium: 1.05, large: 1.7, xlarge: 2.2 };
   const RECT = { w: 700, h: 1050 };
   const SQUARE = { w: 1000, h: 1000 };
   const base = count >= 3 ? SQUARE : RECT;
-  const sc = ARENA_SCALES[size] || 1;
+  const sc = ARENA_SCALES_LOCAL[size] || 1;
   return { w: base.w * sc, h: base.h * sc, scale: sc, scaleFactor: 1 };
 }
 
-function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string, isMobile: boolean) {
-  const isMobileNow = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
+function getAdaptiveCameraPresets(world: { w: number; h: number }, arenaSize: string, isMobile: boolean) {
+  const isMobileNow = typeof window !== 'undefined' ? window.innerWidth < 768 : isMobile;
   const maxDim = Math.max(world.w, world.h);
   const PRESET_BY_SIZE: any = {
-    small:  { distance: Math.max(980, maxDim * 1.15), height: 680, fov: 52 },
+    small: { distance: Math.max(980, maxDim * 1.15), height: 680, fov: 52 },
     medium: { distance: Math.max(1180, maxDim * 1.12), height: 760, fov: 50 },
-    large:  { distance: Math.max(1680, maxDim * 1.18), height: 1020, fov: 48 },
+    large: { distance: Math.max(1680, maxDim * 1.18), height: 1020, fov: 48 },
     xlarge: { distance: Math.max(2080, maxDim * 1.22), height: 1220, fov: 46 },
   };
   const base = PRESET_BY_SIZE[arenaSize] || PRESET_BY_SIZE.medium;
@@ -350,12 +430,12 @@ function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string,
   const distance = base.distance * mobileBoost;
   const height = base.height * heightBoost;
   const basePresets = {
-    top: { angle: Math.PI, distance: 420, height: 1350, name: 'ظ…ظ† ط§ظ„ط£ط¹ظ„ظ‰', nameEn: 'Top View' },
-    bottom: { angle: 0, distance: distance, height: height, name: 'ط®ظ„ظپظƒ', nameEn: 'Behind You' },
-    topPlayer: { angle: Math.PI, distance: distance*0.58, height: height*0.78, name: 'ط®ظ„ظپ ط§ظ„ط®طµظ…', nameEn: 'Behind Enemy' },
-    iso: { angle: 0.52, distance: distance * 0.72, height: height * 0.85, name: 'ظ…ط§ط¦ظ„', nameEn: 'Isometric' },
-    sideLeft: { angle: -Math.PI / 2, distance: distance*0.72, height: height*0.65, name: 'ظٹط³ط§ط±', nameEn: 'Left' },
-    sideRight: { angle: Math.PI / 2, distance: distance*0.72, height: height*0.65, name: 'ظٹظ…ظٹظ†', nameEn: 'Right' },
+    top: { angle: Math.PI, distance: 420, height: 1350, name: 'من الأعلى', nameEn: 'Top View' },
+    bottom: { angle: 0, distance: distance, height: height, name: 'خلفك', nameEn: 'Behind You' },
+    topPlayer: { angle: Math.PI, distance: distance * 0.58, height: height * 0.78, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+    iso: { angle: 0.52, distance: distance * 0.72, height: height * 0.85, name: 'مائل', nameEn: 'Isometric' },
+    sideLeft: { angle: -Math.PI / 2, distance: distance * 0.72, height: height * 0.65, name: 'يسار', nameEn: 'Left' },
+    sideRight: { angle: Math.PI / 2, distance: distance * 0.72, height: height * 0.65, name: 'يمين', nameEn: 'Right' },
   };
   const adapted: any = {};
   for (const k in basePresets) {
@@ -366,40 +446,41 @@ function getAdaptiveCameraPresets(world: {w:number,h:number}, arenaSize: string,
 }
 
 const CAM_PRESETS_3D_BASE = {
-  top: { angle: Math.PI, distance: 400, height: 1400, name: 'ظ…ظ† ط§ظ„ط£ط¹ظ„ظ‰', nameEn: 'Top View' },
-  bottom: { angle: 0, distance: 1380, height: 900, name: 'ط®ظ„ظپظƒ', nameEn: 'Behind You' },
-  topPlayer: { angle: Math.PI, distance: 650, height: 650, name: 'ط®ظ„ظپ ط§ظ„ط®طµظ…', nameEn: 'Behind Enemy' },
-  iso: { angle: 0.6, distance: 950, height: 800, name: 'ظ…ط§ط¦ظ„', nameEn: 'Isometric' },
-  sideLeft: { angle: -Math.PI / 2, distance: 800, height: 500, name: 'ظٹط³ط§ط±', nameEn: 'Left' },
-  sideRight: { angle: Math.PI / 2, distance: 800, height: 500, name: 'ظٹظ…ظٹظ†', nameEn: 'Right' },
+  top: { angle: Math.PI, distance: 400, height: 1400, name: 'من الأعلى', nameEn: 'Top View' },
+  bottom: { angle: 0, distance: 1380, height: 900, name: 'خلفك', nameEn: 'Behind You' },
+  topPlayer: { angle: Math.PI, distance: 650, height: 650, name: 'خلف الخصم', nameEn: 'Behind Enemy' },
+  iso: { angle: 0.6, distance: 950, height: 800, name: 'مائل', nameEn: 'Isometric' },
+  sideLeft: { angle: -Math.PI / 2, distance: 800, height: 500, name: 'يسار', nameEn: 'Left' },
+  sideRight: { angle: Math.PI / 2, distance: 800, height: 500, name: 'يمين', nameEn: 'Right' },
 } as const;
 type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D_BASE;
 const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
-
-// طھط£ط®ظٹط± ط§ظ„ط¹ط±ط¶ (ظ…ظ„ظ„ظٹ ط«ط§ظ†ظٹط©) ظ„ظ„ط§ط³طھظٹظپط§ط، ط§ظ„ط³ظ„ط³ ط¨ظٹظ† ط¢ط®ط± ط­ط§ظ„طھظٹظ† ظˆط±ط¯طھط§ ظ…ظ† ط§ظ„ط³ظٹط±ظپط± - ظٹظ…ظ†ط¹ ط§ظ„طھظ‚ط·ط¹ ط¹ظ†ط¯ ط§ظ„ظ„ط§ط¹ط¨ظٹظ† ط؛ظٹط± ط§ظ„ظ…ط¶ظٹظپ
 const RENDER_DELAY_MS = 100;
 
-export function GameScreen3D({ 
-  roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating, 
-  seriesWins = {}, currentRound = 1, onGoal, onTimeUp, onPause, onExit 
-}: { 
-  roomCode: string; isHost: boolean; players: Player[]; settings: Settings; 
-  scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null; 
-  seriesWins?: Record<string, number>; currentRound?: number; 
-  onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; 
+export function GameScreen3D({
+  roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating,
+  seriesWins = {}, currentRound = 1, onGoal, onTimeUp, onPause, onExit
+}: {
+  roomCode: string; isHost: boolean; players: Player[]; settings: Settings;
+  scores: Scores; lastGoal: string | null; paused: boolean; celebrating: Player | null;
+  seriesWins?: Record<string, number>; currentRound?: number;
+  onGoal: (p: Player) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void;
 }) {
   const [localReady, setLocalReady] = useState(false);
   const [arenaStyle, setArenaStyle] = useState<'classic' | 'modern'>('modern');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
+  const [webglError, setWebglError] = useState<string | null>(null);
 
   useEffect(() => {
-    const savedCam = localStorage.getItem(`qoud_camera_preset_${settings.arenaSize || 'medium'}`);
-    if (savedCam) {
-      setSavedCamData(savedCam);
-      setShowRestoreModal(true);
-    }
-  }, []);
+    try {
+      const savedCam = localStorage.getItem(`qoud_camera_preset_${settings.arenaSize || 'medium'}`);
+      if (savedCam) {
+        setSavedCamData(savedCam);
+        setShowRestoreModal(true);
+      }
+    } catch {}
+  }, [settings.arenaSize]);
 
   const restoreCamera = () => {
     try {
@@ -418,7 +499,7 @@ export function GameScreen3D({
   const hintTextRef = useRef<HTMLDivElement>(null);
   const hasDraggedRef = useRef(false);
   const noDragStartRef = useRef(performance.now());
-  const [timeLeft, setTimeLeft] = useState(settings.mode === 'time'? settings.duration : 0);
+  const [timeLeft, setTimeLeft] = useState(settings.mode === 'time' ? settings.duration : 0);
   const [rally, setRally] = useState(0);
   const [countdown, setCountdown] = useState(0);
   const [countdownSide, setCountdownSide] = useState<string>('');
@@ -426,15 +507,13 @@ export function GameScreen3D({
   const gameEndedRef = useRef(false);
   const frameIdRef = useRef<number>(0);
   const localReadyRef = useRef(localReady);
-  useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
+  useEffect(() => { localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
   const isMobileCheck = useMemo(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false, []);
 
-  // === ط¥طµظ„ط§ط­ ط£ط³ط§ط³ظٹ: ط­ط¬ظ… ط§ظ„ط³ط§ط­ط© ظٹط£طھظٹ ظ…ظ† ط§ظ„ط³ظٹط±ظپط± ظ…ط¨ط§ط´ط±ط© ط¨ط¯ظ„ ط­ط³ط§ط¨ظ‡ ظ…ط­ظ„ظٹط§ظ‹ ط¨ط´ظƒظ„ ظ…ظ†ظپطµظ„ ط¹ظ†ط¯ ظƒظ„ ط¬ظ‡ط§ط² ===
-  // ظ‡ط°ط§ ظٹط¶ظ…ظ† ط£ظ† ظƒظ„ ط§ظ„ظ„ط§ط¹ط¨ظٹظ† (2 ط¥ظ„ظ‰ 4) ظٹط±ظˆظ† ط¨ط§ظ„ط¶ط¨ط· ظ†ظپط³ ط£ط¨ط¹ط§ط¯ ط§ظ„ط³ط§ط­ط© ط§ظ„طھظٹ ط§ط®طھط§ط±ظ‡ط§ ط§ظ„ظ…ط¶ظٹظپ ظ…ظ† ط§ظ„ظ‚ط§ط¦ظ…ط©.
   const localWorld = useMemo(
-    () => getArenaWorld(Math.max(players.length, settings.players || 2), settings.arenaSize),
+    () => getArenaWorldSafe(Math.max(players.length, settings.players || 2), settings.arenaSize),
     [players.length, settings.players, settings.arenaSize]
   );
   const isVsComputerForWorld = (settings as any).vsComputer || players.some((p: any) => p.computer);
@@ -457,54 +536,57 @@ export function GameScreen3D({
     if (st?.worldW && st?.worldH) applyWorld(Number(st.worldW), Number(st.worldH));
     return () => { socket.off('room-update', onRoomUpdate); };
   }, [isOfflineForWorld]);
-  // ظ†ظپط³ ط§ظ„ط±ظ‚ظ… ط¨ط§ظ„ط¶ط¨ط· ط¹ظ†ط¯ ظƒظ„ ط§ظ„ط£ط¬ظ‡ط²ط© ط§ظ„ظ…طھطµظ„ط© ط¨ظ†ظپط³ ط§ظ„ط؛ط±ظپط©ط› ط£ظˆظپظ„ط§ظٹظ†/ط¶ط¯ ط§ظ„ظƒظ…ط¨ظٹظˆطھط± ظٹط³طھط®ط¯ظ… ط§ظ„ط­ط³ط§ط¨ ط§ظ„ظ…ط­ظ„ظٹ
-  const world = remoteWorld ?? localWorld;
 
+  const world = remoteWorld ?? localWorld;
   const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world as any, settings.arenaSize, isMobileCheck), [world.w, world.h, settings.arenaSize, isMobileCheck]);
 
   const getMySide = useCallback((): Player['side'] => {
-    return (players.find((p) => p.socketId === socket.id)?.side?? players[0]?.side?? 'bottom') as Player['side'];
+    return (players.find((p) => p.socketId === socket.id)?.side ?? players[0]?.side ?? 'bottom') as Player['side'];
   }, [players]);
 
   const mySideForCam = getMySide();
   const initialCam = useMemo(() => {
-    const sideKey = mySideForCam === 'top'? 'topPlayer' : mySideForCam === 'left'? 'sideLeft' : mySideForCam === 'right'? 'sideRight' : 'bottom';
+    const sideKey = mySideForCam === 'top' ? 'topPlayer' : mySideForCam === 'left' ? 'sideLeft' : mySideForCam === 'right' ? 'sideRight' : 'bottom';
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
     return { angle: preset.angle, targetAngle: preset.angle, distance: preset.distance, targetDistance: preset.distance, height: preset.height, targetHeight: preset.height, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2, scaleFactor: 1 };
   }, [world, adaptivePresets, mySideForCam]);
 
-  const cam = useRef({...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 });
+  const cam = useRef({ ...initialCam, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 });
   useEffect(() => {
-    const saved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
-    if (saved) {
-      try {
+    try {
+      const saved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
+      if (saved) {
         const s = JSON.parse(saved);
-        cam.current = { ...cam.current, ...s, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 };
-      } catch {}
-    } else {
-      cam.current = { ...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2 } as any;
+        cam.current = { ...cam.current, ...s, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 };
+      } else {
+        cam.current = { ...initialCam, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 } as any;
+      }
+    } catch {
+      cam.current = { ...initialCam, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 } as any;
     }
-  }, [settings.arenaSize]);
+  }, [settings.arenaSize, initialCam, world.w, world.h]);
 
   const saveCameraSettings = useCallback(() => {
-    const s = {
-      angle: cam.current.angle,
-      distance: cam.current.distance,
-      height: cam.current.height,
-      targetAngle: cam.current.targetAngle,
-      targetDistance: cam.current.targetDistance,
-      targetHeight: cam.current.targetHeight,
-    };
-    localStorage.setItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`, JSON.stringify(s));
+    try {
+      const s = {
+        angle: cam.current.angle,
+        distance: cam.current.distance,
+        height: cam.current.height,
+        targetAngle: cam.current.targetAngle,
+        targetDistance: cam.current.targetDistance,
+        targetHeight: cam.current.targetHeight,
+      };
+      localStorage.setItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`, JSON.stringify(s));
+    } catch {}
   }, [settings.arenaSize]);
 
   const resetCameraToDefault = useCallback(() => {
     cam.current = { ...initialCam };
-    localStorage.removeItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
+    try { localStorage.removeItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`); } catch {}
   }, [initialCam, settings.arenaSize]);
 
   const threeRef = useRef<any>(null);
-  const audioCtxRef = useRef<AudioContext|null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const playHitSound3D = (power: number = 0.5) => {
     try {
@@ -524,19 +606,19 @@ export function GameScreen3D({
     try {
       if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       const ctx = audioCtxRef.current; if (!ctx) return;
-      for (let i=0;i<4;i++) {
+      for (let i = 0; i < 4; i++) {
         setTimeout(() => {
           try {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sawtooth';
-            osc.frequency.value = 180 + Math.random()*320;
+            osc.frequency.value = 180 + Math.random() * 320;
             gain.gain.value = 0.3;
             gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.9);
             osc.connect(gain); gain.connect(ctx.destination);
             osc.start(); osc.stop(ctx.currentTime + 0.9);
           } catch {}
-        }, i*100);
+        }, i * 100);
       }
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
@@ -551,25 +633,23 @@ export function GameScreen3D({
   const createGoalStars3D = (x: number, z: number) => {
     if (!threeRef.current) return;
     const { hitGroup } = threeRef.current;
-    for (let i=0;i<24;i++) {
-      const starGeo = new THREE.SphereGeometry(3 + Math.random()*2.5, 8, 8);
+    for (let i = 0; i < 24; i++) {
+      const starGeo = new THREE.SphereGeometry(3 + Math.random() * 2.5, 8, 8);
       const starMat = new THREE.MeshBasicMaterial({
-        color: ['#ffcf5a','#ff6b8b','#61e7c2','#00e5ff','#ffffff'][Math.floor(Math.random()*5)],
+        color: ['#ffcf5a', '#ff6b8b', '#61e7c2', '#00e5ff', '#ffffff'][Math.floor(Math.random() * 5)],
         transparent: true, opacity: 1
       });
       const star = new THREE.Mesh(starGeo, starMat);
-      star.position.set(x + (Math.random()-0.5)*24, 34 + Math.random()*22, z + (Math.random()-0.5)*24);
-      const vel = { x: (Math.random()-0.5)*13, y: 5 + Math.random()*9, z: (Math.random()-0.5)*13 };
+      star.position.set(x + (Math.random() - 0.5) * 24, 34 + Math.random() * 22, z + (Math.random() - 0.5) * 24);
+      const vel = { x: (Math.random() - 0.5) * 13, y: 5 + Math.random() * 9, z: (Math.random() - 0.5) * 13 };
       hitGroup.add(star);
-      hitEffectsRef.current.push({ mesh: star, vel, life: 1, decay: 0.02 + Math.random()*0.016, type: 'star' });
+      hitEffectsRef.current.push({ mesh: star, vel, life: 1, decay: 0.02 + Math.random() * 0.016, type: 'star' });
     }
   };
 
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
   const lastBallEmitRef = useRef(0);
-
-  // === ط¨ط§ظپط± ط§ط³طھظٹظپط§ط، ط§ظ„ظƒط±ط© - ظ„طھط³ظ„ظ‘ط³ ط§ظ„ط­ط±ظƒط© ط¹ظ†ط¯ ط§ظ„ظ„ط§ط¹ط¨ظٹظ† ط؛ظٹط± ط§ظ„ظ…ط¶ظٹظپ (ظٹظ…ظ†ط¹ ط§ظ„ظ‚ظپط²/ط§ظ„طھظ‚ط·ط¹) ===
   const ballBufferRef = useRef<Array<{ x: number; y: number; vx: number; vy: number; t: number }>>([]);
 
   const stateRef = useRef({
@@ -600,12 +680,11 @@ export function GameScreen3D({
     countdownStart: 0,
     countdownSide: null as Player['side'] | null,
     serving: { active: (settings as any).start === 'paddle', side: 'bottom' as Player['side'], startTime: 0, requested: false },
-    paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any,
+    paddleVel: { top: { vx: 0, vy: 0 }, bottom: { vx: 0, vy: 0 }, left: { vx: 0, vy: 0 }, right: { vx: 0, vy: 0 } } as any,
     antiStuckApplied: false,
     lastEdgeBounceTime: 0,
   });
 
-  // === ط¥ط¹ط§ط¯ط© ط¶ط¨ط· ظ…ظˆط§ظ‚ط¹ ط§ظ„ظƒط±ط© ظˆط§ظ„ظ…ط¶ط§ط±ط¨ ظپظˆط±ط§ظ‹ ط¥ط°ط§ طھط؛ظٹظ‘ط± ط­ط¬ظ… ط§ظ„ط³ط§ط­ط© (ظˆطµظˆظ„ ظ‚ظٹظ…ط© ط§ظ„ط³ظٹط±ظپط±) - ظٹظ…ظ†ط¹ ط§ط®طھظ„ط§ظپ ط§ظ„ط³ط§ط­ط§طھ ===
   useEffect(() => {
     const s = stateRef.current;
     s.ball.x = world.w / 2; s.ball.y = world.h / 2; s.ball.vx = 0; s.ball.vy = 0;
@@ -614,10 +693,9 @@ export function GameScreen3D({
     s.paddles.bottom = { x: world.w / 2, z: world.h - 52 };
     s.paddles.left = { x: 52, z: world.h / 2 };
     s.paddles.right = { x: world.w - 52, z: world.h / 2 };
-    s.targetPaddles = { top: {...s.paddles.top}, bottom: {...s.paddles.bottom}, left: {...s.paddles.left}, right: {...s.paddles.right} };
-    s.lastPaddles = { top: {...s.paddles.top}, bottom: {...s.paddles.bottom}, left: {...s.paddles.left}, right: {...s.paddles.right} };
+    s.targetPaddles = { top: { ...s.paddles.top }, bottom: { ...s.paddles.bottom }, left: { ...s.paddles.left }, right: { ...s.paddles.right } };
+    s.lastPaddles = { top: { ...s.paddles.top }, bottom: { ...s.paddles.bottom }, left: { ...s.paddles.left }, right: { ...s.paddles.right } };
     ballBufferRef.current = [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [world.w, world.h]);
 
   useEffect(() => {
@@ -642,8 +720,8 @@ export function GameScreen3D({
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
-  const isOfflineMode =!socket.connected || players.length <= 1 || settings.vsComputer || players.some((p:any)=>p.computer);
-  const isVsComputer = settings.vsComputer || players.some((p:any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('ظƒظ…ط¨ظٹظˆطھط±') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
+  const isOfflineMode = !socket.connected || players.length <= 1 || settings.vsComputer || players.some((p: any) => p.computer);
+  const isVsComputer = settings.vsComputer || players.some((p: any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
   const humanCount = Math.max(1, players.filter((p: any) => !p.computer).length);
   const isFriendsMode = !isVsComputer && !!roomCode && humanCount > 1;
 
@@ -651,20 +729,22 @@ export function GameScreen3D({
     const group = new THREE.Group();
     const isBlue = color.toLowerCase().includes('61e7c2') || color.toLowerCase().includes('00e5ff') || color.toLowerCase().includes('blue') || color === '#61e7c2';
     const baseColor = isBlue ? '#0a84ff' : (color === '#ffcf5a' ? '#0a84ff' : color);
+    const mobile = isMobileDevice();
+    const segs = mobile ? 24 : 48;
 
     if (style === 'classic') {
       const baseMat = new THREE.MeshStandardMaterial({ color: '#080808', roughness: 0.2, metalness: 0.85 });
-      const baseGeo = new THREE.CylinderGeometry(34, 34, 10, 48);
+      const baseGeo = new THREE.CylinderGeometry(34, 34, 10, segs);
       const base = new THREE.Mesh(baseGeo, baseMat);
       base.position.y = 5;
       group.add(base);
       const topMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.15, metalness: 0.2, emissive: baseColor, emissiveIntensity: 0.3 });
-      const top = new THREE.Mesh(new THREE.CylinderGeometry(28, 28, 6, 48), topMat);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(28, 28, 6, segs), topMat);
       top.position.y = 11;
       group.add(top);
-      const neonTex = createNeonGradientTexture();
+      const neonTex = createNeonGradientTexture(threeRef.current?.renderer);
       const ringMat = new THREE.MeshStandardMaterial({ map: neonTex || undefined, emissive: 0xffffff, emissiveMap: neonTex || undefined, emissiveIntensity: 1.2, roughness: 0.2 });
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(32, 2.5, 16, 64), ringMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(32, 2.5, mobile ? 8 : 16, segs), ringMat);
       ring.rotation.x = Math.PI / 2;
       ring.position.y = 8;
       group.add(ring);
@@ -676,7 +756,7 @@ export function GameScreen3D({
         emissive: new THREE.Color(baseColor),
         emissiveIntensity: 0.15
       });
-      const baseGeo = new THREE.CylinderGeometry(32, 34, 14, 48);
+      const baseGeo = new THREE.CylinderGeometry(32, 34, 14, segs);
       const base = new THREE.Mesh(baseGeo, baseMat);
       base.position.y = 7;
       group.add(base);
@@ -687,7 +767,7 @@ export function GameScreen3D({
         transparent: true,
         opacity: 0.3
       });
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(30, 1.5, 16, 48), ringMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(30, 1.5, mobile ? 8 : 16, segs), ringMat);
       ring.rotation.x = Math.PI / 2;
       ring.position.y = 10;
       group.add(ring);
@@ -698,7 +778,7 @@ export function GameScreen3D({
         emissive: new THREE.Color(baseColor),
         emissiveIntensity: 0.2
       });
-      const handle = new THREE.Mesh(new THREE.SphereGeometry(16, 32, 24), handleMat);
+      const handle = new THREE.Mesh(new THREE.SphereGeometry(16, mobile ? 16 : 32, mobile ? 12 : 24), handleMat);
       handle.position.y = 22;
       handle.scale.y = 0.8;
       group.add(handle);
@@ -707,7 +787,7 @@ export function GameScreen3D({
         transparent: true,
         opacity: 0.25
       });
-      const glow = new THREE.Mesh(new THREE.CylinderGeometry(36, 36, 2, 32), glowMat);
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(36, 36, 2, mobile ? 16 : 32), glowMat);
       glow.position.y = 2;
       group.add(glow);
       const pointLight = new THREE.PointLight(baseColor, 0.4, 80);
@@ -718,7 +798,7 @@ export function GameScreen3D({
   }, [arenaStyle]);
 
   const resetCamera = useCallback(() => {
-    const sideKey = getMySide() === 'top'? 'topPlayer' : getMySide() === 'left'? 'sideLeft' : getMySide() === 'right'? 'sideRight' : 'bottom';
+    const sideKey = getMySide() === 'top' ? 'topPlayer' : getMySide() === 'left' ? 'sideLeft' : getMySide() === 'right' ? 'sideRight' : 'bottom';
     const preset = (adaptivePresets as any)[sideKey] || (adaptivePresets as any).bottom;
     cam.current = {
       angle: preset.angle,
@@ -745,7 +825,7 @@ export function GameScreen3D({
   }, [adaptivePresets, settings.arenaSize]);
 
   const zoomCam = useCallback((dir: number) => {
-    cam.current.targetDistance = Math.max(600, Math.min(2200, cam.current.targetDistance * (dir > 0? 0.88 : 1.15)));
+    cam.current.targetDistance = Math.max(600, Math.min(2200, cam.current.targetDistance * (dir > 0 ? 0.88 : 1.15)));
     try { localStorage.setItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`, JSON.stringify({ angle: cam.current.angle, distance: cam.current.distance, height: cam.current.height, targetAngle: cam.current.targetAngle, targetDistance: cam.current.targetDistance, targetHeight: cam.current.targetHeight })); } catch {}
   }, [settings.arenaSize]);
 
@@ -758,16 +838,16 @@ export function GameScreen3D({
   }, [settings.arenaSize]);
 
   useEffect(() => {
-    const hasSaved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
-    if (hasSaved) {
-      try {
+    try {
+      const hasSaved = localStorage.getItem(`qoud_camera_settings_${settings.arenaSize || 'medium'}`);
+      if (hasSaved) {
         const s = JSON.parse(hasSaved);
-        cam.current = { 
-          ...cam.current, 
-          ...initialCam, 
-          ...s, 
-          targetAngle: s.targetAngle ?? s.angle ?? initialCam.angle, 
-          targetDistance: s.targetDistance ?? s.distance ?? initialCam.distance, 
+        cam.current = {
+          ...cam.current,
+          ...initialCam,
+          ...s,
+          targetAngle: s.targetAngle ?? s.angle ?? initialCam.angle,
+          targetDistance: s.targetDistance ?? s.distance ?? initialCam.distance,
           targetHeight: s.targetHeight ?? s.height ?? initialCam.height,
           targetX: initialCam.targetX,
           targetZ: initialCam.targetZ,
@@ -775,12 +855,11 @@ export function GameScreen3D({
           lookZ: initialCam.lookZ
         };
         return;
-      } catch {}
-    }
-    cam.current = {...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2} as any;
+      }
+    } catch {}
+    cam.current = { ...initialCam, targetX: world.w / 2, targetZ: world.h / 2, lookX: world.w / 2, lookZ: world.h / 2 } as any;
   }, [initialCam, settings.arenaSize, world.w, world.h]);
 
-  // === ط§ط³طھظ‚ط¨ط§ظ„ ط­ط§ظ„ط© ط§ظ„ظ„ط¹ط¨ط© ظ…ظ† ط§ظ„ط³ظٹط±ظپط±: طھظڈط®ط²ظژظ‘ظ† ظƒظ€ "ظ„ظ‚ط·ط§طھ" ط²ظ…ظ†ظٹط© ظپظٹ ط¨ط§ظپط± ط¨ط¯ظ„ ط§ط³طھط¨ط¯ط§ظ„ ظپظˆط±ظٹ/ظ…ط²ط¬ ط¬ط²ط¦ظٹ ===
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
@@ -793,7 +872,6 @@ export function GameScreen3D({
         stateRef.current.ballTarget.vy = data.ball.vy;
         const buf = ballBufferRef.current;
         buf.push({ x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, t: now });
-        // ط£ط¨ظ‚ظگ ط¢ط®ط± ~15 ظ„ظ‚ط·ط© ظپظ‚ط· (ظƒط§ظپظٹط© ظ„طھط؛ط·ظٹط© ط£ظƒط«ط± ظ…ظ† RENDER_DELAY_MS)
         while (buf.length > 15) buf.shift();
       }
       if (data.paddles) {
@@ -822,6 +900,9 @@ export function GameScreen3D({
         setTimeLeft(data.timeLeft);
       }
     };
+    socket.on('game-state', handleGameState);
+    return () => { socket.off('game-state', handleGameState); };
+  }, [getMySide]);
 
   useEffect(() => {
     if (!isFriendsMode) return;
@@ -854,11 +935,9 @@ export function GameScreen3D({
         socket.emit('all-players-ready', { roomCode });
         socket.emit('game-started', { roomCode });
       }
->>>>>>> 34fc226 (add server and yt-dlp integration)
       if (!localReadyRef.current) {
         setLocalReady(true);
         localReadyRef.current = true;
-        // ظ„ط§ ظ†ط¹ظٹظ‘ظ† ط§ظ„ط¹ط¯ط§ط¯ ظ‡ظ†ط§ - ط³ظٹظڈط¹ظٹظ‘ظ† ط¹ظ†ط¯ ط§ط³طھظ‚ط¨ط§ظ„ game-started ظ…ظ† ط§ظ„ظ…ط¶ظٹظپ
       }
     }
   }, [readyPlayers, isHost, isFriendsMode, humanCount, roomCode]);
@@ -867,89 +946,83 @@ export function GameScreen3D({
     const el = mountRef.current;
     if (!el) return;
     const raycaster = new THREE.Raycaster();
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const mouse = new THREE.Vector2();
-    const clamp = (v:number,mn:number,mx:number)=>Math.max(mn,Math.min(mx,v));
-    const handlePointerMove = (e: PointerEvent) => {
-      if (stateRef.current.serving.active) {
-        if (e.type === 'pointerdown') {
-          stateRef.current.serving.requested = true;
-          if (e.cancelable) e.preventDefault();
-          return;
-        }
-      }
-      if (!e.isPrimary || !threeRef.current) return;
-      if (e.target instanceof HTMLElement && e.target.closest('button')) return;
-      hasDraggedRef.current = true;
-      if(hintDotRef.current) hintDotRef.current.style.display='none';
-      if(hintTextRef.current) hintTextRef.current.style.display='none';
-      const mySide = getMySide();
-      const isTouch = (e as any).pointerType === 'touch' || (e as any).pointerType === 'pen';
-      const OFFSET = isTouch? 195 : 75;
+    let dragging = false;
+    let lastX = 0, lastY = 0;
+
+    const getIntersect = (clientX: number, clientY: number) => {
       const rect = el.getBoundingClientRect();
-      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, threeRef.current.camera);
-      const target = new THREE.Vector3();
-      if (raycaster.ray.intersectPlane(plane, target)) {
-        let tx = target.x;
-<<<<<<< HEAD
-        let tz = target.z - OFFSET;
-        const needCount = Math.max(2, players.length, settings.players || 2);
-        const isMultiplayer4 = needCount >= 3;
-        const clamped = clampPaddlePosition(mySide, tx, tz, world.w, world.h, isMultiplayer4);
-        stateRef.current.targetPaddles[mySide].x = clamped.x;
-        stateRef.current.targetPaddles[mySide].z = clamped.y;
-        stateRef.current.paddles[mySide].x = clamped.x;
-        stateRef.current.paddles[mySide].z = clamped.y;
-        socket.sendPaddleTarget(clamped.x, clamped.y);
-=======
-        let tz = target.z;
-        const needCount = Math.max(2, players.length, settings.players || 2);
-        const isFourPlayers = needCount >= 4;
-        const topLimit = isFourPlayers ? world.h * 0.22 : world.h * 0.38;
-        const bottomLimit = isFourPlayers ? world.h * 0.78 : world.h * 0.62;
-        const leftLimit = isFourPlayers ? world.w * 0.22 : world.w * 0.38;
-        const rightLimit = isFourPlayers ? world.w * 0.78 : world.w * 0.62;
+      if (rect.width === 0 || rect.height === 0) return null;
+      mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, threeRef.current?.camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const point = new THREE.Vector3();
+      raycaster.ray.intersectPlane(plane, point);
+      return point;
+    };
 
-        if (mySide === 'top') {
-          const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, 45, topLimit);
-          stateRef.current.targetPaddles[mySide].x = clampedX;
-          stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
-        } else if (mySide === 'bottom') {
-          const clampedX = clamp(tx, 45, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, bottomLimit, world.h - 45);
-          stateRef.current.targetPaddles[mySide].x = clampedX;
-          stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
-        } else if (mySide === 'left') {
-          const clampedX = clamp(tx, 45, leftLimit);
-          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45);
-          stateRef.current.targetPaddles[mySide].x = clampedX;
-          stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
-        } else if (mySide === 'right') {
-          const clampedX = clamp(tx, rightLimit, world.w - 45);
-          const clampedZ = clamp(tz - OFFSET, 45, world.h - 45);
-          stateRef.current.targetPaddles[mySide].x = clampedX;
-          stateRef.current.targetPaddles[mySide].z = clampedZ;
-          if (!isOfflineMode) socket.sendPaddleTarget(clampedX, clampedZ);
-        }
+    const onPointerDown = (e: PointerEvent | TouchEvent) => {
+      dragging = true;
+      hasDraggedRef.current = false;
+      noDragStartRef.current = performance.now();
+      const cx = (e as TouchEvent).touches ? (e as TouchEvent).touches[0].clientX : (e as PointerEvent).clientX;
+      const cy = (e as TouchEvent).touches ? (e as TouchEvent).touches[0].clientY : (e as PointerEvent).clientY;
+      lastX = cx; lastY = cy;
+      const pt = getIntersect(cx, cy);
+      if (!pt) return;
+      const mySide = getMySide();
+      const target = stateRef.current.paddles[mySide];
+      if (!target) return;
+      // تحريك مباشر
+      const clamped = clampPaddlePosition ? clampPaddlePosition({ x: pt.x, y: pt.z } as any, mySide, world.w, world.h) : { x: pt.x, y: pt.z };
+      stateRef.current.paddles[mySide].x = clamped.x;
+      stateRef.current.paddles[mySide].z = clamped.y;
+      if (stateRef.current.serving.active) stateRef.current.serving.requested = true;
+    };
+
+    const onPointerMove = (e: PointerEvent | TouchEvent) => {
+      const cx = (e as TouchEvent).touches ? (e as TouchEvent).touches[0].clientX : (e as PointerEvent).clientX;
+      const cy = (e as TouchEvent).touches ? (e as TouchEvent).touches[0].clientY : (e as PointerEvent).clientY;
+      if (Math.abs(cx - lastX) > 2 || Math.abs(cy - lastY) > 2) hasDraggedRef.current = true;
+      if (!dragging) return;
+      const pt = getIntersect(cx, cy);
+      if (!pt) return;
+      const mySide = getMySide();
+      const clamped = clampPaddlePosition ? clampPaddlePosition({ x: pt.x, y: pt.z } as any, mySide, world.w, world.h) : { x: pt.x, y: pt.z };
+      stateRef.current.paddles[mySide].x = clamped.x;
+      stateRef.current.paddles[mySide].z = clamped.y;
+      if (isHost && !isOfflineMode && performance.now() - lastBallEmitRef.current > 32) {
+        socket.emit('paddle-move', { side: mySide, x: clamped.x, y: clamped.y });
+        lastBallEmitRef.current = performance.now();
       }
     };
-    el.addEventListener('pointerdown', handlePointerMove as any);
-    el.addEventListener('pointermove', handlePointerMove as any);
-    return () => {
-      el.removeEventListener('pointerdown', handlePointerMove as any);
-      el.removeEventListener('pointermove', handlePointerMove as any);
-    };
-  }, [world.w, world.h, getMySide, isOfflineMode, isHost, roomCode]);
 
+    const onPointerUp = () => { dragging = false; };
+
+    el.addEventListener('pointerdown', onPointerDown as any);
+    el.addEventListener('pointermove', onPointerMove as any);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('touchstart', onPointerDown as any, { passive: false });
+    el.addEventListener('touchmove', onPointerMove as any, { passive: false });
+    el.addEventListener('touchend', onPointerUp);
+
+    return () => {
+      el.removeEventListener('pointerdown', onPointerDown as any);
+      el.removeEventListener('pointermove', onPointerMove as any);
+      el.removeEventListener('pointerup', onPointerUp);
+      el.removeEventListener('touchstart', onPointerDown as any);
+      el.removeEventListener('touchmove', onPointerMove as any);
+      el.removeEventListener('touchend', onPointerUp);
+    };
+  }, [world.w, world.h, getMySide, isHost, isOfflineMode]);
+
+  // ===== إنشاء المشهد 3D - الإصلاح الرئيسي للجوال =====
   useEffect(() => {
     if (!mountRef.current) return;
     const mount = mountRef.current;
+
+    // تنظيف سابق
     if (threeRef.current?.renderer) {
       try {
         threeRef.current.renderer.dispose();
@@ -957,28 +1030,85 @@ export function GameScreen3D({
         if (mount.contains(threeRef.current.renderer.domElement)) mount.removeChild(threeRef.current.renderer.domElement);
       } catch {}
     }
+
+    // تحقق من دعم WebGL
+    const testCanvas = document.createElement('canvas');
+    const gl = (testCanvas.getContext('webgl2') as any) || testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl');
+    if (!gl) {
+      setWebglError('المتصفح لا يدعم WebGL - جرب متصفح Chrome حديث');
+      return;
+    }
+
+    const mobile = isMobileDevice();
+    const mountW = mount.clientWidth || window.innerWidth;
+    const mountH = mount.clientHeight || window.innerHeight * 0.6;
+    if (mountW === 0 || mountH === 0) {
+      // انتظر حتى يكون الحجم متاحاً
+      setTimeout(() => {
+        if (mountRef.current) {
+          mountRef.current.style.minHeight = '400px';
+        }
+      }, 100);
+    }
+
     const scene = new THREE.Scene();
     setup3DArenaLighting(scene, world.w, world.h);
+
     const dir = new THREE.DirectionalLight(0xffffff, 0.9);
     dir.position.set(200, 900, 300);
     scene.add(dir);
-    const isMobileFov = mount.clientWidth < 768;
-    const fov = isMobileFov ? 52 : 48;
-    const camera = new THREE.PerspectiveCamera(fov, mount.clientWidth / mount.clientHeight, 10, 5000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
-    renderer.setSize(mount.clientWidth, mount.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const fov = mountW < 768 ? 58 : 48;
+    const camera = new THREE.PerspectiveCamera(fov, (mountW || 1) / (mountH || 1), 10, 5000);
+
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: !mobile, // إيقاف antialias للجوال لتجنب الشاشة البيضاء
+        powerPreference: mobile ? 'low-power' : 'high-performance',
+        alpha: false,
+        stencil: false,
+        depth: true,
+        logarithmicDepthBuffer: false,
+        failIfMajorPerformanceCaveat: false,
+      });
+    } catch (e: any) {
+      setWebglError('فشل إنشاء WebGL: ' + (e?.message || ''));
+      return;
+    }
+
+    // إعدادات PixelRatio للجوال
+    renderer.setSize(mountW, mountH);
+    renderer.setPixelRatio(mobile ? 1 : Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = false;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    // للجوال نوقف toneMapping الثقيل
+    renderer.toneMapping = mobile ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = mobile ? 1.0 : 1.1;
+
+    // معالجة فقدان السياق (سبب شائع للشاشة البيضاء)
+    renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      console.warn('WebGL context lost');
+      setWebglError('فُقد اتصال الرسوميات - جاري إعادة المحاولة...');
+      setTimeout(() => setWebglError(null), 2000);
+    });
+    renderer.domElement.addEventListener('webglcontextrestored', () => {
+      console.log('WebGL context restored');
+      setWebglError(null);
+    });
+
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.display = 'block';
     mount.appendChild(renderer.domElement);
+
     const tableGroup = new THREE.Group();
-    const surfaceTexture = createAirHockeySurface(world.w, world.h);
-    const tableMaterial = new THREE.MeshStandardMaterial({ 
-      color: '#ffffff', 
-      map: surfaceTexture || undefined, 
-      metalness: 0.02, 
+    const surfaceTexture = createAirHockeySurface(world.w, world.h, renderer);
+    const tableMaterial = new THREE.MeshStandardMaterial({
+      color: '#ffffff',
+      map: surfaceTexture || undefined,
+      metalness: 0.02,
       roughness: 0.08,
       envMapIntensity: 0.2
     });
@@ -987,7 +1117,8 @@ export function GameScreen3D({
     table.receiveShadow = false;
     tableGroup.add(table);
     scene.add(tableGroup);
-    const frame = createArenaFrame(world.w, world.h, arenaStyle);
+
+    const frame = createArenaFrame(world.w, world.h, arenaStyle, renderer);
     scene.add(frame);
 
     const puckGroup = new THREE.Group();
@@ -999,7 +1130,8 @@ export function GameScreen3D({
       emissive: isWhiteArena ? '#000000' : '#00e5ff',
       emissiveIntensity: isWhiteArena ? 0 : 1.4,
     });
-    const puckBase = new THREE.Mesh(new THREE.CylinderGeometry(17, 17, 13, 48), puckMat);
+    const cylSegs = mobile ? 24 : 48;
+    const puckBase = new THREE.Mesh(new THREE.CylinderGeometry(17, 17, 13, cylSegs), puckMat);
     puckBase.position.y = 6;
     puckGroup.add(puckBase);
     if (!isWhiteArena) {
@@ -1010,7 +1142,7 @@ export function GameScreen3D({
         emissive: '#00e5ff',
         emissiveIntensity: 1.8
       });
-      const blueRing = new THREE.Mesh(new THREE.TorusGeometry(11, 2.4, 16, 48), blueRingMat);
+      const blueRing = new THREE.Mesh(new THREE.TorusGeometry(11, 2.4, mobile ? 8 : 16, cylSegs), blueRingMat);
       blueRing.rotation.x = Math.PI / 2;
       blueRing.position.y = 12.5;
       puckGroup.add(blueRing);
@@ -1019,7 +1151,7 @@ export function GameScreen3D({
         transparent: true,
         opacity: 0.4
       });
-      const outerGlow = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 1, 32), outerGlowMat);
+      const outerGlow = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 1, mobile ? 16 : 32), outerGlowMat);
       outerGlow.position.y = 1;
       puckGroup.add(outerGlow);
       const puckGlowMat = new THREE.MeshBasicMaterial({
@@ -1027,7 +1159,7 @@ export function GameScreen3D({
         transparent: true,
         opacity: 0.55
       });
-      const puckGlow = new THREE.Mesh(new THREE.CylinderGeometry(32, 32, 1, 32), puckGlowMat);
+      const puckGlow = new THREE.Mesh(new THREE.CylinderGeometry(32, 32, 1, mobile ? 16 : 32), puckGlowMat);
       puckGlow.position.y = 0.5;
       puckGroup.add(puckGlow);
       const ballLight = new THREE.PointLight(0x00e5ff, 1.5, 220);
@@ -1041,7 +1173,7 @@ export function GameScreen3D({
         emissive: '#000000',
         emissiveIntensity: 0
       });
-      const darkRing = new THREE.Mesh(new THREE.TorusGeometry(11, 1.2, 16, 48), darkRingMat);
+      const darkRing = new THREE.Mesh(new THREE.TorusGeometry(11, 1.2, mobile ? 8 : 16, cylSegs), darkRingMat);
       darkRing.rotation.x = Math.PI / 2;
       darkRing.position.y = 12.5;
       puckGroup.add(darkRing);
@@ -1052,7 +1184,7 @@ export function GameScreen3D({
     const paddles: Record<string, THREE.Group> = {};
     const COLORS_FALLBACK = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
     const ensureCount = Math.max(2, players.length, settings.players || 2);
-    const sidesNeeded = ensureCount === 2? (['bottom','top'] as Player['side'][]) : (['bottom','top','right','left'] as Player['side'][]);
+    const sidesNeeded = ensureCount === 2 ? (['bottom', 'top'] as Player['side'][]) : (['bottom', 'top', 'right', 'left'] as Player['side'][]);
     sidesNeeded.forEach((side, idx) => {
       const existing = players.find(p => p.side === side);
       const color = existing?.color || COLORS_FALLBACK[idx] || '#ffcf5a';
@@ -1063,15 +1195,35 @@ export function GameScreen3D({
     const hitGroup = new THREE.Group();
     scene.add(hitGroup);
     threeRef.current = { scene, camera, renderer, ball, paddles, hitGroup, surfaceTexture, tableMaterial };
+
     const ro = new ResizeObserver(() => {
-      if (!mountRef.current ||!threeRef.current) return;
-      camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
+      if (!mountRef.current || !threeRef.current) return;
+      const w = mountRef.current.clientWidth;
+      const h = mountRef.current.clientHeight;
+      if (w === 0 || h === 0) return;
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(w, h);
+      // لا نغير pixelRatio عند resize لتجنب وميض
     });
     ro.observe(mount);
+
+    const onOrient = () => {
+      setTimeout(() => {
+        if (!mountRef.current || !threeRef.current) return;
+        const w = mountRef.current.clientWidth || window.innerWidth;
+        const h = mountRef.current.clientHeight || window.innerHeight * 0.6;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }, 300);
+    };
+    window.addEventListener('orientationchange', onOrient);
+    window.addEventListener('resize', onOrient);
+
     return () => {
+      window.removeEventListener('orientationchange', onOrient);
+      window.removeEventListener('resize', onOrient);
       ro.disconnect();
       try {
         renderer.dispose();
@@ -1087,16 +1239,21 @@ export function GameScreen3D({
   useEffect(() => {
     const state = stateRef.current;
     const needPlayers = Math.max(2, players.length, settings.players || 2);
-    const sidesForCount: Player['side'][] = needPlayers === 2? ['bottom','top'] : ['bottom','top','right','left'];
+    const sidesForCount: Player['side'][] = needPlayers === 2 ? ['bottom', 'top'] : ['bottom', 'top', 'right', 'left'];
     const activeSide = (side: Player['side']) => sidesForCount.includes(side);
 
-    const PADDLE_RADIUS = 36;
-    const BALL_RADIUS = 14;
-    const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
+    const PADDLE_RADIUS_LOCAL = 36;
+    const BALL_RADIUS_LOCAL = 14;
+    const HIT_DIST = PADDLE_RADIUS_LOCAL + BALL_RADIUS_LOCAL;
     const MIN_SPEED = 5.0;
     const MAX_SPEED = 16;
     const WALL_BOUNCE_DAMP = 0.95;
-    const EDGE_BOUNCE_COOLDOWN_MS = 180; // ظٹظ…ظ†ط¹ ط§ط±طھط¯ط§ط¯ ط§ظ„ط­ط§ظپط© ظ…ظ† ط§ظ„طھظƒط±ط§ط± ظƒظ„ ط¥ط·ط§ط± (ظ…طµط¯ط± ط±ط¦ظٹط³ظٹ ظ„ظ„طھظ‚ط·ط¹ ط³ط§ط¨ظ‚ط§ظ‹)
+    const EDGE_BOUNCE_COOLDOWN_MS = 180;
+
+    const getNameForSide = (side: Player['side']) => {
+      const p = players.find(pl => pl.side === side);
+      return p?.name || side;
+    };
 
     const tick = (now: number) => {
       const rawDelta = (now - state.last) / 16.67;
@@ -1104,7 +1261,7 @@ export function GameScreen3D({
       state.last = now;
 
       if (threeRef.current) {
-        const { ball, paddles, camera, renderer } = threeRef.current;
+        const { ball, paddles, camera, renderer, hitGroup, scene } = threeRef.current;
         const c = cam.current as any;
         c.angle += (c.targetAngle - c.angle) * 0.1;
         c.distance += (c.targetDistance - c.distance) * 0.1;
@@ -1121,6 +1278,40 @@ export function GameScreen3D({
         }
         camera.position.set(cx, cy, cz);
         camera.lookAt(c.lookX, 0, c.lookZ);
+
+        // تحديث مواقع المضارب 3D
+        Object.keys(paddles).forEach((side) => {
+          const s = side as Player['side'];
+          if (!activeSide(s)) return;
+          const target = state.targetPaddles[s];
+          const current = state.paddles[s];
+          // lerp سلس
+          current.x += (target.x - current.x) * 0.35;
+          current.z += (target.z - current.z) * 0.35;
+          const mesh = paddles[s];
+          if (mesh) {
+            mesh.position.set(current.x, mesh.position.y, current.z);
+          }
+          // للاعب المحلي تحريك مباشر
+          if (s === getMySide()) {
+            mesh.position.set(state.paddles[s].x, mesh.position.y, state.paddles[s].z);
+          }
+        });
+
+        // تأثيرات الضرب
+        for (let i = hitEffectsRef.current.length - 1; i >= 0; i--) {
+          const eff = hitEffectsRef.current[i];
+          eff.mesh.position.x += eff.vel.x * delta * 0.6;
+          eff.mesh.position.y += eff.vel.y * delta * 0.6;
+          eff.mesh.position.z += eff.vel.z * delta * 0.6;
+          eff.vel.y -= 0.3 * delta;
+          eff.life -= eff.decay * delta;
+          if (eff.mesh.material) eff.mesh.material.opacity = eff.life;
+          if (eff.life <= 0) {
+            hitGroup.remove(eff.mesh);
+            hitEffectsRef.current.splice(i, 1);
+          }
+        }
 
         if (localReadyRef.current && !pausedRef.current && !gameEndedRef.current) {
           if (state.countdown > 0) {
@@ -1162,7 +1353,7 @@ export function GameScreen3D({
             state.ballTarget.y = state.ball.y;
           }
 
-          (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+          (['top', 'bottom', 'right', 'left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
             const prev = state.lastPaddles[side];
             const curr = state.paddles[side];
@@ -1185,10 +1376,10 @@ export function GameScreen3D({
             if (state.serving.requested) {
               state.serving.active = false;
               const spd = getInitialSpeed() + 2;
-              if (servingSide === 'bottom') { state.ball.vx = (Math.random()-0.5)*spd; state.ball.vy = -Math.abs(spd)-1; }
-              else if (servingSide === 'top') { state.ball.vx = (Math.random()-0.5)*spd; state.ball.vy = Math.abs(spd)+1; }
-              else if (servingSide === 'left') { state.ball.vx = Math.abs(spd)+1; state.ball.vy = (Math.random()-0.5)*spd; }
-              else { state.ball.vx = -Math.abs(spd)-1; state.ball.vy = (Math.random()-0.5)*spd; }
+              if (servingSide === 'bottom') { state.ball.vx = (Math.random() - 0.5) * spd; state.ball.vy = -Math.abs(spd) - 1; }
+              else if (servingSide === 'top') { state.ball.vx = (Math.random() - 0.5) * spd; state.ball.vy = Math.abs(spd) + 1; }
+              else if (servingSide === 'left') { state.ball.vx = Math.abs(spd) + 1; state.ball.vy = (Math.random() - 0.5) * spd; }
+              else { state.ball.vx = -Math.abs(spd) - 1; state.ball.vy = (Math.random() - 0.5) * spd; }
             }
           }
 
@@ -1197,7 +1388,6 @@ export function GameScreen3D({
               state.ball.x += state.ball.vx * delta;
               state.ball.y += state.ball.vy * delta;
             } else {
-              // === ط¹ظ…ظٹظ„ ط؛ظٹط± ظ…ط¶ظٹظپ: ط§ط³طھظٹظپط§ط، ط³ظ„ط³ ط¨ظٹظ† ط¢ط®ط± ظ„ظ‚ط·طھظٹظ† ظ…ظ† ط§ظ„ط³ظٹط±ظپط± ط¨ط¯ظ„ ظ…ط²ط¬/ظ‚ظپط² ===
               const buf = ballBufferRef.current;
               const renderTime = now - RENDER_DELAY_MS;
               if (buf.length >= 2) {
@@ -1213,7 +1403,6 @@ export function GameScreen3D({
                   state.ball.vx = b.vx;
                   state.ball.vy = b.vy;
                 } else if (renderTime > b.t) {
-                  // ظ„ط§ طھظˆط¬ط¯ ظ„ظ‚ط·ط© ط£ط­ط¯ط« ط¨ط¹ط¯ - ط§ط³طھظ…ط± ط¨ط§ظ„ط³ط±ط¹ط© ط§ظ„ط£ط®ظٹط±ط© ط§ظ„ظ…ط¹ط±ظˆظپط© ظ„ظ…ظ†ط¹ ط§ظ„طھط¬ظ…ط¯ ط§ظ„ظ…ظپط§ط¬ط¦
                   state.ball.x = b.x + b.vx * ((renderTime - b.t) / 16.67) * 0.6;
                   state.ball.y = b.y + b.vy * ((renderTime - b.t) / 16.67) * 0.6;
                   state.ball.vx = b.vx;
@@ -1241,7 +1430,6 @@ export function GameScreen3D({
                 state.ball.vx = Math.cos(angle) * MAX_SPEED;
                 state.ball.vy = Math.sin(angle) * MAX_SPEED;
               }
-              // === ط¥طµظ„ط§ط­ ط§ظ„طھظ‚ط·ط¹: ط§ظ„ظ†ط¨ط°ط© ط§ظ„ط¹ط´ظˆط§ط¦ظٹط© طھط·ط¨ظ‘ظ‚ ظ…ط±ط© ظˆط§ط­ط¯ط© ظپظ‚ط· ظ„ظƒظ„ "ط¹ظ„ظ‚ط©"طŒ ظ„ط§ ظƒظ„ ط¥ط·ط§ط± ===
               if (Math.abs(state.ball.vy) < 0.8 && Math.abs(state.ball.vx) > 3) {
                 if (!state.antiStuckApplied) {
                   state.ball.vy = (Math.random() > 0.5 ? 1 : -1) * (2 + Math.random() * 2);
@@ -1253,442 +1441,250 @@ export function GameScreen3D({
 
               const goalHalfW = Math.max(420, world.w * 0.48);
               const sideGoalHalfW = Math.max(420, world.h * 0.48);
-              const leftBound = BALL_RADIUS;
-              const rightBound = world.w - BALL_RADIUS;
-              const topBound = BALL_RADIUS;
-              const bottomBound = world.h - BALL_RADIUS;
+              const leftBound = BALL_RADIUS_LOCAL;
+              const rightBound = world.w - BALL_RADIUS_LOCAL;
+              const topBound = BALL_RADIUS_LOCAL;
+              const bottomBound = world.h - BALL_RADIUS_LOCAL;
 
               if (state.ball.x < leftBound) {
-                if (needPlayers < 4 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
+                if (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW) {
                   state.ball.x = leftBound;
                   state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
                   state.ball.vy += (Math.random() - 0.5) * 1.5;
                 } else if (now - state.lastEdgeBounceTime > EDGE_BOUNCE_COOLDOWN_MS) {
-                  const edgeDist = Math.abs(state.ball.y - world.h/2) - sideGoalHalfW;
+                  const edgeDist = Math.abs(state.ball.y - world.h / 2) - sideGoalHalfW;
                   if (edgeDist < 40) {
                     state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
-                    state.ball.vy = (state.ball.y > world.h/2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random()-0.5)*2;
+                    state.ball.vy = (state.ball.y > world.h / 2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random() - 0.5) * 2;
                     state.lastEdgeBounceTime = now;
                   }
                 }
               }
               if (state.ball.x > rightBound) {
-                if (needPlayers < 4 || Math.abs(state.ball.y - world.h/2) > sideGoalHalfW) {
+                if (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW) {
                   state.ball.x = rightBound;
                   state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
                   state.ball.vy += (Math.random() - 0.5) * 1.5;
                 } else if (now - state.lastEdgeBounceTime > EDGE_BOUNCE_COOLDOWN_MS) {
-                  const edgeDist = Math.abs(state.ball.y - world.h/2) - sideGoalHalfW;
+                  const edgeDist = Math.abs(state.ball.y - world.h / 2) - sideGoalHalfW;
                   if (edgeDist < 40) {
                     state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
-                    state.ball.vy = (state.ball.y > world.h/2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random()-0.5)*2;
+                    state.ball.vy = (state.ball.y > world.h / 2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random() - 0.5) * 2;
                     state.lastEdgeBounceTime = now;
                   }
                 }
               }
               if (state.ball.y < topBound) {
-                if (Math.abs(state.ball.x - world.w/2) > goalHalfW) {
+                if (Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
                   state.ball.y = topBound;
                   state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
                   state.ball.vx += (Math.random() - 0.5) * 1.5;
                 } else if (now - state.lastEdgeBounceTime > EDGE_BOUNCE_COOLDOWN_MS) {
-                  const edgeDist = Math.abs(state.ball.x - world.w/2) - goalHalfW;
+                  const edgeDist = Math.abs(state.ball.x - world.w / 2) - goalHalfW;
                   if (edgeDist < 45 && edgeDist > -10) {
                     state.ball.y = topBound;
                     state.ball.vy = Math.abs(state.ball.vy) * 0.9;
-                    state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
-                    if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * 4;
+                    state.ball.vx = (state.ball.x > world.w / 2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
+                    if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w / 2 ? 1 : -1) * 4;
                     state.lastEdgeBounceTime = now;
                   }
                 }
               }
               if (state.ball.y > bottomBound) {
-                if (Math.abs(state.ball.x - world.w/2) > goalHalfW) {
+                if (Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
                   state.ball.y = bottomBound;
                   state.ball.vy = -Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
                   state.ball.vx += (Math.random() - 0.5) * 1.5;
                 } else if (now - state.lastEdgeBounceTime > EDGE_BOUNCE_COOLDOWN_MS) {
-                  const edgeDist = Math.abs(state.ball.x - world.w/2) - goalHalfW;
+                  const edgeDist = Math.abs(state.ball.x - world.w / 2) - goalHalfW;
                   if (edgeDist < 45 && edgeDist > -10) {
                     state.ball.y = bottomBound;
                     state.ball.vy = -Math.abs(state.ball.vy) * 0.9;
-                    state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
-                    if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w/2 ? 1 : -1) * 4;
+                    state.ball.vx = (state.ball.x > world.w / 2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
+                    if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w / 2 ? 1 : -1) * 4;
                     state.lastEdgeBounceTime = now;
                   }
                 }
               }
 
-              const goalScoredSide = (() => {
-                if (state.ball.y < -BALL_RADIUS * 1.5) {
-                  if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) return 'top' as const;
+              // تصادم المضارب
+              (['top', 'bottom', 'left', 'right'] as Player['side'][]).forEach(side => {
+                if (!activeSide(side)) return;
+                const pad = state.paddles[side];
+                const dx = state.ball.x - pad.x;
+                const dy = state.ball.y - pad.z;
+                const dist = Math.hypot(dx, dy);
+                if (dist < HIT_DIST) {
+                  const nx = dx / (dist || 1);
+                  const ny = dy / (dist || 1);
+                  const overlap = HIT_DIST - dist;
+                  state.ball.x += nx * overlap;
+                  state.ball.y += ny * overlap;
+                  const relVelX = state.ball.vx - state.paddleVel[side].vx;
+                  const relVelY = state.ball.vy - state.paddleVel[side].vy;
+                  const dot = relVelX * nx + relVelY * ny;
+                  if (dot < 0) {
+                    state.ball.vx -= 2 * dot * nx;
+                    state.ball.vy -= 2 * dot * ny;
+                  }
+                  state.ball.vx += state.paddleVel[side].vx * 0.35 + nx * 2.5;
+                  state.ball.vy += state.paddleVel[side].vy * 0.35 + ny * 2.5;
+                  const sp = Math.hypot(state.ball.vx, state.ball.vy);
+                  if (sp < MIN_SPEED) {
+                    const ang = Math.atan2(state.ball.vy, state.ball.vx);
+                    state.ball.vx = Math.cos(ang) * MIN_SPEED;
+                    state.ball.vy = Math.sin(ang) * MIN_SPEED;
+                  }
+                  state.rally++;
+                  setRally(state.rally);
+                  playHitSound3D(Math.min(1, sp / MAX_SPEED));
+                  shakeRef.current.intensity = Math.min(10, sp * 0.5);
+                  // تأثير
+                  if (threeRef.current) {
+                    const hitGeo = new THREE.RingGeometry(4, 12, 16);
+                    const hitMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+                    const ring = new THREE.Mesh(hitGeo, hitMat);
+                    ring.position.set(state.ball.x, 14, state.ball.y);
+                    ring.rotation.x = -Math.PI / 2;
+                    threeRef.current.hitGroup.add(ring);
+                    hitEffectsRef.current.push({ mesh: ring, vel: { x: 0, y: 2, z: 0 }, life: 1, decay: 0.08, type: 'ring' });
+                  }
                 }
-                if (state.ball.y > world.h + BALL_RADIUS * 1.5) {
-                  if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) return 'bottom' as const;
+              });
+
+              // هدف
+              const checkGoal = () => {
+                if (state.ball.y < -BALL_RADIUS_LOCAL * 2) {
+                  if (Math.abs(state.ball.x - world.w / 2) <= goalHalfW) {
+                    const scorer = players.find(p => p.side === 'bottom');
+                    if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(state.ball.x, 0); }
+                    state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
+                    state.countdown = 3; state.countdownStart = now; state.countdownSide = 'top'; setCountdown(3); setCountdownSide('top');
+                  }
+                } else if (state.ball.y > world.h + BALL_RADIUS_LOCAL * 2) {
+                  if (Math.abs(state.ball.x - world.w / 2) <= goalHalfW) {
+                    const scorer = players.find(p => p.side === 'top');
+                    if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(state.ball.x, world.h); }
+                    state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
+                    state.countdown = 3; state.countdownStart = now; state.countdownSide = 'bottom'; setCountdown(3); setCountdownSide('bottom');
+                  }
                 }
                 if (needPlayers >= 4) {
-                  if (state.ball.x < -BALL_RADIUS * 1.5) {
-                    if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) return 'left' as const;
-                  }
-                  if (state.ball.x > world.w + BALL_RADIUS * 1.5) {
-                    if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) return 'right' as const;
+                  if (state.ball.x < -BALL_RADIUS_LOCAL * 2 && Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
+                    const scorer = players.find(p => p.side === 'right');
+                    if (scorer) { onGoal(scorer); playGoalSound3D(); }
+                    state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
+                    state.countdown = 3; state.countdownStart = now; state.countdownSide = 'left'; setCountdown(3); setCountdownSide('left');
+                  } else if (state.ball.x > world.w + BALL_RADIUS_LOCAL * 2 && Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
+                    const scorer = players.find(p => p.side === 'left');
+                    if (scorer) { onGoal(scorer); playGoalSound3D(); }
+                    state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
+                    state.countdown = 3; state.countdownStart = now; state.countdownSide = 'right'; setCountdown(3); setCountdownSide('right');
                   }
                 }
-                return null;
-              })();
+              };
+              checkGoal();
 
-              if (goalScoredSide) {
-                const missedPlayer = players.find(p => p.side === goalScoredSide) || { side: goalScoredSide, id: goalScoredSide, name: goalScoredSide } as any;
-
-                const isValidGoal = (() => {
-                  if (goalScoredSide === 'top' || goalScoredSide === 'bottom') {
-                    return Math.abs(state.ball.x - world.w/2) <= goalHalfW;
-                  } else {
-                    return Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW;
-                  }
-                })();
-
-                if (!isValidGoal) {
-                  if (goalScoredSide === 'top') state.ball.y = BALL_RADIUS + 5;
-                  if (goalScoredSide === 'bottom') state.ball.y = world.h - BALL_RADIUS - 5;
-                  if (goalScoredSide === 'left') state.ball.x = BALL_RADIUS + 5;
-                  if (goalScoredSide === 'right') state.ball.x = world.w - BALL_RADIUS - 5;
-                  state.ball.vx *= -0.8;
-                  state.ball.vy *= -0.8;
-                  frameIdRef.current = requestAnimationFrame(tick);
-                  return;
-                }
-
-                state.ball.x = world.w / 2;
-                state.ball.y = world.h / 2;
-                state.ballTarget.x = state.ball.x;
-                state.ballTarget.y = state.ball.y;
-                state.ball.vx = 0;
-                state.ball.vy = 0;
-                state.ballTarget.vx = 0;
-                state.ballTarget.vy = 0;
-                if ((settings as any).start === 'paddle') {
-                  const order: Player['side'][] = (players.length >= 4 ? ['bottom','right','top','left'] : ['bottom','top']) as any;
-                  let nextSide: Player['side'] = 'bottom';
-                  if (goalScoredSide) {
-                    const lastIdx = order.indexOf(goalScoredSide as any);
-                    const nextIdx = (lastIdx + 1) % order.length;
-                    nextSide = order[nextIdx] || 'bottom';
-                  }
-                  state.serving.active = true;
-                  state.serving.side = nextSide;
-                  state.serving.startTime = now;
-                  state.serving.requested = false;
-                  const paddle = state.paddles[nextSide];
-                  if (paddle) {
-                    if (nextSide === 'bottom') { state.ball.x = paddle.x; state.ball.y = paddle.z - 60; }
-                    else if (nextSide === 'top') { state.ball.x = paddle.x; state.ball.y = paddle.z + 60; }
-                    else if (nextSide === 'left') { state.ball.x = paddle.x + 60; state.ball.y = paddle.z; }
-                    else { state.ball.x = paddle.x - 60; state.ball.y = paddle.z; }
-                    state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
-                  }
-                  state.ball.vx = 0; state.ball.vy = 0; state.ballTarget.vx = 0; state.ballTarget.vy = 0;
-                  try { playGoalSound3D(); createGoalStars3D(state.ball.x, state.ball.y); shakeRef.current.intensity = 20; } catch {}
-                  state.countdown = 0; setCountdown(0);
-                  state.countdownSide = null; setCountdownSide('');
-                  state.rally = 0; setRally(0);
-                  if (onGoal) { onGoal(missedPlayer as any); }
-                  if (isHost && !isOfflineMode) { socket.emit('goal-scored', { side: goalScoredSide }); }
-                  frameIdRef.current = requestAnimationFrame(tick);
-                  return;
-                }
-                try { playGoalSound3D(); createGoalStars3D(state.ball.x, state.ball.y); shakeRef.current.intensity = 20; } catch {}
-                state.countdown = 3;
-                state.countdownStart = now;
-                state.countdownSide = goalScoredSide;
-                setCountdown(3);
-                setCountdownSide(goalScoredSide);
-                state.rally = 0;
-                setRally(0);
-
-                if (onGoal) {
-                  // @ts-ignore
-                  onGoal(missedPlayer as any);
-                }
-                if (isHost && !isOfflineMode) {
-                  socket.emit('goal-scored', { side: goalScoredSide });
-                  socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: 0, vy: 0 }, countdown: 3, countdownSide: goalScoredSide });
-                }
-                frameIdRef.current = requestAnimationFrame(tick);
-                return;
+              if (isHost && !isOfflineMode && performance.now() - lastBallEmitRef.current > 50) {
+                socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy }, paddles: { [getMySide()]: { x: state.paddles[getMySide()].x, y: state.paddles[getMySide()].z } } });
+                lastBallEmitRef.current = performance.now();
               }
+            }
 
-              (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
+            // ذكاء اصطناعي بسيط
+            if (isOfflineMode || isVsComputer) {
+              (['top', 'bottom', 'left', 'right'] as Player['side'][]).forEach(side => {
                 if (!activeSide(side)) return;
-                const paddle = state.paddles[side];
-                const pVel = state.paddleVel[side];
-
-                const dx = state.ball.x - paddle.x;
-                const dy = state.ball.y - paddle.z;
-                const dist = Math.hypot(dx, dy);
-
-                if (dist >= HIT_DIST || dist < 0.5) return;
-
-                let isFrontHit = false;
-                const frontThreshold = 8;
-                if (side === 'bottom') {
-                  isFrontHit = state.ball.y < paddle.z + frontThreshold;
-                } else if (side === 'top') {
-                  isFrontHit = state.ball.y > paddle.z - frontThreshold;
-                } else if (side === 'left') {
-                  isFrontHit = state.ball.x > paddle.x - frontThreshold;
-                } else if (side === 'right') {
-                  isFrontHit = state.ball.x < paddle.x + frontThreshold;
-                }
-
-                if (!isFrontHit) {
-                  const pushFactor = 2.0;
-                  const nx = dx / dist;
-                  const ny = dy / dist;
-                  const overlap = HIT_DIST - dist + 3;
-                  state.ball.x += nx * overlap * pushFactor;
-                  state.ball.y += ny * overlap * pushFactor;
-                  return;
-                }
-
-                const nx = dx / dist;
-                const ny = dy / dist;
-
-                const overlap = HIT_DIST - dist + 1;
-                state.ball.x += nx * overlap;
-                state.ball.y += ny * overlap;
-
-                const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
-                const paddleSpeedFactor = 0.85;
-                const ballVelDotNormal = state.ball.vx * nx + state.ball.vy * ny;
-
-                let newVx = state.ball.vx - 2 * ballVelDotNormal * nx + pVel.vx * paddleSpeedFactor;
-                let newVy = state.ball.vy - 2 * ballVelDotNormal * ny + pVel.vy * paddleSpeedFactor;
-
-                const hitOffset = side === 'bottom' || side === 'top'
-                  ? (state.ball.x - paddle.x) / PADDLE_RADIUS
-                  : (state.ball.y - paddle.z) / PADDLE_RADIUS;
-
-                if (side === 'bottom' || side === 'top') {
-                  newVx += hitOffset * 5.5;
-                  newVx += pVel.vx * 0.25;
+                const p = players.find(pl => pl.side === side);
+                if (!p) return;
+                if (p.socketId === socket.id) return;
+                if (!p.computer && !isVsComputer) return;
+                const pad = state.targetPaddles[side];
+                let targetX = state.ball.x;
+                let targetZ = state.ball.y;
+                const diff = 0.12 + settings.ballSpeed * 0.02;
+                if (side === 'top' || side === 'bottom') {
+                  pad.x += (targetX - pad.x) * diff;
                 } else {
-                  newVy += hitOffset * 5.5;
-                  newVy += pVel.vy * 0.25;
+                  pad.z += (targetZ - pad.z) * diff;
                 }
-
-                const speedBoost = 1.12 + state.rally * 0.03 + paddleSpeed * 0.06;
-                let newSpeed = Math.hypot(newVx, newVy) * speedBoost;
-                newSpeed += paddleSpeed * 0.18;
-                newSpeed = Math.min(newSpeed, MAX_SPEED + paddleSpeed * 0.15);
-                newSpeed = Math.max(newSpeed, MIN_SPEED + paddleSpeed * 0.05);
-
-                const angle = Math.atan2(newVy, newVx);
-                let finalAngle = angle;
-                if (Math.abs(Math.sin(finalAngle)) < 0.25) {
-                  finalAngle += (Math.random() > 0.5 ? 1 : -1) * 0.35;
-                }
-
-                state.ball.vx = Math.cos(finalAngle) * newSpeed;
-                state.ball.vy = Math.sin(finalAngle) * newSpeed;
-
-                try { playHitSound3D(Math.min(1, state.rally/12)); } catch {}
-                state.rally++;
-                setRally(state.rally);
-
-                if (isHost && !isOfflineMode) {
-                  socket.sendBallState?.(state.ball.x, state.ball.y, state.ball.vx, state.ball.vy);
-                }
+                // clamp
+                const clamped = clampPaddlePosition ? clampPaddlePosition({ x: pad.x, y: pad.z } as any, side, world.w, world.h) : pad;
+                pad.x = clamped.x; pad.z = clamped.y;
               });
             }
           }
-
-          if (isHost && !isOfflineMode && state.countdown === 0) {
-            const nowMs = performance.now();
-            if (nowMs - lastBallEmitRef.current > 50) {
-              lastBallEmitRef.current = nowMs;
-              try {
-                socket.emit('game-state', {
-                  ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy },
-                  paddles: {
-                    top: { x: state.paddles.top.x, y: state.paddles.top.z },
-                    bottom: { x: state.paddles.bottom.x, y: state.paddles.bottom.z },
-                    left: { x: state.paddles.left.x, y: state.paddles.left.z },
-                    right: { x: state.paddles.right.x, y: state.paddles.right.z }
-                  },
-                  rally: state.rally,
-                  timeLeft: timeLeft
-                });
-              } catch {}
-            }
-          }
-
-          (['top','bottom','right','left'] as Player['side'][]).forEach(side => {
-            if (!activeSide(side)) return;
-            const target = state.targetPaddles[side];
-            const current = state.paddles[side];
-            if (side === getMySide()) {
-              current.x = target.x;
-              current.z = target.z;
-            } else {
-              const PADDLE_LERP = isOfflineMode ? 1 : 0.45;
-              current.x += (target.x - current.x) * PADDLE_LERP;
-              current.z += (target.z - current.z) * PADDLE_LERP;
-            }
-          });
         }
 
-        ball.position.x = state.ball.x;
-        ball.position.z = state.ball.y;
-        ball.visible = localReadyRef.current ? state.countdown === 0 : true;
-        if (paddles['bottom']) paddles['bottom'].position.set(state.paddles.bottom.x, 12, state.paddles.bottom.z);
-        if (paddles['top']) paddles['top'].position.set(state.paddles.top.x, 12, state.paddles.top.z);
-        if (paddles['left']) paddles['left'].position.set(state.paddles.left.x, 12, state.paddles.left.z);
-        if (paddles['right']) paddles['right'].position.set(state.paddles.right.x, 12, state.paddles.right.z);
+        // رسم الكرة
+        if (threeRef.current?.ball) {
+          threeRef.current.ball.position.set(state.ball.x, 18, state.ball.y);
+        }
 
-        if (hitEffectsRef.current.length > 0) {
-          for (let i=hitEffectsRef.current.length-1;i>=0;i--) {
-            const eff = hitEffectsRef.current[i];
-            if (eff.type === 'star') {
-              eff.mesh.position.x += eff.vel.x;
-              eff.mesh.position.y += eff.vel.y;
-              eff.mesh.position.z += eff.vel.z;
-              eff.vel.y -= 0.28;
-              eff.vel.x *= 0.99; eff.vel.z *= 0.99;
-              eff.life -= eff.decay;
-              eff.mesh.material.opacity = eff.life;
-              eff.mesh.scale.setScalar(1 + (1-eff.life)*0.6);
-              if (eff.life <=0) { threeRef.current.hitGroup.remove(eff.mesh); hitEffectsRef.current.splice(i,1); }
-            }
-          }
+        try {
+          threeRef.current?.renderer?.render(threeRef.current.scene, threeRef.current.camera);
+        } catch (e) {
+          console.error('Render error', e);
         }
-        if(!hasDraggedRef.current && hintDotRef.current && hintTextRef.current && mountRef.current && localReadyRef.current){
-          const elapsed = now - noDragStartRef.current;
-          if(elapsed>3000 && state.countdown===0 &&!pausedRef.current &&!gameEndedRef.current){
-            const mySide = getMySide();
-            const p = state.paddles[mySide];
-            const vec = new THREE.Vector3(p.x, 12, p.z);
-            vec.project(camera);
-            if(vec.z < 1 && vec.z > -1){
-              const rect = mountRef.current.getBoundingClientRect();
-              const sx = (vec.x * 0.5 + 0.5) * rect.width;
-              const sy = (-vec.y * 0.5 + 0.5) * rect.height;
-              hintDotRef.current.style.left = `${sx}px`;
-              hintDotRef.current.style.top = `${sy+45}px`;
-              hintDotRef.current.style.display = 'block';
-              hintTextRef.current.style.left = `${sx+20}px`;
-              hintTextRef.current.style.top = `${sy+30}px`;
-              hintTextRef.current.style.display = 'block';
-            }
-          }
-        }
-        renderer.render(threeRef.current.scene, camera);
+
+        frameIdRef.current = requestAnimationFrame(tick);
       }
-      frameIdRef.current = requestAnimationFrame(tick);
     };
     frameIdRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameIdRef.current);
-  }, [players, settings, onGoal, onTimeUp, world, getInitialSpeed, isHost, isOfflineMode, roomCode, getMySide]);
+  }, [players, settings, world.w, world.h, isHost, isOfflineMode, isVsComputer, getInitialSpeed, onGoal]);
 
-  function formatTime(s: number) { return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
-
-  const getNameForSide = (side: Player['side'] | null) => {
-    if (!side) return '';
-    const p = players.find(pl => pl.side === side);
-    if (p) return p.name;
-    if (side === 'top') return 'ط³ط§ظ…ظٹ';
-    if (side === 'right') return 'ظ„ظٹط§ظ†';
-    if (side === 'left') return 'ظƒط±ظٹظ…';
-    return 'ظ†ظˆط±ط§';
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
   };
 
-  const totalScore = Object.values(scores as any).reduce((a:any,b:any)=>a+b,0) as number;
-  const myScore = scores[players.find(p=>p.side===mySideForCam)?.id || players[0]?.id] ?? 0;
-  const opponentScore = totalScore - myScore;
+  const getNameForSide = (side: Player['side']) => {
+    return players.find(p => p.side === side)?.name || side;
+  };
 
-  // ًں›‘ ط¯ط§ظ„ط© ط§ظ„ط®ط±ظˆط¬ ظ…ط¹ طھط£ظƒظٹط¯
   const handleExit = () => {
-    if (window.confirm('ظ‡ظ„ ط£ظ†طھ ظ…طھط£ظƒط¯ ظ…ظ† ط§ظ„ط®ط±ظˆط¬ ظ…ظ† ط§ظ„ظ„ط¹ط¨ط©طں')) {
-      window.location.reload();
-    }
+    if (confirm(isAr ? 'هل تريد الخروج من اللعبة؟' : 'Exit game?')) onExit();
   };
+
+  const myScore = useMemo(() => {
+    const me = players.find(p => p.socketId === socket.id) || players[0];
+    return me ? (scores[me.id] ?? 0) : 0;
+  }, [scores, players]);
+  const opponentScore = useMemo(() => {
+    const me = players.find(p => p.socketId === socket.id) || players[0];
+    const others = players.filter(p => p.id !== me?.id);
+    return others.reduce((s, p) => s + (scores[p.id] ?? 0), 0);
+  }, [scores, players]);
+
+  useEffect(() => {
+    if (settings.mode === 'time') {
+      const iv = setInterval(() => {
+        if (paused || !localReady) return;
+        setTimeLeft((t: number) => {
+          if (t <= 1) { onTimeUp(); return 0; }
+          return t - 1;
+        });
+      }, 1000);
+      return () => clearInterval(iv);
+    }
+  }, [settings.mode, paused, localReady, onTimeUp]);
+
+  if (webglError) {
+    return (
+      <main style={{ width: '100vw', height: '100vh', display: 'grid', placeItems: 'center', background: '#0a0a0a', color: '#fff' }}>
+        <div style={{ textAlign: 'center', padding: 20 }}>
+          <h2>⚠️ خطأ رسوميات</h2>
+          <p>{webglError}</p>
+          <button onClick={() => { setWebglError(null); window.location.reload(); }} style={{ marginTop: 12, padding: '10px 20px', borderRadius: 8, background: '#00e5ff', color: '#000', fontWeight: 900, border: 'none', cursor: 'pointer' }}>إعادة المحاولة</button>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="game-shell" style={{ background: '#0a0a0a', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
-      {showRestoreModal && (
-        <div style={{
-          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-          backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', zIndex: 10000, color: 'white'
-        }}>
-          <h2>ظ‡ظ†ط§ظƒ ط¥ط¹ط¯ط§ط¯ ظƒط§ظ…ظٹط±ط§ ظ‚ط¯ظٹظ…طŒ ظ‡ظ„ طھط±ظٹط¯ طھط­ظ…ظٹظ„ظ‡طں</h2>
-          <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
-            <button onClick={restoreCamera} style={{ padding: '15px 30px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '5px' }}>ظ†ط¹ظ…</button>
-            <button onClick={() => { setShowRestoreModal(false); localStorage.removeItem('qoud_camera_preset'); }} style={{ padding: '15px 30px', backgroundColor: '#f44336', color: 'white', border: 'none', borderRadius: '5px' }}>ظ„ط§</button>
-          </div>
-        </div>
-      )}
-
-      {!localReady && (
-        <div style={{
-          position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 9997, display: 'flex', gap: '12px', alignItems: 'center',
-          background: 'rgba(15,15,20,0.88)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255,255,255,0.15)', borderRadius: '999px', padding: '10px 18px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.6)', pointerEvents: 'auto'
-        }}>
-          <button onClick={()=>{
-            if (!isFriendsMode) {
-              setLocalReady(true);
-              localReadyRef.current = true;
-              stateRef.current.countdown = 3;
-              stateRef.current.countdownStart = performance.now();
-              setCountdown(3);
-            } else {
-              const myId = socket.id || 'local_' + Math.random().toString(36).slice(2,7);
-              if (!readyPlayers.includes(myId)) {
-                const newReady = [...readyPlayers, myId];
-                setReadyPlayers(newReady);
-                if (newReady.length >= humanCount) {
-                  setLocalReady(true);
-                  localReadyRef.current = true;
-                  stateRef.current.countdown = 3;
-                  stateRef.current.countdownStart = performance.now();
-                  setCountdown(3);
-                  if (isHost) {
-                    socket.emit('all-players-ready', { roomCode });
-                    socket.emit('game-started', { roomCode });
-                  }
-                }
-              }
-              socket.emit('player-ready', { playerId: myId, roomCode, side: getMySide() });
-            }
-          }} style={{padding:'10px 22px', borderRadius:'999px', background: isFriendsMode ? '#00e5ff' : '#4CAF50', color: isFriendsMode ? '#000' : '#fff', fontWeight:900, border:'none', cursor:'pointer', boxShadow: isFriendsMode ? '0 4px 12px rgba(0,229,255,0.4)' : '0 4px 12px rgba(76,175,80,0.4)', fontSize:'14px'}}>
-            {isFriendsMode ? `â–¶ ط¬ط§ظ‡ط² (${readyPlayers.length}/${humanCount})` : `â–¶ ط§ط¨ط¯ط£ ط¨ظ€ ${arenaStyle==='classic' ? 'ط£' : 'ط¨'}`}
-          </button>
-          <div style={{width:'1px', height:'22px', background:'rgba(255,255,255,0.15)'}}/>
-          <span style={{color:'rgba(255,255,255,0.6)', fontSize:'11px', whiteSpace:'nowrap'}}>
-            {isFriendsMode ? 'ظ…ط¹ ط§ظ„ط£طµط¯ظ‚ط§ط،: ط§ظ†طھط¸ط± ط§ظ„ظƒظ„ ظٹط¶ط؛ط· ط§ط¨ط¯ط£' : 'ط§ط®طھط± ط§ظ„ط´ظƒظ„ ظ…ظ† ط§ظ„ظٹظ…ظٹظ† â†گ'}
-          </span>
-        </div>
-      )}
-
-      {!localReady && isFriendsMode && readyPlayers.length > 0 && readyPlayers.length < humanCount && (
-        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:9996, background:'rgba(0,0,0,0.88)', backdropFilter:'blur(12px)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:'20px', padding:'24px 32px', display:'flex', flexDirection:'column', alignItems:'center', gap:'12px' }}>
-          <div style={{width:'48px', height:'48px', borderRadius:'50%', border:'3px solid rgba(255,255,255,0.2)', borderTopColor:'#00e5ff', animation:'spin 1s linear infinite'}}/>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          <span style={{color:'#fff', fontWeight:900, fontSize:'16px'}}>ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ط£طµط¯ظ‚ط§ط،...</span>
-          <span style={{color:'rgba(255,255,255,0.6)', fontSize:'13px'}}>{readyPlayers.length} / {humanCount} ط¬ط§ظ‡ط²ظٹظ† - ظ…ط¹ ط§ظ„ط£طµط¯ظ‚ط§ط، ظپظ‚ط·</span>
-          <div style={{display:'flex', gap:'8px', marginTop:'8px'}}>
-            {players.filter((p:any)=>!p.computer).map(p => {
-              const isReady = readyPlayers.includes(p.socketId || p.id) || readyPlayers.includes(p.id);
-              return <div key={p.id} style={{width:'36px', height:'36px', borderRadius:'50%', background: isReady ? '#4CAF50' : '#333', border: `2px solid ${p.color}`, display:'grid', placeItems:'center', color:'#fff', fontWeight:900, fontSize:'12px'}}>{isReady ? 'âœ“' : '...'}</div>
-            })}
-          </div>
-        </div>
-      )}
-
-      {hideUI && (<button onClick={() => setHideUI(false)} style={{ position: 'absolute', top: 16, right: 16, zIndex: 30, background: '#00e5ff', color: '#000', borderRadius: 999, padding: '8px 14px', fontWeight: 900, display: 'flex', gap: 6, alignItems: 'center', border: 'none', cursor: 'pointer' }}><Eye size={16} /> {isAr? 'ط§ط¸ظ‡ط§ط±' : 'Show'}</button>)}
+    <main style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: '#0a0a0a', overflow: 'hidden' }}>
       {!hideUI && (
         <>
           <header style={{
@@ -1718,62 +1714,62 @@ export function GameScreen3D({
             }}>
               <div style={{
                 width: '32px', height: '22px', background: '#0a0a0a', borderRadius: '50% / 50%',
-                border: '2px solid #888', display:'grid', placeItems:'center',
+                border: '2px solid #888', display: 'grid', placeItems: 'center',
                 boxShadow: 'inset 0 2px 0 rgba(255,255,255,0.3)'
               }}>
-                <div style={{width:'20px', height:'4px', background:'#0a84ff', borderRadius:'2px'}}/>
+                <div style={{ width: '20px', height: '4px', background: '#0a84ff', borderRadius: '2px' }} />
               </div>
-              <span style={{color:'#000', fontWeight:900, fontSize:'17px', letterSpacing:0.5, fontFamily:'system-ui'}}>3D AIR HOCKEY</span>
+              <span style={{ color: '#000', fontWeight: 900, fontSize: '17px', letterSpacing: 0.5, fontFamily: 'system-ui' }}>3D AIR HOCKEY</span>
             </div>
 
-            <div style={{display:'flex', alignItems:'center', gap:'18px', padding:'0 12px', flex:1, justifyContent:'center'}}>
-              <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
-                <span style={{color:'rgba(255,255,255,0.5)', fontSize:'10px', fontWeight:700, letterSpacing:1}}>SCORE</span>
-                <span style={{color:'#fff', fontWeight:900, fontSize:'18px', fontVariantNumeric:'tabular-nums'}}>
-                  {myScore} â€” {opponentScore}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '18px', padding: '0 12px', flex: 1, justifyContent: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: 700, letterSpacing: 1 }}>SCORE</span>
+                <span style={{ color: '#fff', fontWeight: 900, fontSize: '18px', fontVariantNumeric: 'tabular-nums' }}>
+                  {myScore} — {opponentScore}
                 </span>
               </div>
-              <div style={{width:'1px', height:'24px', background:'rgba(255,255,255,0.1)'}}/>
-              <div style={{display:'flex', alignItems:'center', gap:'6px'}}>
-                <span style={{color:'rgba(255,255,255,0.5)', fontSize:'10px', fontWeight:700, letterSpacing:1}}>TIME</span>
-                <span style={{color:'#fff', fontWeight:900, fontSize:'18px', fontVariantNumeric:'tabular-nums'}}>
-                  {settings.mode === 'time'? formatTime(timeLeft) : 'âˆ‍'} 
+              <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: 700, letterSpacing: 1 }}>TIME</span>
+                <span style={{ color: '#fff', fontWeight: 900, fontSize: '18px', fontVariantNumeric: 'tabular-nums' }}>
+                  {settings.mode === 'time' ? formatTime(timeLeft) : '∞'}
                 </span>
               </div>
-              <div style={{display:'flex', alignItems:'center', gap:'2px', marginLeft:'8px'}}>
-                <span style={{color:'#ff2d2d', fontSize:'12px'}}>â€¢</span>
-                <span style={{color:'rgba(255,255,255,0.6)', fontSize:'11px'}}>Rally {rally}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginLeft: '8px' }}>
+                <span style={{ color: '#ff2d2d', fontSize: '12px' }}>•</span>
+                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>Rally {rally}</span>
               </div>
               {settings.seriesType === 'series' && (
-                <div style={{display:'flex', alignItems:'center', gap:'6px', background:'rgba(255,207,90,0.1)', border:'1px solid rgba(255,207,90,0.2)', padding:'2px 8px', borderRadius:'12px'}}>
-                  <span style={{color:'#ffcf5a', fontSize:'10px', fontWeight:900}}>R{currentRound}/{settings.seriesRounds}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,207,90,0.1)', border: '1px solid rgba(255,207,90,0.2)', padding: '2px 8px', borderRadius: '12px' }}>
+                  <span style={{ color: '#ffcf5a', fontSize: '10px', fontWeight: 900 }}>R{currentRound}/{settings.seriesRounds}</span>
                 </div>
               )}
             </div>
 
-            <div style={{display:'flex', alignItems:'center', gap:'6px', padding:'0 8px 0 0'}}>
-              <button onClick={()=>setShowCamMenu(v=>!v)} style={{
-                background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.08)', 
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0 8px 0 0' }}>
+              <button onClick={() => setShowCamMenu(v => !v)} style={{
+                background: showCamMenu ? '#00e5ff' : 'rgba(255,255,255,0.08)',
                 color: showCamMenu ? '#000' : 'rgba(255,255,255,0.7)',
-                border:'1px solid rgba(255,255,255,0.1)', borderRadius:'6px',
-                padding:'6px 10px', fontSize:'11px', fontWeight:800, cursor:'pointer',
-                display:'flex', alignItems:'center', gap:'4px'
+                border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px',
+                padding: '6px 10px', fontSize: '11px', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '4px'
               }}>
-                <Camera size={12}/> {showCamMenu ? 'ط¥ط®ظپط§ط،' : 'ظƒط§ظ…ظٹط±ط§'}
+                <Camera size={12} /> {showCamMenu ? 'إخفاء' : 'كاميرا'}
               </button>
               <button onClick={onPause} style={{
-                background: paused ? '#ff2d2d' : 'rgba(255,255,255,0.08)', 
+                background: paused ? '#ff2d2d' : 'rgba(255,255,255,0.08)',
                 color: paused ? '#fff' : 'rgba(255,255,255,0.7)',
-                border:'1px solid rgba(255,255,255,0.1)', borderRadius:'6px',
-                padding:'6px 12px', fontSize:'11px', fontWeight:800, cursor:'pointer',
-                display:'flex', alignItems:'center', gap:'4px'
+                border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px',
+                padding: '6px 12px', fontSize: '11px', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '4px'
               }}>
-                {paused? <><Play size={12}/> RESUME</> : <><Pause size={12}/> PAUSE</>}
+                {paused ? <><Play size={12} /> RESUME</> : <><Pause size={12} /> PAUSE</>}
               </button>
-              <button onClick={resetCamera} style={{
-                background:'rgba(255,207,90,0.15)', color:'#ffcf5a',
-                border:'1px solid rgba(255,207,90,0.2)', borderRadius:'6px',
-                padding:'6px 10px', fontSize:'11px', fontWeight:800, cursor:'pointer'
+              <button onClick={resetCameraToDefault} style={{
+                background: 'rgba(255,207,90,0.15)', color: '#ffcf5a',
+                border: '1px solid rgba(255,207,90,0.2)', borderRadius: '6px',
+                padding: '6px 10px', fontSize: '11px', fontWeight: 800, cursor: 'pointer'
               }}>
                 RESET
               </button>
@@ -1783,18 +1779,18 @@ export function GameScreen3D({
           <div style={{ display: 'flex', gap: '8px', padding: '0 12px 8px 12px', overflowX: 'auto' }}>
             {(() => {
               const COLORS_FB = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
-              const SIDES_FB: Player['side'][] = ['bottom','top','right','left'];
+              const SIDES_FB: Player['side'][] = ['bottom', 'top', 'right', 'left'];
               const need = Math.max(2, players.length, settings.players || 2);
-              const sides = need === 2? SIDES_FB.slice(0,2) : SIDES_FB.slice(0,4);
+              const sides = need === 2 ? SIDES_FB.slice(0, 2) : SIDES_FB.slice(0, 4);
               return sides.map((side, idx) => {
-                const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top'? 'ط³ط§ظ…ظٹ' : side === 'right'? 'ظ„ظٹط§ظ†' : side === 'left'? 'ظƒط±ظٹظ…' : 'ظ†ظˆط±ط§', color: COLORS_FB[idx], side };
-                const isMe = side===mySideForCam;
+                const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top' ? 'سامي' : side === 'right' ? 'ليان' : side === 'left' ? 'كريم' : 'نورا', color: COLORS_FB[idx], side };
+                const isMe = side === mySideForCam;
                 return (
-                  <div key={p.id + side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', background: isMe?'#1a2a3a':'#151515', border: `2px solid ${p.color}`, borderRadius: '14px', padding: '6px 16px', minWidth: '90px' }}>
-                    <strong style={{ color: p.color, fontSize: '20px', lineHeight: '1', fontWeight: 900 }}>{scores[p.id]?? 0}</strong>
+                  <div key={p.id + side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', background: isMe ? '#1a2a3a' : '#151515', border: `2px solid ${p.color}`, borderRadius: '14px', padding: '6px 16px', minWidth: '90px' }}>
+                    <strong style={{ color: p.color, fontSize: '20px', lineHeight: '1', fontWeight: 900 }}>{scores[p.id] ?? 0}</strong>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                       <span style={{ background: p.color, width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block' }} />
-                      <span style={{ color: '#fff', fontSize: '12px', fontWeight: 700 }}>{p.name}{isMe?' (ط§ظ†طھ)':''}</span>
+                      <span style={{ color: '#fff', fontSize: '12px', fontWeight: 700 }}>{p.name}{isMe ? ' (انت)' : ''}</span>
                     </div>
                   </div>
                 );
@@ -1803,25 +1799,25 @@ export function GameScreen3D({
           </div>
         </>
       )}
-      <div ref={mountRef} style={{ width: '100%', flex: 1, borderRadius: '16px', overflow: 'hidden', position: 'relative', touchAction: 'none', margin: '0 8px 8px 8px', border: '2px solid #1a1a1a' }}>
-        <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}}`}</style>
-        <div ref={hintDotRef} style={{position:'absolute', width:'14px', height:'14px', borderRadius:'50%', background:'#00e5ff', border:'2px solid #fff', display:'none', zIndex:20, pointerEvents:'none', animation:'hintPulse 1.2s infinite'}}/>
-        <div ref={hintTextRef} style={{position:'absolute', background:'#00e5ff', color:'#000', padding:'6px 12px', borderRadius:999, fontSize:'12px', fontWeight:900, display:'none', zIndex:20, pointerEvents:'none', whiteSpace:'nowrap'}}>ًں‘† ط­ط±ظƒ ط§ظ„ظ…ط¶ط±ط¨ ظ…ظ† ظ‡ظ†ط§</div>
+      <div ref={mountRef} style={{ width: '100%', flex: 1, minHeight: '400px', borderRadius: '16px', overflow: 'hidden', position: 'relative', touchAction: 'none', margin: '0 8px 8px 8px', border: '2px solid #1a1a1a', background: '#0a0a0a' }}>
+        <style>{`@keyframes hintPulse{0%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0.7)}70%{transform:translate(-50%,-50%) scale(1.3); box-shadow:0 0 0 12px rgba(0,229,255,0)}100%{transform:translate(-50%,-50%) scale(1); box-shadow:0 0 0 0 rgba(0,229,255,0)}} @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.05)}100%{transform:scale(1)}} @keyframes fadeIn{from{opacity:0}to{opacity:1}}`}</style>
+        <div ref={hintDotRef} style={{ position: 'absolute', width: '14px', height: '14px', borderRadius: '50%', background: '#00e5ff', border: '2px solid #fff', display: 'none', zIndex: 20, pointerEvents: 'none', animation: 'hintPulse 1.2s infinite' }} />
+        <div ref={hintTextRef} style={{ position: 'absolute', background: '#00e5ff', color: '#000', padding: '6px 12px', borderRadius: 999, fontSize: '12px', fontWeight: 900, display: 'none', zIndex: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>👆 حرك المضرب من هنا</div>
         {localReady && stateRef.current?.serving?.active && (() => {
           const elapsed = performance.now() - (stateRef.current?.serving?.startTime || 0);
           const showHint = elapsed > 2500;
           if (!showHint) return null;
           return (
             <div style={{ position: 'absolute', left: '50%', bottom: '22%', transform: 'translateX(-50%)', zIndex: 25, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, animation: 'fadeIn 0.3s ease' }}>
-              <button onClick={()=>{ stateRef.current.serving.requested = true; }} style={{
+              <button onClick={() => { stateRef.current.serving.requested = true; }} style={{
                 background: 'linear-gradient(135deg, #00e5ff 0%, #1e90ff 100%)', color: '#000', fontWeight: 900, fontSize: 16,
                 padding: '14px 28px', borderRadius: 999, border: '2px solid #fff', cursor: 'pointer',
                 boxShadow: '0 8px 24px rgba(0,229,255,0.5)', animation: 'pulse 1.5s infinite'
               }}>
-                â–¶ ط§ط¶ط؛ط· ظ„ظ„ط¨ط¯ط،
+                ▶ اضغط للبدء
               </button>
               <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 700, background: 'rgba(0,0,0,0.5)', padding: '4px 10px', borderRadius: 999 }}>
-                ط§ط¶ط؛ط· ظپظٹ ط£ظٹ ظ…ظƒط§ظ† ظ„ط¶ط±ط¨ ط§ظ„ظƒط±ط©
+                اضغط في أي مكان لضرب الكرة
               </span>
             </div>
           );
@@ -1830,19 +1826,19 @@ export function GameScreen3D({
           <div style={{ position: 'absolute', inset: 0, background: countdownSide ? 'rgba(0,0,0,0.84)' : 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 5, gap: '22px', pointerEvents: 'none' }}>
             <span style={{ fontSize: '132px', fontWeight: 900, color: '#ff2233', lineHeight: 1, textShadow: '0 0 40px rgba(255,34,51,0.9), 0 0 80px rgba(0,0,0,1)' }}>{countdown}</span>
             {countdownSide && (
-              <span style={{ 
-                fontSize: '17px', fontWeight: 900, color: '#fff', 
-                background: 'linear-gradient(135deg, #ff2233 0%, #ff6b6b 100%)', 
+              <span style={{
+                fontSize: '17px', fontWeight: 900, color: '#fff',
+                background: 'linear-gradient(135deg, #ff2233 0%, #ff6b6b 100%)',
                 padding: '13px 28px', borderRadius: 999,
                 boxShadow: '0 8px 28px rgba(255,34,51,0.65)',
                 border: '2px solid rgba(255,255,255,0.32)',
                 display: 'flex', alignItems: 'center', gap: '10px'
               }}>
-                âڑ½ {(() => {
+                ⚽ {(() => {
                   const opp: any = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
                   const scorerSide = opp[countdownSide] || countdownSide;
                   const name = getNameForSide(scorerSide as Player['side']);
-                  return name ? `${name} ط³ط¬ظ„ ظ‡ط¯ظپ!` : 'ظ‡ط¯ظپ!';
+                  return name ? `${name} سجل هدف!` : 'هدف!';
                 })()}
               </span>
             )}
@@ -1850,16 +1846,16 @@ export function GameScreen3D({
         )}
         {paused && (
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 12, gap: '16px' }}>
-            <span style={{ fontSize: '48px', fontWeight: 900, color: '#fff' }}>âڈ¸ï¸ڈ {isAr ? 'ظ…طھظˆظ‚ظپ' : 'PAUSED'}</span>
-            <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px' }}>{isAr ? 'طھظ… ط¥ظٹظ‚ط§ظپ ط§ظ„ظ„ط¹ط¨ط© ظ„ظƒظ„ ط§ظ„ظ„ط§ط¹ط¨ظٹظ†' : 'Game paused for all players'}</span>
-            <button onClick={onPause} style={{ padding: '12px 28px', borderRadius: '999px', background: '#00e5ff', color: '#000', fontWeight: 900, border: 'none', cursor: 'pointer' }}>{isAr ? 'ظ…طھط§ط¨ط¹ط©' : 'Resume'}</button>
+            <span style={{ fontSize: '48px', fontWeight: 900, color: '#fff' }}>⏸️ {isAr ? 'متوقف' : 'PAUSED'}</span>
+            <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px' }}>{isAr ? 'تم إيقاف اللعبة لكل اللاعبين' : 'Game paused for all players'}</span>
+            <button onClick={onPause} style={{ padding: '12px 28px', borderRadius: '999px', background: '#00e5ff', color: '#000', fontWeight: 900, border: 'none', cursor: 'pointer' }}>{isAr ? 'متابعة' : 'Resume'}</button>
           </div>
         )}
-        {localReady && lastGoal && countdown === 0 && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr? 'ظ‡ط¯ظپ!' : 'GOAL!'} {lastGoal}</div>}
+        {localReady && lastGoal && countdown === 0 && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(255,34,51,0.9)', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: 900, zIndex: 6 }}>{isAr ? 'هدف!' : 'GOAL!'} {lastGoal}</div>}
         {celebrating && (
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>
-            <div style={{ fontSize: '48px', fontWeight: 900, color: '#ffcf5a', textShadow: '0 0 20px #ffcf5a' }}>{celebrating.name} {isAr? 'ظپط§ط² ط¨ط§ظ„ط¬ظˆظ„ط©' : 'wins the round'}!</div>
-            <div style={{ fontSize: '24px', color: '#fff', background: '#222', padding: '8px 24px', borderRadius: '999px' }}>{isAr? 'ط§ظ„ط¬ظˆظ„ط©' : 'Round'} {currentRound} / {settings.seriesRounds}</div>
+            <div style={{ fontSize: '48px', fontWeight: 900, color: '#ffcf5a', textShadow: '0 0 20px #ffcf5a' }}>{celebrating.name} {isAr ? 'فاز بالجولة' : 'wins the round'}!</div>
+            <div style={{ fontSize: '24px', color: '#fff', background: '#222', padding: '8px 24px', borderRadius: '999px' }}>{isAr ? 'الجولة' : 'Round'} {currentRound} / {settings.seriesRounds}</div>
             <div style={{ display: 'flex', gap: '20px', marginTop: '12px' }}>
               {players.map(p => (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#111', padding: '6px 12px', borderRadius: '999px' }}>
@@ -1871,259 +1867,147 @@ export function GameScreen3D({
             </div>
           </div>
         )}
-        {/* ًں›‘ ط²ط± EXIT ظ…ط¹ طھط£ظƒظٹط¯ */}
-        <button onClick={handleExit} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: '#ff2d2d', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize:'11px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+        <button onClick={handleExit} style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, background: '#ff2d2d', color: 'white', border: 'none', padding: '8px 12px', borderRadius: 8, fontSize: '11px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
           <ArrowLeft size={14} /> EXIT
         </button>
-        <button onClick={()=>setShowCamMenu(v=>!v)} style={{
+        <button onClick={() => setShowCamMenu(v => !v)} style={{
           position: 'absolute', top: 12, right: 12, zIndex: 10006,
-          background: showCamMenu ? '#00e5ff' : 'rgba(10,10,12,0.9)', 
+          background: showCamMenu ? '#00e5ff' : 'rgba(10,10,12,0.9)',
           color: showCamMenu ? '#000' : '#fff',
-          border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: 12,
-          padding: '10px 14px', fontSize: 12, fontWeight: 900,
-          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)'
+          border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
+          padding: '8px 10px', fontSize: '11px', fontWeight: 800, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: '4px'
         }}>
-          <Camera size={14}/> ظƒط§ظ…ظٹط±ط§
+          <Camera size={14} /> CAM
         </button>
 
-<<<<<<< HEAD
-        {false && !hideUI && !localReady && (
-          <div style={{
-            position: 'absolute', right: 12, top: 12, zIndex: 10004,
-            background: 'rgba(10,10,12,0.92)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
-            border: '1px solid rgba(255,255,255,0.15)', borderRadius: 14, padding: '8px', display: 'flex',
-            flexDirection: 'column', gap: '6px', alignItems: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.7)', width: 88
-          }}>
-            <span style={{fontSize:9, fontWeight:900, color:'rgba(255,255,255,0.5)', letterSpacing:1}}>SHAPE</span>
-            <div style={{display:'flex', gap:'6px'}}>
-              <button onClick={()=>setArenaStyle('classic')} style={{width:36, height:52, borderRadius:8, background: arenaStyle==='classic' ? '#00e5ff' : '#1e1e1e', border: arenaStyle==='classic' ? '2px solid #00e5ff' : '1px solid #333', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer'}}>
-                <span style={{fontSize:11, fontWeight:900, color: arenaStyle==='classic' ? '#000' : '#fff'}}>ط£</span>
-              </button>
-              <button onClick={()=>setArenaStyle('modern')} style={{width:36, height:52, borderRadius:8, background: arenaStyle==='modern' ? '#00e5ff' : '#1e1e1e', border: arenaStyle==='modern' ? '2px solid #00e5ff' : '1px solid #333', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer'}}>
-                <span style={{fontSize:11, fontWeight:900, color: arenaStyle==='modern' ? '#000' : '#fff'}}>ط¨</span>
-              </button>
-            </div>
+        {!localReady && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 20, gap: 16 }}>
+            <h2 style={{ color: '#fff', fontWeight: 900, fontSize: 24 }}>{isAr ? 'جاهز؟' : 'Ready?'}</h2>
+            <button onClick={() => {
+              setLocalReady(true); localReadyRef.current = true;
+              stateRef.current.serving.active = (settings as any).start === 'paddle';
+              stateRef.current.serving.startTime = performance.now();
+              stateRef.current.countdown = 0; setCountdown(0);
+              if (isFriendsMode) {
+                socket.emit('player-ready', { roomCode, playerId: socket.id });
+              } else {
+                stateRef.current.countdown = 3; stateRef.current.countdownStart = performance.now(); setCountdown(3);
+              }
+            }} style={{ padding: '14px 32px', borderRadius: 999, background: '#00e5ff', color: '#000', fontWeight: 900, fontSize: 18, border: 'none', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,229,255,0.4)' }}>
+              {isAr ? 'ابدأ اللعب' : 'START'}
+            </button>
+            {isFriendsMode && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>{readyPlayers.length}/{humanCount} جاهز</span>}
           </div>
         )}
 
-=======
->>>>>>> 34fc226 (add server and yt-dlp integration)
-        {showCamMenu && !hideUI && (
-          <div style={{ 
-            position: 'absolute', 
-            right: 8, 
-            top: 12,
-            bottom: 12,
-            zIndex: 10005, 
-            background: 'rgba(10,10,12,0.96)', 
-            backdropFilter: 'blur(20px)', 
-            WebkitBackdropFilter: 'blur(20px)', 
-            border: '1.5px solid rgba(255,255,255,0.12)', 
-            borderRadius: 18, 
-            padding: '8px 6px',
-            width: 76,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 0,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.9)',
-            touchAction: 'auto',
-            pointerEvents: 'auto',
+        {showCamMenu && (
+          <div style={{
+            position: 'absolute', top: 50, right: 12, zIndex: 10005,
+            background: 'rgba(15,15,18,0.98)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16,
+            padding: '12px', width: 240, maxHeight: '80vh', overflowY: 'auto',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.6)'
           }}>
-            <button onClick={()=>setShowCamMenu(false)} style={{
-              width:36, height:28, borderRadius:8, background:'#1a1a1a', border:'1.5px solid #333',
-              color:'#fff', display:'grid', placeItems:'center', cursor:'pointer', flexShrink:0,
-              marginBottom:6, fontWeight:900
-            }}>
-              <X size={14}/>
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ color: '#fff', fontWeight: 900, fontSize: 12 }}>CAMERA</span>
+              <button onClick={() => setShowCamMenu(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}><X size={14} /></button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button onClick={() => rotateCam('left')} style={btnStyle}><RotateCcw size={12} /> LEFT</button>
+              <button onClick={() => rotateCam('right')} style={btnStyle}><RotateCw size={12} /> RIGHT</button>
+              <button onClick={() => rotateCam('up')} style={btnStyle}><ArrowUp size={12} /> UP</button>
+              <button onClick={() => rotateCam('down')} style={btnStyle}><ArrowDown size={12} /> DOWN</button>
+              <button onClick={() => zoomCam(1)} style={btnStyle}><ZoomIn size={12} /> Z+</button>
+              <button onClick={() => zoomCam(-1)} style={btnStyle}><ZoomOut size={12} /> Z-</button>
+            </div>
 
-            <div style={{
-              flex:1, width:'100%', overflowY:'auto', overflowX:'hidden',
-              display:'flex', flexDirection:'column', alignItems:'center', gap:6,
-              padding:'4px 2px',
-              scrollbarWidth:'thin',
-              scrollbarColor:'#333 #111',
-            }}>
-              <style>{`
-                div::-webkit-scrollbar { width: 3px; }
-                div::-webkit-scrollbar-track { background: #111; border-radius: 2px; }
-                div::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
-              `}</style>
-
-              <button onClick={saveCameraSettings} title="ط­ظپط¸ ط§ظ„ظƒط§ظ…ظٹط±ط§" style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#00e5ff', border:'2px solid #000', borderRadius:12,
-                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(0,229,255,0.4)', gap:2
-              }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Save</span>
-              </button>
-
-              <button onClick={resetCameraToDefault} title="ط¥ط¹ط§ط¯ط© ط¶ط¨ط·" style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#ff8a3d', border:'2px solid #000', borderRadius:12,
-                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(255,138,61,0.4)', gap:2
-              }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Rest</span>
-              </button>
-
-              <button onClick={() => rotateCam('left')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#61e7c2', border:'2px solid #000', borderRadius:12,
-                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(97,231,194,0.4)'
-              }}>
-                <ArrowLeft size={22} strokeWidth={2.8} color="#000"/>
-              </button>
-
-              <button onClick={() => rotateCam('right')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#61e7c2', border:'2px solid #000', borderRadius:12,
-                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(97,231,194,0.4)'
-              }}>
-                <ArrowRight size={22} strokeWidth={2.8} color="#000"/>
-              </button>
-
-              <button onClick={() => rotateCam('up')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#ffcf5a', border:'2px solid #000', borderRadius:12,
-                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(255,207,90,0.5)'
-              }}>
-                <ArrowUp size={22} strokeWidth={2.8} color="#000"/>
-              </button>
-
-              <button onClick={() => rotateCam('down')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#ff6b8b', border:'2px solid #000', borderRadius:12,
-                display:'grid', placeItems:'center', cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(255,107,139,0.5)'
-              }}>
-                <ArrowDown size={22} strokeWidth={2.8} color="#000"/>
-              </button>
-
-              <button onClick={() => zoomCam(1)} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#9b8cff', border:'2px solid #000', borderRadius:12,
-                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(155,140,255,0.4)', position:'relative'
-              }}>
-                <div style={{width:26, height:26, borderRadius:'50%', border:'2px solid #000', display:'grid', placeItems:'center', background:'#fff'}}>
-                  <span style={{fontSize:16, fontWeight:900, color:'#000', lineHeight:1}}>+</span>
-                </div>
-                <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:900, color:'#000'}}>Z</span>
-              </button>
-
-              <button onClick={() => zoomCam(-1)} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#9b8cff', border:'2px solid #000', borderRadius:12,
-                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000, 0 4px 12px rgba(155,140,255,0.4)', position:'relative'
-              }}>
-                <div style={{width:26, height:26, borderRadius:'50%', border:'2px solid #000', display:'grid', placeItems:'center', background:'#fff'}}>
-                  <span style={{fontSize:16, fontWeight:900, color:'#000', lineHeight:1}}>âˆ’</span>
-                </div>
-                <span style={{position:'absolute', bottom:4, right:6, fontSize:8, fontWeight:900, color:'#000'}}>Z</span>
-              </button>
-
-              <button onClick={() => applyPreset('bottom')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='bottom' ? '#00e5ff' : '#1e90ff',
-                border: '2px solid #000',
-                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='bottom' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
-              }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Bot</span>
-              </button>
-
-              <button onClick={() => applyPreset('topPlayer')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='topPlayer' ? '#00e5ff' : '#ff7a7a',
-                border: '2px solid #000',
-                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='topPlayer' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
-              }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Enm</span>
-              </button>
-
-              <button onClick={() => applyPreset('top')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='top' ? '#00e5ff' : '#ffb86b',
-                border: '2px solid #000',
-                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='top' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
-              }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Top</span>
-              </button>
-
-              <button onClick={() => applyPreset('bottom')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background:'#1e90ff', border:'2px solid #000', borderRadius:12,
-                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000'
-              }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#fff'}}>Bot</span>
-              </button>
-
-              <button onClick={() => applyPreset('iso')} style={{
-                width:64, height:52, minHeight:52, flexShrink:0,
-                background: currentPreset==='iso' ? '#00e5ff' : '#a8e6a0',
-                border: '2px solid #000',
-                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='iso' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
-              }}>
-                <span style={{fontSize:12, fontWeight:900, color:'#000'}}>Iso</span>
-              </button>
-
-              <button onClick={() => applyPreset('sideLeft')} style={{
-                width:64, height:48, minHeight:48, flexShrink:0,
-                background: currentPreset==='sideLeft' ? '#00e5ff' : '#ffd166',
-                border: '2px solid #000',
-                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='sideLeft' ? '0 0 12px rgba(0,229,255,0.6), 0 2px 0 #000' : '0 2px 0 #000'
-              }}>
-                <span style={{fontSize:10, fontWeight:900, color:'#000'}}>LEFT</span>
-              </button>
-
-              <button onClick={() => applyPreset('sideRight')} style={{
-                width:64, height:48, minHeight:48, flexShrink:0,
-                background: currentPreset==='sideRight' ? '#00e5ff' : '#ffd166',
-                border: '2px solid #000',
-                borderRadius:12, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow: currentPreset==='sideRight' ? '0 0 12px rgba(0,229,255,0.6), 0 2px 0 #000' : '0 2px 0 #000'
-              }}>
-                <span style={{fontSize:10, fontWeight:900, color:'#000'}}>RIGHT</span>
-              </button>
-
-              <button onClick={resetCamera} style={{
-                width:64, height:40, minHeight:40, flexShrink:0,
-                background:'#ff4081', border:'none', borderRadius:10,
-                display:'flex', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', boxShadow:'0 2px 0 #000', marginTop:4
-              }}>
-                <span style={{fontSize:10, fontWeight:900, color:'#fff'}}>RESET</span>
-              </button>
-
-              <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{
-                width:64, height:36, minHeight:36, flexShrink:0,
-                background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10,
-                display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', gap:3
-              }}>
-                <EyeOff size={10} color="rgba(255,255,255,0.5)"/>
-                <span style={{fontSize:8, color:'rgba(255,255,255,0.5)'}}>HIDE</span>
-              </button>
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, fontWeight: 800 }}>PRESETS</span>
+              <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+                <button onClick={() => applyPreset('bottom')} style={{
+                  width: 64, height: 52, minHeight: 52, flexShrink: 0,
+                  background: currentPreset === 'bottom' ? '#00e5ff' : '#1e90ff',
+                  border: '2px solid #000',
+                  borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', boxShadow: currentPreset === 'bottom' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
+                }}>
+                  <span style={{ fontSize: 12, fontWeight: 900, color: '#000' }}>Bot</span>
+                </button>
+                <button onClick={() => applyPreset('topPlayer')} style={{
+                  width: 64, height: 52, minHeight: 52, flexShrink: 0,
+                  background: currentPreset === 'topPlayer' ? '#00e5ff' : '#ff7a7a',
+                  border: '2px solid #000',
+                  borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', boxShadow: currentPreset === 'topPlayer' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
+                }}>
+                  <span style={{ fontSize: 12, fontWeight: 900, color: '#000' }}>Enm</span>
+                </button>
+                <button onClick={() => applyPreset('top')} style={{
+                  width: 64, height: 52, minHeight: 52, flexShrink: 0,
+                  background: currentPreset === 'top' ? '#00e5ff' : '#ffb86b',
+                  border: '2px solid #000',
+                  borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', boxShadow: currentPreset === 'top' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
+                }}>
+                  <span style={{ fontSize: 12, fontWeight: 900, color: '#000' }}>Top</span>
+                </button>
+                <button onClick={() => applyPreset('iso')} style={{
+                  width: 64, height: 52, minHeight: 52, flexShrink: 0,
+                  background: currentPreset === 'iso' ? '#00e5ff' : '#a8e6a0',
+                  border: '2px solid #000',
+                  borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', boxShadow: currentPreset === 'iso' ? '0 0 14px rgba(0,229,255,0.7), 0 2px 0 #000' : '0 2px 0 #000'
+                }}>
+                  <span style={{ fontSize: 12, fontWeight: 900, color: '#000' }}>Iso</span>
+                </button>
+                <button onClick={() => applyPreset('sideLeft')} style={{
+                  width: 64, height: 48, minHeight: 48, flexShrink: 0,
+                  background: currentPreset === 'sideLeft' ? '#00e5ff' : '#ffd166',
+                  border: '2px solid #000',
+                  borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', boxShadow: currentPreset === 'sideLeft' ? '0 0 12px rgba(0,229,255,0.6), 0 2px 0 #000' : '0 2px 0 #000'
+                }}>
+                  <span style={{ fontSize: 10, fontWeight: 900, color: '#000' }}>LEFT</span>
+                </button>
+                <button onClick={() => applyPreset('sideRight')} style={{
+                  width: 64, height: 48, minHeight: 48, flexShrink: 0,
+                  background: currentPreset === 'sideRight' ? '#00e5ff' : '#ffd166',
+                  border: '2px solid #000',
+                  borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', boxShadow: currentPreset === 'sideRight' ? '0 0 12px rgba(0,229,255,0.6), 0 2px 0 #000' : '0 2px 0 #000'
+                }}>
+                  <span style={{ fontSize: 10, fontWeight: 900, color: '#000' }}>RIGHT</span>
+                </button>
+                <button onClick={resetCameraToDefault} style={{
+                  width: 64, height: 40, minHeight: 40, flexShrink: 0,
+                  background: '#ff4081', border: 'none', borderRadius: 10,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', boxShadow: '0 2px 0 #000', marginTop: 4
+                }}>
+                  <span style={{ fontSize: 10, fontWeight: 900, color: '#fff' }}>RESET</span>
+                </button>
+                <button onClick={() => { setHideUI(true); setShowCamMenu(false); }} style={{
+                  width: 64, height: 36, minHeight: 36, flexShrink: 0,
+                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 3
+                }}>
+                  <EyeOff size={10} color="rgba(255,255,255,0.5)" />
+                  <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)' }}>HIDE</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
 
       <div style={{
-        display:'flex', justifyContent:'space-between', alignItems:'center',
-        padding:'6px 12px', background:'#0a0a0a', borderTop:'1px solid #1a1a1a',
-        fontSize:'10px', color:'rgba(255,255,255,0.4)'
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '6px 12px', background: '#0a0a0a', borderTop: '1px solid #1a1a1a',
+        fontSize: '10px', color: 'rgba(255,255,255,0.4)'
       }}>
-        <span>CAMERA: PERSPECTIVE â€¢ MODE: {currentPreset.toUpperCase()}</span>
-        <span>CONTROLS: USE LADDER TO ADJUST CAMERA</span>
+        <span>CAMERA: PERSPECTIVE • MODE: {currentPreset.toUpperCase()}</span>
+        <span style={{ display: isMobileCheck ? 'none' : 'block' }}>CONTROLS: USE LADDER TO ADJUST CAMERA</span>
+        <span style={{ display: isMobileCheck ? 'block' : 'none' }}>TOUCH: DRAG TO MOVE</span>
       </div>
     </main>
   );
