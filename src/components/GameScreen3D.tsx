@@ -468,8 +468,6 @@ export function GameScreen3D({
   const gameEndedRef = useRef(false);
   const frameIdRef = useRef<number>(0);
   const localReadyRef = useRef(localReady);
-
-  // ===== قفل بسيط لمنع تكرار الأهداف =====
   const goalLockedRef = useRef(false);
   const lastGoalTimeRef = useRef(0);
 
@@ -776,7 +774,6 @@ export function GameScreen3D({
     if (dir === 'down') cam.current.targetHeight = Math.max(400, cam.current.targetHeight - 100);
   }, []);
 
-  // ===== تلقي بيانات الحالة من السيرفر (بدون مستمع goal-scored) =====
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
@@ -1066,7 +1063,7 @@ export function GameScreen3D({
     };
   }, [world.w, world.h, playersKey, arenaStyle, createHatPaddle]);
 
-  // ===== حلقة الفيزياء المعدلة =====
+  // ===== حلقة الفيزياء المُصلحة =====
   useEffect(() => {
     const state = stateRef.current;
     const needPlayers = Math.max(2, players.length, settings.players || 2);
@@ -1075,16 +1072,15 @@ export function GameScreen3D({
     const PADDLE_RADIUS_LOCAL = 36;
     const BALL_RADIUS_LOCAL = 15;
     const HIT_DIST = PADDLE_RADIUS_LOCAL + BALL_RADIUS_LOCAL;
-    const GOAL_DEPTH = 20;
 
-    // ===== إصلاح 1: resolveScorer يُرجع اللاعب الصحيح (الخصم) =====
+    // ===== الإصلاح 1: حجم الهدف كبير كما في الكود المرفق =====
+    const goalHalfW = Math.max(420, world.w * 0.48);
+    const sideGoalHalfW = Math.max(420, world.h * 0.48);
+
     const resolveScorer = (missedSide: Player['side']): Player => {
-      // missedSide = الجانب الذي دخلت الكرة في مرماه (الخاسر)
-      // scorerSide = الجانب المقابل (الفائز)
       const scorerSide = missedSide === 'top' ? 'bottom' : missedSide === 'bottom' ? 'top' : missedSide === 'left' ? 'right' : 'left';
       const scorer = players.find(p => p.side === scorerSide);
       if (scorer) return scorer;
-      // fallback
       const SIDE_IDX: Record<string, number> = { bottom: 0, top: 1, right: 2, left: 3 };
       const COLORS_SC = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
       return {
@@ -1235,8 +1231,6 @@ export function GameScreen3D({
           }
           if (state.countdown === 0 && !state.serving.active) {
             if (isOfflineMode || isHost) {
-              const goalHalfW = (world.w * GOAL_W_RATIO) / 2 - BALL_RADIUS_LOCAL;
-              const sideGoalHalfW = (world.h * GOAL_H_RATIO) / 2 - BALL_RADIUS_LOCAL;
               const leftBound = BALL_RADIUS_LOCAL;
               const rightBound = world.w - BALL_RADIUS_LOCAL;
               const topBound = BALL_RADIUS_LOCAL;
@@ -1257,9 +1251,7 @@ export function GameScreen3D({
                 }
               };
 
-              // ===== إصلاح 2: scoreGoal مع قفل بسيط وإصلاح اللاعب =====
               const scoreGoal = (missedSide: Player['side'], restartSide: Player['side'], fx: number, fz: number) => {
-                // قفل منع التكرار: 2 ثانية بين كل هدف
                 const nowTime = performance.now();
                 if (goalLockedRef.current || nowTime - lastGoalTimeRef.current < 2000) {
                   return false;
@@ -1287,7 +1279,7 @@ export function GameScreen3D({
                 state.ball.x = Math.max(-PD, Math.min(world.w + PD, state.ball.x));
                 if (now >= ga.until) {
                   (state as any).goalAnim = null;
-                  goalLockedRef.current = false; // ===== فتح القفل =====
+                  goalLockedRef.current = false;
                   state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
                   state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
                   state.countdown = 3; state.countdownStart = now; state.countdownSide = ga.restartSide;
@@ -1301,18 +1293,66 @@ export function GameScreen3D({
                 for (let i = 0; i < steps && !scored; i++) {
                   state.ball.x += state.ball.vx * sd;
                   state.ball.y += state.ball.vy * sd;
-                  if (state.ball.x < leftBound && (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW)) {
-                    state.ball.x = leftBound; state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+
+                  // ===== الإصلاح 2: ارتداد الجدران مع استثناء الأهداف + ارتداد حواف الهدف =====
+                  if (state.ball.x < leftBound) {
+                    if (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW) {
+                      state.ball.x = leftBound;
+                      state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                      state.ball.vy += (Math.random() - 0.5) * 1.5;
+                    } else {
+                      const edgeDist = Math.abs(state.ball.y - world.h / 2) - sideGoalHalfW;
+                      if (edgeDist < 40) {
+                        state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                        state.ball.vy = (state.ball.y > world.h / 2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random() - 0.5) * 2;
+                      }
+                    }
                   }
-                  if (state.ball.x > rightBound && (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW)) {
-                    state.ball.x = rightBound; state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                  if (state.ball.x > rightBound) {
+                    if (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW) {
+                      state.ball.x = rightBound;
+                      state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                      state.ball.vy += (Math.random() - 0.5) * 1.5;
+                    } else {
+                      const edgeDist = Math.abs(state.ball.y - world.h / 2) - sideGoalHalfW;
+                      if (edgeDist < 40) {
+                        state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                        state.ball.vy = (state.ball.y > world.h / 2 ? 1 : -1) * Math.abs(state.ball.vy) * 0.8 + (Math.random() - 0.5) * 2;
+                      }
+                    }
                   }
-                  if (state.ball.y < topBound && Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
-                    state.ball.y = topBound; state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                  if (state.ball.y < topBound) {
+                    if (Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
+                      state.ball.y = topBound;
+                      state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                      state.ball.vx += (Math.random() - 0.5) * 1.5;
+                    } else {
+                      const edgeDist = Math.abs(state.ball.x - world.w / 2) - goalHalfW;
+                      if (edgeDist < 45 && edgeDist > -10) {
+                        state.ball.y = topBound;
+                        state.ball.vy = Math.abs(state.ball.vy) * 0.9;
+                        state.ball.vx = (state.ball.x > world.w / 2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
+                        if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w / 2 ? 1 : -1) * 4;
+                      }
+                    }
                   }
-                  if (state.ball.y > bottomBound && Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
-                    state.ball.y = bottomBound; state.ball.vy = -Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                  if (state.ball.y > bottomBound) {
+                    if (Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
+                      state.ball.y = bottomBound;
+                      state.ball.vy = -Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                      state.ball.vx += (Math.random() - 0.5) * 1.5;
+                    } else {
+                      const edgeDist = Math.abs(state.ball.x - world.w / 2) - goalHalfW;
+                      if (edgeDist < 45 && edgeDist > -10) {
+                        state.ball.y = bottomBound;
+                        state.ball.vy = -Math.abs(state.ball.vy) * 0.9;
+                        state.ball.vx = (state.ball.x > world.w / 2 ? 1 : -1) * Math.max(3, Math.abs(state.ball.vx) * 1.1);
+                        if (Math.abs(state.ball.vx) < 2) state.ball.vx = (state.ball.x > world.w / 2 ? 1 : -1) * 4;
+                      }
+                    }
                   }
+
+                  // تصادم المضارب
                   (['top', 'bottom', 'left', 'right'] as Player['side'][]).forEach(side => {
                     if (!activeSide(side)) return;
                     const pad = state.paddles[side];
@@ -1338,17 +1378,56 @@ export function GameScreen3D({
                     }
                   });
                   clampBallSpeed();
-                  // ===== إصلاح 3: اكتشاف الأهداف بدقة =====
-                  const inTopBottomGap = Math.abs(state.ball.x - world.w / 2) <= goalHalfW;
-                  const inSideGap = Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW;
-                  if (state.ball.y < -GOAL_DEPTH && inTopBottomGap && state.ball.vy < 0) {
-                    scored = scoreGoal('top', 'bottom', state.ball.x, 0);
-                  } else if (state.ball.y > world.h + GOAL_DEPTH && inTopBottomGap && state.ball.vy > 0) {
-                    scored = scoreGoal('bottom', 'top', state.ball.x, world.h);
-                  } else if (needPlayers >= 4 && state.ball.x < -GOAL_DEPTH && inSideGap && state.ball.vx < 0) {
-                    scored = scoreGoal('left', 'right', 0, state.ball.y);
-                  } else if (needPlayers >= 4 && state.ball.x > world.w + GOAL_DEPTH && inSideGap && state.ball.vx > 0) {
-                    scored = scoreGoal('right', 'left', world.w, state.ball.y);
+
+                  // ===== الإصلاح 3: اكتشاف الأهداف كما في الكود المرفق =====
+                  const goalScoredSide = (() => {
+                    if (state.ball.y < -BALL_RADIUS_LOCAL * 1.5) {
+                      if (Math.abs(state.ball.x - world.w / 2) <= goalHalfW) {
+                        return 'top' as const;
+                      }
+                    }
+                    if (state.ball.y > world.h + BALL_RADIUS_LOCAL * 1.5) {
+                      if (Math.abs(state.ball.x - world.w / 2) <= goalHalfW) {
+                        return 'bottom' as const;
+                      }
+                    }
+                    if (needPlayers >= 4) {
+                      if (state.ball.x < -BALL_RADIUS_LOCAL * 1.5) {
+                        if (Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
+                          return 'left' as const;
+                        }
+                      }
+                      if (state.ball.x > world.w + BALL_RADIUS_LOCAL * 1.5) {
+                        if (Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
+                          return 'right' as const;
+                        }
+                      }
+                    }
+                    return null;
+                  })();
+
+                  if (goalScoredSide) {
+                    // ===== الإصلاح 4: التحقق من صحة الهدف =====
+                    const isValidGoal = (() => {
+                      if (goalScoredSide === 'top' || goalScoredSide === 'bottom') {
+                        return Math.abs(state.ball.x - world.w / 2) <= goalHalfW;
+                      } else {
+                        return Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW;
+                      }
+                    })();
+
+                    if (!isValidGoal) {
+                      // تسجيل خاطئ - أرجع الكرة للداخل
+                      if (goalScoredSide === 'top') state.ball.y = BALL_RADIUS_LOCAL + 5;
+                      if (goalScoredSide === 'bottom') state.ball.y = world.h - BALL_RADIUS_LOCAL - 5;
+                      if (goalScoredSide === 'left') state.ball.x = BALL_RADIUS_LOCAL + 5;
+                      if (goalScoredSide === 'right') state.ball.x = world.w - BALL_RADIUS_LOCAL - 5;
+                      state.ball.vx *= -0.8;
+                      state.ball.vy *= -0.8;
+                      continue;
+                    }
+
+                    scored = scoreGoal(goalScoredSide, goalScoredSide === 'top' ? 'bottom' : goalScoredSide === 'bottom' ? 'top' : goalScoredSide === 'left' ? 'right' : 'left', state.ball.x, state.ball.y);
                   }
                 }
               }
