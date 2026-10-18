@@ -141,13 +141,20 @@ useEffect(() => {
       setScreen('results');
     }
   };
-  const onGoalScored = ({ scores: serverScores, missedSide }: any) => {
+  const onGoalScored = ({ scores: serverScores, missedSide, scorerSide, scorerId }: any) => {
     if (!socket.connected) return;
-    setScores(serverScores);
-    const missed = playersRef.current.find((p) => p.side === missedSide);
-    if (missed) { 
-      setLastGoal(missed.name); 
-      window.setTimeout(() => setLastGoal(null), 1300); 
+    if (serverScores) setScores(serverScores);
+    // إظهار اسم اللاعب الذي سجل الهدف بدقة (وليس من استقبل الهدف)
+    const scorer = playersRef.current.find((p) => (scorerId && p.id === scorerId) || (scorerSide && p.side === scorerSide));
+    if (scorer) { 
+      setLastGoal(scorer.name); 
+      window.setTimeout(() => setLastGoal(null), 1400); 
+    } else {
+      const other = playersRef.current.find((p) => p.side !== missedSide);
+      if (other) {
+        setLastGoal(other.name);
+        window.setTimeout(() => setLastGoal(null), 1400);
+      }
     }
   };
   const onRoundFinished = (data:any) => {
@@ -360,19 +367,44 @@ useEffect(() => {
     setMatchKey((key) => key + 1); setScreen('game');
 }, [isHost, makePlayers, settings.players]);
 
-  const goalScored = useCallback((missed: Player) => {
-    const isOffline =!socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
-    if (!isHost && socket.connected &&!isOffline) return;
-    const list = playersRef.current.length >= settings.players? playersRef.current : makePlayers();
-    const oppositeMap: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
-    const scorerSide = oppositeMap[missed.side]?? 'bottom';
-    const scorer = list.find(p => p.side === scorerSide)?? list.find(p => p.side!== missed.side)?? list[0];
-    if (scorer) { setLastGoal(scorer.name); window.setTimeout(() => setLastGoal(null), 1300); }
+  const goalScored = useCallback((missed: Player, lastHit?: Player | null) => {
+    const isOffline = !socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
+    if (!isHost && socket.connected && !isOffline) return;
+    const list = playersRef.current.length >= settings.players ? playersRef.current : makePlayers();
+    
+    // 1. تحديد اللاعب المسجل بناءً على من لمس وسدد الكرة بدقة
+    let scorer: Player | undefined;
+    if (lastHit) {
+      const found = list.find(p => p.id === lastHit.id || p.side === lastHit.side);
+      // إذا لم يكن هدفاً عكسياً في مرماه
+      if (found && found.side !== missed.side) {
+        scorer = found;
+      }
+    }
+    // 2. إذا لم يكن هناك لاعب ضارب أو كانت الكرة حرة، يُحتسب للخصم المقابل
+    if (!scorer) {
+      const oppositeMap: Record<string, Player['side']> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
+      const scorerSide = oppositeMap[missed.side] ?? 'bottom';
+      scorer = list.find(p => p.side === scorerSide) ?? list.find(p => p.side !== missed.side) ?? list[0];
+    }
+    
+    if (scorer) { 
+      setLastGoal(scorer.name); 
+      window.setTimeout(() => setLastGoal(null), 1400); 
+    }
     setScores((current) => {
       if (!scorer) return current;
-      const updated = {...current }; updated[scorer.id] = (updated[scorer.id]?? 0) + 1;
-      if (!isOffline && socket.connected) socket.emit('goal-scored', { missedSide: missed.side, scores: updated });
-      if (settings.mode === 'goals' && (updated[scorer.id]?? 0) >= settings.goal) {
+      const updated = { ...current }; 
+      updated[scorer.id] = (updated[scorer.id] ?? 0) + 1;
+      if (!isOffline && socket.connected) {
+        socket.emit('goal-scored', { 
+          missedSide: missed.side, 
+          scorerSide: scorer.side, 
+          scorerId: scorer.id, 
+          scores: updated 
+        });
+      }
+      if (settings.mode === 'goals' && (updated[scorer.id] ?? 0) >= settings.goal) {
         setTimeout(() => finishMatch(scorer), 100);
       }
       return updated;
@@ -716,7 +748,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     paddles: { top: { x: world.w / 2, y: 40 + ZONE / 2 } as Vec2, bottom: { x: world.w / 2, y: world.h - 40 - ZONE / 2 } as Vec2, left: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2, right: { x: world.w - 40 - ZONE / 2, y: world.h / 2 } as Vec2 },
     targetPaddles: { top: { x: world.w / 2, y: 40 + ZONE / 2 } as Vec2, bottom: { x: world.w / 2, y: world.h - 40 - ZONE / 2 } as Vec2, left: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2, right: { x: world.w - 40 - ZONE / 2, y: world.h / 2 } as Vec2 },
     prevPaddles: { top: { x: world.w / 2, y: 40 + ZONE / 2 } as Vec2, bottom: { x: world.w / 2, y: world.h - 40 - ZONE / 2 } as Vec2, left: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2, right: { x: 40 + ZONE / 2, y: world.h / 2 } as Vec2 },
-    last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 0, countdownStart: performance.now(), countdownSide: null as Player['side'] | null, effects: [] as any[]
+    last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 0, countdownStart: performance.now(), countdownSide: null as Player['side'] | null, lastHitSide: null as Player['side'] | null, effects: [] as any[]
   });
   const ballBuffer = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
   const isOfflineMode = players.length <= 1;
@@ -991,6 +1023,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               
               try { playHitSound(Math.min(1, (state.rally + paddleSpeed*0.2)/10)); } catch {}
               state.rally++; setRally(state.rally);
+              state.lastHitSide = side;
             }
             prev.x = paddle.x;
             prev.y = paddle.y;
@@ -1009,7 +1042,12 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           if (ball.y < BORDER) {
             if (active('top') && ball.x >= gx1 && ball.x <= gx2) {
               // داخل الفتحة السوداء - هدف
-              if (ball.y < -BALL_R) { onGoalRef.current(playerForSide('bottom')); resetBall('top'); }
+              if (ball.y < -BALL_R) { 
+                const lastHit = state.lastHitSide ? playerForSide(state.lastHitSide) : null;
+                onGoalRef.current(playerForSide('top'), lastHit); 
+                state.lastHitSide = null;
+                resetBall('top'); 
+              }
             } else {
               // خارج الفتحة - ارتداد من الجدار الأحمر
               // ارتداد من زاوية الفتحة
@@ -1025,7 +1063,12 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           // سفلي
           if (ball.y > h - BORDER) {
             if (active('bottom') && ball.x >= gx1 && ball.x <= gx2) {
-              if (ball.y > h + BALL_R) { onGoalRef.current(playerForSide('top')); resetBall('bottom'); }
+              if (ball.y > h + BALL_R) { 
+                const lastHit = state.lastHitSide ? playerForSide(state.lastHitSide) : null;
+                onGoalRef.current(playerForSide('bottom'), lastHit); 
+                state.lastHitSide = null;
+                resetBall('bottom'); 
+              }
             } else {
               if (ball.x >= gx1 - EDGE && ball.x < gx1) {
                 ball.x = gx1 - WALL_R - 2; ball.vx = -Math.abs(ball.vx) * 1.05; ball.vy = -Math.abs(ball.vy);
@@ -1039,7 +1082,12 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           // يسار
           if (ball.x < BORDER) {
             if (active('left') && ball.y >= gy1 && ball.y <= gy2) {
-              if (ball.x < -BALL_R) { onGoalRef.current(playerForSide('right')); resetBall('left'); }
+              if (ball.x < -BALL_R) { 
+                const lastHit = state.lastHitSide ? playerForSide(state.lastHitSide) : null;
+                onGoalRef.current(playerForSide('left'), lastHit); 
+                state.lastHitSide = null;
+                resetBall('left'); 
+              }
             } else {
               if (ball.y >= gy1 - EDGE && ball.y < gy1) {
                 ball.y = gy1 - WALL_R - 2; ball.vy = -Math.abs(ball.vy) * 1.05; ball.vx = Math.abs(ball.vx);
@@ -1053,7 +1101,12 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           // يمين
           if (ball.x > w - BORDER) {
             if (active('right') && ball.y >= gy1 && ball.y <= gy2) {
-              if (ball.x > w + BALL_R) { onGoalRef.current(playerForSide('left')); resetBall('right'); }
+              if (ball.x > w + BALL_R) { 
+                const lastHit = state.lastHitSide ? playerForSide(state.lastHitSide) : null;
+                onGoalRef.current(playerForSide('right'), lastHit); 
+                state.lastHitSide = null;
+                resetBall('right'); 
+              }
             } else {
               if (ball.y >= gy1 - EDGE && ball.y < gy1) {
                 ball.y = gy1 - WALL_R - 2; ball.vy = -Math.abs(ball.vy) * 1.05; ball.vx = -Math.abs(ball.vx);
