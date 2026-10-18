@@ -468,7 +468,10 @@ export function GameScreen3D({
   const gameEndedRef = useRef(false);
   const frameIdRef = useRef<number>(0);
   const localReadyRef = useRef(localReady);
-  const goalScoredRef = useRef(false); // ===== قفل لمنع تكرار الهدف =====
+
+  // ===== الإصلاح 1: قفل منع تكرار الأهداف =====
+  const goalScoredRef = useRef(false);
+  const lastGoalTimeRef = useRef(0);
 
   useEffect(() => { localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
@@ -501,7 +504,10 @@ export function GameScreen3D({
   }, [isOfflineForWorld]);
 
   const world = remoteWorld ?? localWorld;
+
+  // ===== الإصلاح 2: حساب arenaScale للسرعات =====
   const arenaScale = Math.max(world.w, world.h) / 1100;
+
   const adaptivePresets = useMemo(() => getAdaptiveCameraPresets(world, settings.arenaSize, isMobileCheck), [world, settings.arenaSize, isMobileCheck]);
   const getMySide = useCallback((): Player['side'] => {
     return (players.find((p) => p.socketId === socket.id)?.side ?? players[0]?.side ?? 'bottom') as Player['side'];
@@ -698,7 +704,9 @@ export function GameScreen3D({
     s.targetPaddles = { top: { ...s.paddles.top }, bottom: { ...s.paddles.bottom }, left: { ...s.paddles.left }, right: { ...s.paddles.right } };
     s.lastPaddles = { top: { ...s.paddles.top }, bottom: { ...s.paddles.bottom }, left: { ...s.paddles.left }, right: { ...s.paddles.right } };
     ballBufferRef.current = [];
+    // ===== إعادة تعيين قفل الأهداف عند تغيير الساحة =====
     goalScoredRef.current = false;
+    lastGoalTimeRef.current = 0;
   }, [world.w, world.h]);
 
   const playersKey = useMemo(() => players.map(p => `${p.side}:${p.color}`).join(','), [players]);
@@ -707,7 +715,10 @@ export function GameScreen3D({
   const [currentPreset, setCurrentPreset] = useState<Cam3DPresetKey>('bottom');
   const [readyPlayers, setReadyPlayers] = useState<string[]>([]);
   const isAr = i18n.language?.startsWith('ar');
-  const getInitialSpeed = useCallback(() => (3.5 + settings.ballSpeed * 0.25) * arenaScale, [settings.ballSpeed, arenaScale, world.w, world.h]);
+
+  // ===== الإصلاح 3: getInitialSpeed مع arenaScale =====
+  const getInitialSpeed = useCallback(() => (3.5 + settings.ballSpeed * 0.25) * arenaScale, [settings.ballSpeed, arenaScale]);
+
   const isOfflineMode = !socket.connected || players.length <= 1 || settings.vsComputer || players.some((p: any) => p.computer);
   const isVsComputer = settings.vsComputer || players.some((p: any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
   const humanCount = Math.max(1, players.filter((p: any) => !p.computer).length);
@@ -772,12 +783,24 @@ export function GameScreen3D({
     if (dir === 'down') cam.current.targetHeight = Math.max(400, cam.current.targetHeight - 100);
   }, []);
 
-  // ===== مستمع حدث الهدف من السيرفر =====
+  // ===== الإصلاح 4: مستمع goal-scored من السيرفر =====
   useEffect(() => {
     const handleGoalScored = (data: any) => {
-      if (!data || goalScoredRef.current) return;
+      if (!data) return;
+      console.log('[CLIENT] Received goal-scored from server:', data);
+
+      // ===== منع التكرار =====
+      const now = performance.now();
+      if (now - lastGoalTimeRef.current < 2000) {
+        console.log('[CLIENT] Goal blocked: too soon');
+        return;
+      }
+      if (goalScoredRef.current) {
+        console.log('[CLIENT] Goal blocked: already scored');
+        return;
+      }
       goalScoredRef.current = true;
-      console.log('[CLIENT] Goal received from server:', data);
+      lastGoalTimeRef.current = now;
 
       const scorerName = data.scorerName || players.find(p => p.id === data.scorerId)?.name;
       setGoalBanner(scorerName ? `${scorerName} سجل هدف!` : 'هدف!');
@@ -788,7 +811,7 @@ export function GameScreen3D({
 
       // بدء أنيميشن الهدف محلياً
       (stateRef.current as any).goalAnim = {
-        until: performance.now() + 1200,
+        until: now + 1200,
         restartSide: data.scorerSide || 'bottom'
       };
     };
@@ -1096,7 +1119,9 @@ export function GameScreen3D({
     const PADDLE_RADIUS_LOCAL = 36;
     const BALL_RADIUS_LOCAL = 15;
     const HIT_DIST = PADDLE_RADIUS_LOCAL + BALL_RADIUS_LOCAL;
-    const GOAL_DEPTH = 20;
+
+    // ===== الإصلاح 5: GOAL_DEPTH = BALL_RADIUS_LOCAL فقط =====
+    const GOAL_DEPTH = BALL_RADIUS_LOCAL;
 
     const resolveScorer = (side: Player['side']): Player => {
       const me = players.find(p => p.socketId === socket.id) || players[0];
@@ -1121,6 +1146,7 @@ export function GameScreen3D({
       } as Player;
     };
 
+    // ===== الإصلاح 6: MIN_SPEED و MAX_SPEED مع arenaScale =====
     const MIN_SPEED = 5.0 * arenaScale;
     const MAX_SPEED = 18 * arenaScale;
     const WALL_BOUNCE_DAMP = 0.95;
@@ -1259,7 +1285,8 @@ export function GameScreen3D({
             }
           }
           if (state.countdown === 0 && !state.serving.active) {
-            if (isOfflineMode || isHost) {
+            // ===== الإصلاح 7: في وضع الأونلاين، لا نكتشف الأهداف محلياً =====
+            if (isOfflineMode) {
               const goalHalfW = (world.w * GOAL_W_RATIO) / 2 - BALL_RADIUS_LOCAL;
               const sideGoalHalfW = (world.h * GOAL_H_RATIO) / 2 - BALL_RADIUS_LOCAL;
               const leftBound = BALL_RADIUS_LOCAL;
@@ -1281,20 +1308,28 @@ export function GameScreen3D({
                   state.ball.vx *= k; state.ball.vy *= k;
                 }
               };
-
-              // ===== دالة تسجيل الهدف - تعمل فقط في الوضع الأوفلاين =====
-              const scoreGoalLocal = (scorerSide: Player['side'], restartSide: Player['side'], fx: number, fz: number) => {
-                if (goalScoredRef.current) return false;
+              const scoreGoal = (scorerSide: Player['side'], restartSide: Player['side'], fx: number, fz: number) => {
+                // ===== منع التكرار =====
+                if (goalScoredRef.current) {
+                  console.log('[CLIENT] Goal blocked: already scored');
+                  return false;
+                }
+                const nowTime = performance.now();
+                if (nowTime - lastGoalTimeRef.current < 2000) {
+                  console.log('[CLIENT] Goal blocked: too soon');
+                  return false;
+                }
                 goalScoredRef.current = true;
-                console.log('[CLIENT LOCAL GOAL]', scorerSide);
+                lastGoalTimeRef.current = nowTime;
+
+                console.log('[GOAL]', scorerSide, 'ball=', Math.round(state.ball.x), Math.round(state.ball.y));
                 const scorer = resolveScorer(scorerSide);
                 setGoalBanner(scorer?.name ? `${scorer.name} سجل هدف!` : 'هدف!');
                 setTimeout(() => setGoalBanner(null), 1500);
                 if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(fx, fz); }
-                (state as any).goalAnim = { until: now + 1200, restartSide };
+                (state as any).goalAnim = { until: nowTime + 1200, restartSide };
                 return true;
               };
-
               const ga = (state as any).goalAnim as { until: number; restartSide: Player['side'] } | null;
               if (ga) {
                 const damp = Math.pow(0.88, delta);
@@ -1306,6 +1341,7 @@ export function GameScreen3D({
                 state.ball.x = Math.max(-PD, Math.min(world.w + PD, state.ball.x));
                 if (now >= ga.until) {
                   (state as any).goalAnim = null;
+                  // ===== إعادة تعيين القفل =====
                   goalScoredRef.current = false;
                   state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
                   state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
@@ -1357,46 +1393,22 @@ export function GameScreen3D({
                     }
                   });
                   clampBallSpeed();
-
-                  // ===== اكتشاف الأهداف فقط في الوضع الأوفلاين =====
-                  if (isOfflineMode) {
-                    const inTopBottomGap = Math.abs(state.ball.x - world.w / 2) <= goalHalfW;
-                    const inSideGap = Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW;
-                    const goalLineTop = -BALL_RADIUS_LOCAL;
-                    const goalLineBottom = world.h + BALL_RADIUS_LOCAL;
-                    const goalLineLeft = -BALL_RADIUS_LOCAL;
-                    const goalLineRight = world.w + BALL_RADIUS_LOCAL;
-
-                    if (state.ball.y < goalLineTop && inTopBottomGap && state.ball.vy < 0) {
-                      scored = scoreGoalLocal('bottom', 'top', state.ball.x, 0);
-                    } else if (state.ball.y > goalLineBottom && inTopBottomGap && state.ball.vy > 0) {
-                      scored = scoreGoalLocal('top', 'bottom', state.ball.x, world.h);
-                    } else if (needPlayers >= 4 && state.ball.x < goalLineLeft && inSideGap && state.ball.vx < 0) {
-                      scored = scoreGoalLocal('right', 'left', 0, state.ball.y);
-                    } else if (needPlayers >= 4 && state.ball.x > goalLineRight && inSideGap && state.ball.vx > 0) {
-                      scored = scoreGoalLocal('left', 'right', world.w, state.ball.y);
-                    }
-                  }
-
-                  if (!scored && (state.ball.y < -100 || state.ball.y > world.h + 100 || state.ball.x < -100 || state.ball.x > world.w + 100)) {
-                    state.ball.x = world.w / 2;
-                    state.ball.y = world.h / 2;
-                    state.ball.vx = 0;
-                    state.ball.vy = 0;
-                    state.ballTarget.x = state.ball.x;
-                    state.ballTarget.y = state.ball.y;
+                  // ===== اكتشاف الأهداف فقط في الأوفلاين =====
+                  const inTopBottomGap = Math.abs(state.ball.x - world.w / 2) <= goalHalfW;
+                  const inSideGap = Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW;
+                  if (state.ball.y < -GOAL_DEPTH && inTopBottomGap && state.ball.vy < 0) {
+                    scored = scoreGoal('bottom', 'top', state.ball.x, 0);
+                  } else if (state.ball.y > world.h + GOAL_DEPTH && inTopBottomGap && state.ball.vy > 0) {
+                    scored = scoreGoal('top', 'bottom', state.ball.x, world.h);
+                  } else if (needPlayers >= 4 && state.ball.x < -GOAL_DEPTH && inSideGap && state.ball.vx < 0) {
+                    scored = scoreGoal('right', 'left', 0, state.ball.y);
+                  } else if (needPlayers >= 4 && state.ball.x > world.w + GOAL_DEPTH && inSideGap && state.ball.vx > 0) {
+                    scored = scoreGoal('left', 'right', world.w, state.ball.y);
                   }
                 }
               }
-              if (isHost && !isOfflineMode && performance.now() - lastBallEmitRef.current > 45) {
-                const ms = getMySide();
-                socket.emit('game-state', {
-                  ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy },
-                  paddles: { [ms]: { x: state.paddles[ms].x, y: state.paddles[ms].z } }
-                });
-                lastBallEmitRef.current = performance.now();
-              }
             } else {
+              // ===== وضع الأونلاين: استيفاء من السيرفر فقط =====
               const buf = ballBufferRef.current;
               const renderTime = now - RENDER_DELAY_MS;
               if (buf.length >= 2) {
