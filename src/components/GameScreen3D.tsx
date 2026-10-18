@@ -1297,13 +1297,8 @@ export function GameScreen3D({
                 state.ball.vy = Math.sin(angle) * MAX_SPEED;
               }
 
-              // === إصلاح: فتحة المرمى يجب أن تطابق فتحة الإطار المرئي (68% عرض و 58% ارتفاع) ===
-              // كان الخطأ goalHalfW = max(400, w*0.46) = 92% من الساحة → كل الجدار يعتبر هدف
-              const GOAL_GAP_RATIO_W = 0.68; // نفس النسبة المستخدمة في createArenaFrameClassic/Modern
-              const GOAL_GAP_RATIO_H = 0.58;
-              // نطرح نصف قطر الكرة حتى تدخل الكرة بالكامل داخل الفتحة بدون قص بصري
-              const goalHalfW = (world.w * GOAL_GAP_RATIO_W) / 2 - BALL_RADIUS_LOCAL;
-              const sideGoalHalfW = (world.h * GOAL_GAP_RATIO_H) / 2 - BALL_RADIUS_LOCAL;
+              const goalHalfW = (world.w * 0.68) / 2 - BALL_RADIUS_LOCAL;
+              const sideGoalHalfW = (world.h * 0.58) / 2 - BALL_RADIUS_LOCAL;
               const leftBound = BALL_RADIUS_LOCAL;
               const rightBound = world.w - BALL_RADIUS_LOCAL;
               const topBound = BALL_RADIUS_LOCAL;
@@ -1367,52 +1362,34 @@ export function GameScreen3D({
                 }
               });
 
-              // === إصلاح: تحقق صارم من الأهداف - يجب أن تتجاوز الكرة خط المرمى بالكامل ===
-              // تحقق علوي (مرمى top) - الكرة يجب أن تخرج للأعلى وتكون متجهة للأعلى
-              if (state.ball.y < -BALL_RADIUS_LOCAL * 1.2 && state.ball.vy < 0) {
+              // تحقق من دخول الأهداف وتأثير النجوم
+              if (state.ball.y < -BALL_RADIUS_LOCAL * 2) {
                 if (Math.abs(state.ball.x - world.w / 2) <= goalHalfW) {
                   const scorer = players.find(p => p.side === 'bottom') || players[0];
                   if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(state.ball.x, 0); }
                   state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
                   state.countdown = 3; state.countdownStart = now; state.countdownSide = 'top'; setCountdown(3); setCountdownSide('top');
-                } else {
-                  // إذا خارج فتحة المرمى، ارجع الكرة واعكسها بدل تسجيل هدف
-                  state.ball.y = topBound;
-                  state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
                 }
-              } else if (state.ball.y > world.h + BALL_RADIUS_LOCAL * 1.2 && state.ball.vy > 0) {
+              } else if (state.ball.y > world.h + BALL_RADIUS_LOCAL * 2) {
                 if (Math.abs(state.ball.x - world.w / 2) <= goalHalfW) {
                   const scorer = players.find(p => p.side === 'top') || players[1] || players[0];
                   if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(state.ball.x, world.h); }
                   state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
                   state.countdown = 3; state.countdownStart = now; state.countdownSide = 'bottom'; setCountdown(3); setCountdownSide('bottom');
-                } else {
-                  state.ball.y = bottomBound;
-                  state.ball.vy = -Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
                 }
               }
 
               if (needPlayers >= 4) {
-                if (state.ball.x < -BALL_RADIUS_LOCAL * 1.2 && state.ball.vx < 0 && Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
+                if (state.ball.x < -BALL_RADIUS_LOCAL * 2 && Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
                   const scorer = players.find(p => p.side === 'right') || players[0];
                   if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(0, state.ball.y); }
                   state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
                   state.countdown = 3; state.countdownStart = now; state.countdownSide = 'left'; setCountdown(3); setCountdownSide('left');
-                } else if (state.ball.x > world.w + BALL_RADIUS_LOCAL * 1.2 && state.ball.vx > 0 && Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
+                } else if (state.ball.x > world.w + BALL_RADIUS_LOCAL * 2 && Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
                   const scorer = players.find(p => p.side === 'left') || players[0];
                   if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(world.w, state.ball.y); }
                   state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
                   state.countdown = 3; state.countdownStart = now; state.countdownSide = 'right'; setCountdown(3); setCountdownSide('right');
-                }
-              } else {
-                // في وضع لاعبين، تأكد أن الكرة لا تخرج من الجوانب كهدف بالخطأ
-                if (state.ball.x < -BALL_RADIUS_LOCAL * 1.2) {
-                  state.ball.x = leftBound;
-                  state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
-                }
-                if (state.ball.x > world.w + BALL_RADIUS_LOCAL * 1.2) {
-                  state.ball.x = rightBound;
-                  state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
                 }
               }
 
