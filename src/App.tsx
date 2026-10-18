@@ -368,15 +368,14 @@ useEffect(() => {
 }, [isHost, makePlayers, settings.players]);
 
   const goalScored = useCallback((missed: Player, lastHit?: Player | null) => {
-    const isOffline = !socket.connected || playersRef.current.length < settings.players || settings.vsComputer;
-    if (!isHost && socket.connected && !isOffline) return;
+    // إذا كان متصلاً بالخادم، الخادم هو المصدر الوحيد المعتمد لتسجيل الأهداف والنتائج
+    if (socket.connected) return;
     const list = playersRef.current.length >= settings.players ? playersRef.current : makePlayers();
     
     // 1. تحديد اللاعب المسجل بناءً على من لمس وسدد الكرة بدقة
     let scorer: Player | undefined;
     if (lastHit) {
       const found = list.find(p => p.id === lastHit.id || p.side === lastHit.side);
-      // إذا لم يكن هدفاً عكسياً في مرماه
       if (found && found.side !== missed.side) {
         scorer = found;
       }
@@ -396,20 +395,12 @@ useEffect(() => {
       if (!scorer) return current;
       const updated = { ...current }; 
       updated[scorer.id] = (updated[scorer.id] ?? 0) + 1;
-      if (!isOffline && socket.connected) {
-        socket.emit('goal-scored', { 
-          missedSide: missed.side, 
-          scorerSide: scorer.side, 
-          scorerId: scorer.id, 
-          scores: updated 
-        });
-      }
       if (settings.mode === 'goals' && (updated[scorer.id] ?? 0) >= settings.goal) {
         setTimeout(() => finishMatch(scorer), 100);
       }
       return updated;
     });
-  }, [finishMatch, settings.goal, settings.mode, isHost, makePlayers, settings.players, settings.vsComputer]);
+  }, [finishMatch, settings.goal, settings.mode, makePlayers, settings.players]);
 
   if (screen === 'waiting') {
     return <WaitingRoom room={room} players={players} isHost={isHost} error={error} onBack={leaveWaiting} onStart={startMatch} onRefresh={() => {}} />;
@@ -703,9 +694,9 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
   const pausedRef = useRef(paused);
   const celebratingRef = useRef(celebrating);
   const gameEndedRef = useRef(false);
-  // --- جديد: إيقاف اللعبة في البداية ---
-  const [localReady, setLocalReady] = useState(false);
-  const localReadyRef = useRef(false);
+  // --- جديد: جاهزية اللعبة مباشرة مع بدء الجولة ---
+  const [localReady, setLocalReady] = useState(true);
+  const localReadyRef = useRef(true);
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   const world = useMemo(() => getArenaWorld(players.length, settings.arenaSize), [players.length, settings.arenaSize]);
   // 2D: كل لاعب يلعب من تحت - إصلاح الشاشة السوداء - بدون دوران كاميرا مؤقتاً لضمان ظهور الساحة
@@ -751,7 +742,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
     last: performance.now(), elapsed: 0, rally: 0, speedMult: 1, countdown: 0, countdownStart: performance.now(), countdownSide: null as Player['side'] | null, lastHitSide: null as Player['side'] | null, effects: [] as any[]
   });
   const ballBuffer = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
-  const isOfflineMode = players.length <= 1;
+  const isOfflineMode = !socket.connected;
   const getWorldFromClient = useCallback((clientX:number, clientY:number)=>{
     const arena = arenaRef.current; if(!arena) return {x:world.w/2,y:world.h/2};
     const rect = arena.getBoundingClientRect();

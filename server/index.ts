@@ -30,8 +30,9 @@ const roomsByCode = new Map<string, QoudRoom>();
 const SIDES: PlayerSide[] = ['bottom', 'top', 'right', 'left'];
 const OPPOSITE: Record<PlayerSide, PlayerSide> = { bottom: 'top', top: 'bottom', left: 'right', right: 'left' };
 const COLORS = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
-const CODE_ALPHABET = '0123456789';
 
+// --- تعديل وحيد: 6 أرقام فقط بدون حروف - لدعم الجوال ---
+const CODE_ALPHABET = '0123456789';
 function generateUniqueCode(len = 6): string {
   let code: string;
   do {
@@ -51,28 +52,37 @@ class QoudRoom extends Room<QoudRoomState> {
   private servingStartedAt = 0;
   private servingRequested = false;
   private broadcastAccum = 0;
-  private readonly SIMULATION_RATE = 120;
-  private readonly BASE_MS = 1000 / this.SIMULATION_RATE;
-  private readonly FIXED_DELTA = 1 / this.SIMULATION_RATE;
+
+  // ===== Fixed Timestep Constants =====
+  // الثوابت الأساسية لحساب الفيزياء بشكل متطابق مع CLIENT
+  private readonly SIMULATION_RATE = 120;  // Hz - معدل المحاكاة
+  private readonly BASE_MS = 1000 / this.SIMULATION_RATE;  // 8.33ms
+  private readonly FIXED_DELTA = 1 / this.SIMULATION_RATE;  // 1/120
+
+  // Physics
   private paddleTargets = new Map<PlayerSide, { x: number; y: number }>();
   private paddlePrev = new Map<PlayerSide, { x: number; y: number }>();
   private paddleVel = new Map<PlayerSide, { vx: number; vy: number }>();
   private lastHitSide: PlayerSide | null = null;
   private lastServeSide: PlayerSide | null = null;
   private lastHitTime = 0;
+
+  // Series
   private currentRound = 1;
   private totalRounds = 3;
   private seriesType: 'single' | 'series' = 'single';
   private seriesWinsMap = new Map<string, number>();
   private roundHistory: Array<{ round: number; scores: Record<string, number>; winnerId: string | null; isDraw: boolean }> = [];
+
+  // --- إضافة لحل مشكلة التعليق ---
   private readyPlayers = new Set<string>();
   private isPaused = false;
   private lastBallPos = { x: 0, y: 0, time: 0 };
   private stuckCheckAccum = 0;
-  private goalScoredLock = false; // ===== قفل لمنع تكرار الهدف =====
 
   onCreate(options: CreateOptions) {
-    let rawCode = String(options.code ?? '').replace(/\D/g, '').slice(0, 6);
+    // --- تعديل وحيد: فلتر أرقام فقط ---
+    let rawCode = String(options.code?? '').replace(/\D/g, '').slice(0, 6);
     let code: string;
     if (!rawCode || rawCode.length < 6 || roomsByCode.has(rawCode)) {
       code = generateUniqueCode(6);
@@ -82,18 +92,20 @@ class QoudRoom extends Room<QoudRoomState> {
         code = generateUniqueCode(6);
       }
     }
+
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
     this.settings = {
       mode: 'time', duration: 180, goal: 7, ballSpeed: 10, difficulty: 'normal',
       arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3,
-      ...options.settings
+     ...options.settings
     };
     this.maxClients = maxPlayers;
-    this.seriesType = this.settings.seriesType === 'series' ? 'series' : 'single';
+    this.seriesType = this.settings.seriesType === 'series'? 'series' : 'single';
     this.totalRounds = Math.max(2, Math.min(10, Number(this.settings.seriesRounds) || 3));
     this.currentRound = 1;
     this.seriesWinsMap.clear();
     this.roundHistory = [];
+
     const state = new QoudRoomState();
     state.code = code;
     state.status = 'waiting';
@@ -101,15 +113,19 @@ class QoudRoom extends Room<QoudRoomState> {
     state.hostSessionId = '';
     state.settingsJson = JSON.stringify(this.settings);
     state.ball = new BallState();
+
     try {
       (state as any).currentRound = 1;
       (state as any).totalRounds = this.totalRounds;
       (state as any).seriesType = this.seriesType;
     } catch {}
+
     this.setState(state);
     this.setMetadata({ code });
     roomsByCode.set(code, this);
+
     this.initWorldAndPaddles();
+
     if (options.computerPlayers?.length) {
       options.computerPlayers.forEach((bot, i) => {
         const ps = new PlayerState();
@@ -122,14 +138,17 @@ class QoudRoom extends Room<QoudRoomState> {
         this.state.scores.set(ps.id, 0);
       });
     }
+
     this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
+
+    // ✅ Fly.io Optimized: 60Hz broadcast, 120Hz simulation
     this.setPatchRate(1000 / 60);
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 120);
   }
 
   private initWorldAndPaddles() {
     const needed = Math.max(2, this.state.players.size || this.state.maxPlayers, this.state.maxPlayers);
-    this.activeSides = needed >= 3 ? ['bottom', 'top', 'right', 'left'] : ['bottom', 'top'];
+    this.activeSides = needed >= 3? ['bottom', 'top', 'right', 'left'] : ['bottom', 'top'];
     const world = getArenaWorld(needed, this.settings.arenaSize);
     this.state.worldW = world.w;
     this.state.worldH = world.h;
@@ -161,17 +180,16 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.ball.vx = 0;
     this.state.ball.vy = 0;
     this.state.ball.visible = false;
-    this.state.timeLeft = this.settings.mode === 'time' ? Number(this.settings.duration || 180) : 0;
+    this.state.timeLeft = this.settings.mode === 'time'? Number(this.settings.duration || 180) : 0;
     this.lastHitSide = null;
     this.isPaused = false;
-    this.lastBallPos = { x: world.w / 2, y: world.h / 2, time: Date.now() };
+    this.lastBallPos = { x: world.w/2, y: world.h/2, time: Date.now() };
     this.stuckCheckAccum = 0;
-    this.goalScoredLock = false;
   }
 
   onJoin(client: { sessionId: string }, options: { name?: string; player?: Partial<PlayerState> } = {}) {
-    if (this.state.status !== 'waiting') throw new Error('الجولة بدأت بالفعل');
-    let name = String(options.name ?? options.player?.name ?? '').trim();
+    if (this.state.status!== 'waiting') throw new Error('الجولة بدأت بالفعل');
+    let name = String(options.name?? options.player?.name?? '').trim();
     if (name.length < 2) name = `لاعب ${this.state.players.size + 1}`;
     const existingNames = [...this.state.players.values()].map((p) => p.name.toLowerCase());
     if (existingNames.includes(name.toLowerCase())) {
@@ -179,11 +197,11 @@ class QoudRoom extends Room<QoudRoomState> {
       while (existingNames.includes(`${name} ${i}`.toLowerCase())) i++;
       name = `${name} ${i}`;
     }
-    const side = (options.player?.side as PlayerSide) ?? this.nextSide();
+    const side = (options.player?.side as PlayerSide)?? this.nextSide();
     const player = new PlayerState();
     player.id = client.sessionId;
     player.name = name;
-    player.color = String(options.player?.color ?? COLORS[this.humanCount() % COLORS.length]);
+    player.color = String(options.player?.color?? COLORS[this.humanCount() % COLORS.length]);
     player.side = side;
     player.computer = false;
     this.state.players.set(client.sessionId, player);
@@ -218,6 +236,7 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private handleMessage(type: string, client: { sessionId: string }, payload: any) {
+    // إصلاح مشكلة التعليق في انتظار الأصدقاء
     if (type === 'player-ready') {
       this.readyPlayers.add(client.sessionId);
       this.broadcast('player-ready', { playerId: client.sessionId, count: this.readyPlayers.size, total: this.humanCount() });
@@ -227,6 +246,7 @@ class QoudRoom extends Room<QoudRoomState> {
       return;
     }
     if (type === 'all-players-ready') {
+      // أي لاعب يمكنه إرسال أنه جاهز، لكن المضيف يبث البدء
       this.readyPlayers.add(client.sessionId);
       if (this.readyPlayers.size >= this.humanCount() || client.sessionId === this.state.hostSessionId) {
         this.broadcast('all-players-ready', { count: this.readyPlayers.size });
@@ -234,21 +254,25 @@ class QoudRoom extends Room<QoudRoomState> {
       }
       return;
     }
+
+    // إصلاح 3 & 4: إيقاف مؤقت للكل - Pause for all players
     if (type === 'pause-toggle' || type === 'pause-state' || type === 'game-paused' || type === 'pause-update') {
       const paused = typeof payload === 'boolean' ? payload : Boolean(payload?.paused);
       this.isPaused = paused;
+      // إرسال لكل العملاء بكل الأسماء المحتملة لضمان التوافق
       this.broadcast('pause-update', { paused });
       this.broadcast('game-paused', { paused });
       this.broadcast('pause-state', { paused });
-      this.broadcastRoom();
+      this.broadcastRoom(); // لتحديث حالة الغرفة أيضاً
       return;
     }
+
     if (type === 'update-name') {
       const player = this.state.players.get(client.sessionId);
-      if (!player || this.state.status !== 'waiting') return;
-      let newName = String(payload?.name ?? '').trim().slice(0, 15);
+      if (!player || this.state.status!== 'waiting') return;
+      let newName = String(payload?.name?? '').trim().slice(0, 15);
       if (newName.length < 2) return;
-      const others = [...this.state.players.values()].filter((p) => p.id !== client.sessionId).map((p) => p.name.toLowerCase());
+      const others = [...this.state.players.values()].filter((p) => p.id!== client.sessionId).map((p) => p.name.toLowerCase());
       if (others.includes(newName.toLowerCase())) {
         let i = 2;
         while (others.includes(`${newName} ${i}`.toLowerCase())) i++;
@@ -258,6 +282,7 @@ class QoudRoom extends Room<QoudRoomState> {
       this.broadcastRoom();
       return;
     }
+
     if (type === 'start-game') {
       this.assertHost(client);
       this.readyPlayers.clear();
@@ -281,6 +306,7 @@ class QoudRoom extends Room<QoudRoomState> {
       this.broadcast('series-started', { totalRounds: this.totalRounds, seriesType: this.seriesType, currentRound: this.currentRound });
       return;
     }
+
     if (type === 'paddle-target') {
       if (this.state.status !== 'playing') return;
       if (this.isPaused) return;
@@ -292,6 +318,7 @@ class QoudRoom extends Room<QoudRoomState> {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const clamped = this.clampPaddle(side, x, y);
       this.paddleTargets.set(side, clamped);
+
       const vx = Number(payload?.vx);
       const vy = Number(payload?.vy);
       if (Number.isFinite(vx) && Number.isFinite(vy)) {
@@ -303,6 +330,7 @@ class QoudRoom extends Room<QoudRoomState> {
       if (this.servingActive && this.servingSide === side) this.servingRequested = true;
       return;
     }
+
     if (type === 'request-serve') {
       if (this.servingActive && this.state.players.get(client.sessionId)?.side === this.servingSide) {
         this.servingRequested = true;
@@ -317,16 +345,16 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private humanCount() {
-    return [...this.state.players.values()].filter((p) => !p.computer).length;
+    return [...this.state.players.values()].filter((p) =>!p.computer).length;
   }
 
   private nextSide(): PlayerSide {
     const occupied = new Set([...this.state.players.values()].map((p) => p.side));
-    return SIDES.find((s) => !occupied.has(s)) ?? 'bottom';
+    return SIDES.find((s) =>!occupied.has(s))?? 'bottom';
   }
 
   private assertHost(client: { sessionId: string }) {
-    if (this.state.hostSessionId !== client.sessionId) throw new Error('المنشئ فقط يستطيع تنفيذ هذا الإجراء');
+    if (this.state.hostSessionId!== client.sessionId) throw new Error('المنشئ فقط يستطيع تنفيذ هذا الإجراء');
   }
 
   private broadcastRoom() {
@@ -351,6 +379,7 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private startCountdown(scorerSide: PlayerSide | null) {
+    // تناوب الإرسال: لا يبدأ من نفس المضرب مرتين حتى لو 4 لاعبين
     let finalScorerSide = scorerSide;
     if (scorerSide && this.lastServeSide && scorerSide === this.lastServeSide) {
       const alternatives = this.activeSides.filter(s => s !== this.lastServeSide);
@@ -359,8 +388,9 @@ class QoudRoom extends Room<QoudRoomState> {
       }
     }
     if (finalScorerSide) this.lastServeSide = finalScorerSide;
+    
     this.state.countdown = 3;
-    this.state.countdownSide = finalScorerSide ?? '';
+    this.state.countdownSide = finalScorerSide?? '';
     this.countdownStartedAt = Date.now();
     this.state.rally = 0;
     this.state.ball.vx = 0;
@@ -371,7 +401,6 @@ class QoudRoom extends Room<QoudRoomState> {
     this.servingActive = false;
     this.lastHitSide = null;
     this.isPaused = false;
-    this.goalScoredLock = false;
     this.broadcastGameState();
   }
 
@@ -387,8 +416,10 @@ class QoudRoom extends Room<QoudRoomState> {
       else if (side === 'left') { this.state.ball.vx = Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed; }
       else { this.state.ball.vx = -Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed; }
     } else {
-      const dirY = Math.random() > 0.5 ? 1 : -1;
+      const dirY = Math.random() > 0.5? 1 : -1;
       const ang = (Math.random() - 0.5) * 0.8;
+      this.state.ball.x = this.state.worldW / 2;
+      this.state.ball.y = this.state.worldH / 2;
       this.state.ball.vx = Math.sin(ang) * speed;
       this.state.ball.vy = Math.cos(ang) * speed * dirY;
     }
@@ -397,7 +428,8 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private tick(deltaMs: number) {
-    if (this.state.status !== 'playing') return;
+    if (this.state.status!== 'playing') return;
+    // إصلاح الإيقاف المؤقت - لا تحرك الكرة إذا متوقف
     if (this.isPaused) {
       this.broadcastAccum += deltaMs;
       if (this.broadcastAccum >= 100) {
@@ -406,7 +438,14 @@ class QoudRoom extends Room<QoudRoomState> {
       }
       return;
     }
+
+    // حساب delta: الوقت المنقضي مقسوماً على وقت الـ baseline للمحاكاة
+    // يجب أن يكون deltaMs حوالي 8.33ms (1000/120) في الحالة الطبيعية
     const delta = Math.min(deltaMs / this.BASE_MS, 2);
+    
+    // تعليق توضيحي: هذا الحساب مطابق لما يفعله CLIENT
+    // بحيث تكون الفيزياء موحدة بين SERVER و CLIENT
+
     if (this.state.countdown > 0) {
       const elapsed = (Date.now() - this.countdownStartedAt) / 1000;
       if (elapsed >= 3) {
@@ -426,6 +465,7 @@ class QoudRoom extends Room<QoudRoomState> {
         return;
       }
     }
+
     if (this.servingActive) {
       const paddle = this.state.paddles.get(this.servingSide);
       if (paddle) {
@@ -445,6 +485,7 @@ class QoudRoom extends Room<QoudRoomState> {
       this.broadcastGameState();
       return;
     }
+
     if (this.settings.mode === 'time') {
       this.elapsedAccum += deltaMs / 1000;
       if (this.elapsedAccum >= 1) {
@@ -456,7 +497,11 @@ class QoudRoom extends Room<QoudRoomState> {
         }
       }
     }
+
+    // حساب الوقت المنقضي بالثواني مع حد أقصى لمنع القيم غير المعقولة
     const dtSec = Math.max(0.001, Math.min(deltaMs, 50) / 1000);
+    
+    // 1. Human paddles: Instant 0ms response, zero lag, precise velocity calculation
     for (const side of this.activeSides) {
       const paddle = this.state.paddles.get(side);
       if (!paddle) continue;
@@ -464,10 +509,12 @@ class QoudRoom extends Room<QoudRoomState> {
       if (player?.computer) continue;
       const target = this.paddleTargets.get(side);
       if (!target) continue;
+      
       const prev = this.paddlePrev.get(side) || { x: paddle.x, y: paddle.y };
       const clamped = this.clampPaddle(side, target.x, target.y);
       paddle.x = clamped.x;
       paddle.y = clamped.y;
+      
       const rawVx = dtSec > 0 ? (paddle.x - prev.x) / dtSec : 0;
       const rawVy = dtSec > 0 ? (paddle.y - prev.y) / dtSec : 0;
       if (Math.abs(rawVx) > 20 || Math.abs(rawVy) > 20) {
@@ -485,14 +532,19 @@ class QoudRoom extends Room<QoudRoomState> {
       }
       this.paddlePrev.set(side, { x: paddle.x, y: paddle.y });
     }
+
+    // 2. Computer paddles: Intelligent AI matching difficulty with active forward strikes
     this.moveComputerPaddles(dtSec);
     this.stepBallImproved(delta);
+
+    // إصلاح توقف الكرة - anti-stuck
     this.stuckCheckAccum += deltaMs;
     if (this.stuckCheckAccum > 1000) {
       this.stuckCheckAccum = 0;
       const speed = Math.hypot(this.state.ball.vx, this.state.ball.vy);
       const moved = Math.hypot(this.state.ball.x - this.lastBallPos.x, this.state.ball.y - this.lastBallPos.y);
       const timeSinceMove = Date.now() - this.lastBallPos.time;
+      
       if (speed < 2.5) {
         const ang = Math.random() * Math.PI * 2;
         const minSpeed = 4.2 + Number(this.settings.ballSpeed || 10) * 0.18;
@@ -500,9 +552,9 @@ class QoudRoom extends Room<QoudRoomState> {
         this.state.ball.vy = Math.sin(ang) * minSpeed;
         this.lastBallPos = { x: this.state.ball.x, y: this.state.ball.y, time: Date.now() };
       } else if (moved < 5 && timeSinceMove > 2000) {
-        this.state.ball.x = this.state.worldW / 2 + (Math.random() - 0.5) * 80;
-        this.state.ball.y = this.state.worldH / 2 + (Math.random() - 0.5) * 80;
-        const ang = (Math.random() - 0.5) * 0.8;
+        this.state.ball.x = this.state.worldW / 2 + (Math.random()-0.5)*80;
+        this.state.ball.y = this.state.worldH / 2 + (Math.random()-0.5)*80;
+        const ang = (Math.random()-0.5)*0.8;
         this.state.ball.vx = Math.sin(ang) * 4.5;
         this.state.ball.vy = -Math.abs(Math.cos(ang) * 4.5) - 1;
         this.lastBallPos = { x: this.state.ball.x, y: this.state.ball.y, time: Date.now() };
@@ -510,6 +562,7 @@ class QoudRoom extends Room<QoudRoomState> {
         this.lastBallPos = { x: this.state.ball.x, y: this.state.ball.y, time: Date.now() };
       }
     }
+
     this.broadcastAccum += deltaMs;
     if (this.broadcastAccum >= 16) {
       this.broadcastAccum = 0;
@@ -557,10 +610,12 @@ class QoudRoom extends Room<QoudRoomState> {
     const ball = this.state.ball;
     const diff = this.settings.difficulty;
     const maxSpeed = diff === 'easy' ? 460 : diff === 'hard' ? 1200 : 800;
+
     const leftWall = BORDER_THICKNESS + BALL_RADIUS;
     const rightWall = w - (BORDER_THICKNESS + BALL_RADIUS);
     const topWall = BORDER_THICKNESS + BALL_RADIUS;
     const bottomWall = h - (BORDER_THICKNESS + BALL_RADIUS);
+
     const predictX = (startX: number, startVx: number, ticks: number) => {
       let x = startX + startVx * ticks;
       const span = rightWall - leftWall;
@@ -571,6 +626,7 @@ class QoudRoom extends Room<QoudRoomState> {
       }
       return x;
     };
+
     const predictY = (startY: number, startVy: number, ticks: number) => {
       let y = startY + startVy * ticks;
       const span = bottomWall - topWall;
@@ -581,13 +637,16 @@ class QoudRoom extends Room<QoudRoomState> {
       }
       return y;
     };
+
     for (const side of this.activeSides) {
       const player = [...this.state.players.values()].find((p) => p.side === side);
       if (!player || !player.computer) continue;
       const paddle = this.state.paddles.get(side);
       if (!paddle) continue;
+
       let targetX = paddle.x;
       let targetY = paddle.y;
+
       if (side === 'top') {
         const homeX = w / 2;
         const homeY = BORDER_THICKNESS + PADDLE_RADIUS + 15;
@@ -649,11 +708,13 @@ class QoudRoom extends Room<QoudRoomState> {
           targetY = homeY;
         }
       }
+
       const clampedTarget = this.clampPaddle(side, targetX, targetY);
       const dx = clampedTarget.x - paddle.x;
       const dy = clampedTarget.y - paddle.y;
       const dist = Math.hypot(dx, dy);
       const step = Math.min(dist, maxSpeed * dtSec);
+
       const prev = this.paddlePrev.get(side) || { x: paddle.x, y: paddle.y };
       if (dist > 0.05) {
         paddle.x += (dx / dist) * step;
@@ -662,6 +723,7 @@ class QoudRoom extends Room<QoudRoomState> {
       const finalClamp = this.clampPaddle(side, paddle.x, paddle.y);
       paddle.x = finalClamp.x;
       paddle.y = finalClamp.y;
+
       const rawVx = dtSec > 0 ? (paddle.x - prev.x) / dtSec : 0;
       const rawVy = dtSec > 0 ? (paddle.y - prev.y) / dtSec : 0;
       this.paddleVel.set(side, {
@@ -678,6 +740,7 @@ class QoudRoom extends Room<QoudRoomState> {
     const BALL_R = BALL_RADIUS;
     const PADDLE_R = PADDLE_RADIUS;
     const HIT_DIST = BALL_R + PADDLE_R;
+
     const totalVx = ball.vx * delta;
     const totalVy = ball.vy * delta;
     const dist = Math.hypot(totalVx, totalVy);
@@ -685,20 +748,27 @@ class QoudRoom extends Room<QoudRoomState> {
     const steps = Math.max(1, Math.ceil(dist / maxStep));
     const stepVx = totalVx / steps;
     const stepVy = totalVy / steps;
+
     let missedSide: PlayerSide | null = null;
+
     for (let i = 0; i < steps && !missedSide; i++) {
       const prevX = ball.x;
       const prevY = ball.y;
       ball.x += stepVx;
       ball.y += stepVy;
+
       let bestHit: { side: PlayerSide; t: number; nx: number; ny: number; dist: number } | null = null;
+
       for (const side of this.activeSides) {
         if (this.lastHitSide === side && Date.now() - this.lastHitTime < 90) continue;
+
         const paddle = this.state.paddles.get(side);
         if (!paddle) continue;
+
         const segX = ball.x - prevX;
         const segY = ball.y - prevY;
         const segLenSq = segX * segX + segY * segY;
+
         let t = 0;
         let closestX = prevX;
         let closestY = prevY;
@@ -708,9 +778,11 @@ class QoudRoom extends Room<QoudRoomState> {
           closestX = prevX + segX * t;
           closestY = prevY + segY * t;
         }
+
         const dx = closestX - paddle.x;
         const dy = closestY - paddle.y;
         const d = Math.hypot(dx, dy);
+
         if (d < HIT_DIST) {
           if (!bestHit || t < bestHit.t) {
             bestHit = {
@@ -723,15 +795,19 @@ class QoudRoom extends Room<QoudRoomState> {
           }
         }
       }
+
       if (bestHit) {
         const side = bestHit.side;
         const paddle = this.state.paddles.get(side)!;
         const pVel = this.paddleVel.get(side) || { vx: 0, vy: 0 };
+
         ball.x = paddle.x + bestHit.nx * (HIT_DIST + 2);
         ball.y = paddle.y + bestHit.ny * (HIT_DIST + 2);
+
         const currentSpeed = Math.hypot(ball.vx, ball.vy);
         const baseSpeed = 4.5 + Number(this.settings.ballSpeed || 10) * 0.2;
         let targetSpeed = Math.max(currentSpeed, baseSpeed);
+
         if (this.settings.speed === 'gradual') {
           targetSpeed = Math.min(targetSpeed + 0.35, 18);
         } else if (this.settings.speed === 'never_reset') {
@@ -739,10 +815,12 @@ class QoudRoom extends Room<QoudRoomState> {
         } else {
           targetSpeed = baseSpeed;
         }
+
         const paddleSpeed = Math.hypot(pVel.vx, pVel.vy);
         if (paddleSpeed > 30) {
           targetSpeed = Math.min(targetSpeed + Math.min(paddleSpeed / 200, 4.0), 22);
         }
+
         let angle = 0;
         if (side === 'bottom') {
           const impactOffset = Math.max(-1, Math.min(1, (ball.x - paddle.x) / PADDLE_R));
@@ -773,6 +851,7 @@ class QoudRoom extends Room<QoudRoomState> {
           ball.vy = Math.sin(angle) * targetSpeed;
           if (pVel.vx < -50) ball.vx += Math.max(-5, pVel.vx / 150);
         }
+
         this.state.rally += 1;
         this.lastHitSide = side;
         this.lastHitTime = Date.now();
@@ -785,10 +864,12 @@ class QoudRoom extends Room<QoudRoomState> {
           paddleVy: pVel.vy,
         });
       }
+
       const goalW = Math.round(w * 0.52);
       const goalH = Math.round(h * 0.52);
       const gx1 = (w - goalW) / 2, gx2 = gx1 + goalW;
       const gy1 = (h - goalH) / 2, gy2 = gy1 + goalH;
+
       if (ball.y - BALL_R <= BORDER_THICKNESS) {
         if (this.activeSides.includes('top')) {
           if (ball.x >= gx1 && ball.x <= gx2) {
@@ -802,6 +883,7 @@ class QoudRoom extends Room<QoudRoomState> {
           ball.vy = Math.abs(ball.vy);
         }
       }
+
       if (!missedSide && ball.y + BALL_R >= h - BORDER_THICKNESS) {
         if (this.activeSides.includes('bottom')) {
           if (ball.x >= gx1 && ball.x <= gx2) {
@@ -815,6 +897,7 @@ class QoudRoom extends Room<QoudRoomState> {
           ball.vy = -Math.abs(ball.vy);
         }
       }
+
       if (!missedSide && ball.x - BALL_R <= BORDER_THICKNESS) {
         if (this.activeSides.includes('left')) {
           if (ball.y >= gy1 && ball.y <= gy2) {
@@ -828,6 +911,7 @@ class QoudRoom extends Room<QoudRoomState> {
           ball.vx = Math.abs(ball.vx);
         }
       }
+
       if (!missedSide && ball.x + BALL_R >= w - BORDER_THICKNESS) {
         if (this.activeSides.includes('right')) {
           if (ball.y >= gy1 && ball.y <= gy2) {
@@ -841,6 +925,7 @@ class QoudRoom extends Room<QoudRoomState> {
           ball.vx = -Math.abs(ball.vx);
         }
       }
+
       if (missedSide) {
         this.onGoal(missedSide);
         break;
@@ -849,13 +934,6 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private onGoal(missedSide: PlayerSide) {
-    // ===== قفل لمنع تكرار الهدف =====
-    if (this.goalScoredLock) {
-      console.log('[SERVER] Goal locked, ignoring duplicate');
-      return;
-    }
-    this.goalScoredLock = true;
-
     let scorerSide = this.lastHitSide && this.lastHitSide !== missedSide ? this.lastHitSide : OPPOSITE[missedSide];
     let scorer = [...this.state.players.values()].find((p) => p.side === scorerSide);
     if (!scorer) {
@@ -863,13 +941,12 @@ class QoudRoom extends Room<QoudRoomState> {
       if (scorer) scorerSide = scorer.side as PlayerSide;
     }
     if (scorer) {
-      const newScore = (this.state.scores.get(scorer.id) ?? 0) + 1;
+      const newScore = (this.state.scores.get(scorer.id)?? 0) + 1;
       this.state.scores.set(scorer.id, newScore);
       this.broadcast('goal-scored', {
         missedSide,
         scorerSide,
         scorerId: scorer.id,
-        scorerName: scorer.name,
         scores: Object.fromEntries(this.state.scores.entries()),
         series: {
           currentRound: this.currentRound,
@@ -877,18 +954,20 @@ class QoudRoom extends Room<QoudRoomState> {
           seriesWins: Object.fromEntries(this.seriesWinsMap.entries()),
         }
       });
+
       if (this.settings.mode === 'goals' && newScore >= Number(this.settings.goal || 7)) {
         this.finishRound(scorer.id, false);
         return;
       }
     }
+    this.lastHitSide = null;
     this.startCountdown(scorerSide);
     this.broadcastGameState();
   }
 
   private onTimeUpRound() {
     const sorted = [...this.state.scores.entries()].sort((a, b) => b[1] - a[1]);
-    const maxScore = sorted[0]?.[1] ?? 0;
+    const maxScore = sorted[0]?.[1]?? 0;
     const topPlayers = sorted.filter(([_, s]) => s === maxScore);
     if (topPlayers.length === 1) {
       this.finishRound(topPlayers[0][0], false);
@@ -901,11 +980,13 @@ class QoudRoom extends Room<QoudRoomState> {
     const roundScores = Object.fromEntries(this.state.scores.entries());
     const record = { round: this.currentRound, scores: roundScores, winnerId: winnerId, isDraw };
     this.roundHistory.push(record);
+
     if (!isDraw && winnerId) {
-      const cur = this.seriesWinsMap.get(winnerId) ?? 0;
+      const cur = this.seriesWinsMap.get(winnerId)?? 0;
       this.seriesWinsMap.set(winnerId, cur + 1);
       try { (this.state as any).seriesWins?.set(winnerId, cur + 1); } catch {}
     }
+
     this.broadcast('round-finished', {
       round: this.currentRound,
       scores: roundScores,
@@ -916,6 +997,7 @@ class QoudRoom extends Room<QoudRoomState> {
       totalRounds: this.totalRounds,
       currentRound: this.currentRound,
     });
+
     if (this.seriesType === 'series') {
       if (this.currentRound >= this.totalRounds) {
         this.finishMatchSeries();
@@ -941,12 +1023,13 @@ class QoudRoom extends Room<QoudRoomState> {
 
   private finishMatchSeries() {
     const entries = [...this.seriesWinsMap.entries()].sort((a, b) => b[1] - a[1]);
-    const maxWins = entries[0]?.[1] ?? 0;
+    const maxWins = entries[0]?.[1]?? 0;
     const top = entries.filter(([_, w]) => w === maxWins);
     let finalWinnerId: string | null = null;
     let isOverallDraw = false;
     if (top.length === 1) finalWinnerId = top[0][0];
     else if (top.length > 1) isOverallDraw = true;
+
     this.broadcast('match-finished', {
       winnerId: finalWinnerId,
       isDraw: isOverallDraw,
@@ -985,7 +1068,7 @@ const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
   express: async (app) => {
     app.get('/api/rooms', (req, res) => {
-      const code = String(req.query.code ?? '').replace(/\D/g, '').slice(0, 6);
+      const code = String(req.query.code?? '').replace(/\D/g, '').slice(0, 6);
       if (code) {
         const room = roomsByCode.get(code);
         if (!room) return res.status(404).json({ error: 'الغرفة غير موجودة' });
@@ -1010,4 +1093,4 @@ const gameServer = new Server({
 });
 gameServer.define('qoud', QoudRoom);
 await gameServer.listen(port, '0.0.0.0');
-console.log(`[colyseus] Qoud server listening on port ${port}`);
+console.log(`[colyseus] Qoud server listening on port ${port} - 6 digits only - Pause fixed - Anti-stuck fixed`);

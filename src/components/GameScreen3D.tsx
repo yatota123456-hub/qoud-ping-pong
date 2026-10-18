@@ -497,7 +497,7 @@ export function GameScreen3D({
   seriesWins?: Record<string, number>; currentRound?: number; 
   onGoal: (p: Player, scorer?: Player | null) => void; onTimeUp: () => void; onPause: () => void; onExit: () => void; 
 }) {
-  const [localReady, setLocalReady] = useState(false);
+  const [localReady, setLocalReady] = useState(true);
   const [arenaStyle, setArenaStyle] = useState<'classic' | 'modern'>('modern');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
@@ -534,7 +534,7 @@ export function GameScreen3D({
   const pausedRef = useRef(paused);
   const gameEndedRef = useRef(false);
   const frameIdRef = useRef<number>(0);
-  const localReadyRef = useRef(localReady);
+  const localReadyRef = useRef(true);
   useEffect(()=>{ localReadyRef.current = localReady; }, [localReady]);
   pausedRef.current = paused;
 
@@ -704,7 +704,7 @@ export function GameScreen3D({
   const isAr = i18n.language?.startsWith('ar');
 
   const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
-  const isOfflineMode = !socket.connected || players.length <= 1 || settings.vsComputer || players.some((p:any)=>p.computer);
+  const isOfflineMode = !socket.connected;
   const isVsComputer = settings.vsComputer || players.some((p:any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
   const isFriendsMode = !isVsComputer && !!roomCode && players.length > 1;
 
