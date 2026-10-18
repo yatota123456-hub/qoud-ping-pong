@@ -30,6 +30,7 @@ type Scores = Record<string | number, number>;
 
 // نسبة فتحة المرمى (موحّدة بين الفيزياء والإطار والقوس الأحمر على الطاولة)
 const GOAL_W_RATIO = 0.46;   // الأعلى/الأسفل: نسبة من عرض الساحة
+let SHARED_STAR_GEO: THREE.SphereGeometry | null = null;
 const GOAL_H_RATIO = 0.36;   // اليمين/اليسار (4 لاعبين): نسبة من طول الساحة
 
 // دالة فحص الجهاز المحمول
@@ -374,9 +375,45 @@ function createArenaFrameModern(worldW: number, worldH: number, renderer?: THREE
   return group;
 }
 
+// صناديق المرمى خلف الفتحات: أرضية وجدران حتى تدخل الكرة في مرمى حقيقي وليس في الفراغ
+function createGoalPockets(worldW: number, worldH: number) {
+  const g = new THREE.Group();
+  const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
+  const depth = 70;
+  const floorMat = new THREE.MeshStandardMaterial({ color: '#2a0606', roughness: 0.6, metalness: 0.1, emissive: '#ff1a1a', emissiveIntensity: 0.25 });
+  const wallMat = new THREE.MeshStandardMaterial({ color: '#120303', roughness: 0.5, metalness: 0.3 });
+  const add = (w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    g.add(m);
+  };
+  const gw = worldW * GOAL_W_RATIO;
+  [-1, 1].forEach((dir) => {
+    const zc = dir < 0 ? -depth / 2 : worldH + depth / 2;
+    const zb = dir < 0 ? -depth : worldH + depth;
+    add(gw, 12, depth, worldW / 2, 6, zc, floorMat);
+    add(gw + 20, 36, 10, worldW / 2, 18, zb, wallMat);
+    add(10, 30, depth, worldW / 2 - gw / 2 - 5, 15, zc, wallMat);
+    add(10, 30, depth, worldW / 2 + gw / 2 + 5, 15, zc, wallMat);
+  });
+  if (isSquareArena) {
+    const gh = worldH * GOAL_H_RATIO;
+    [-1, 1].forEach((dir) => {
+      const xc = dir < 0 ? -depth / 2 : worldW + depth / 2;
+      const xb = dir < 0 ? -depth : worldW + depth;
+      add(depth, 12, gh, xc, 6, worldH / 2, floorMat);
+      add(10, 36, gh + 20, xb, 18, worldH / 2, wallMat);
+      add(depth, 30, 10, xc, 15, worldH / 2 - gh / 2 - 5, wallMat);
+      add(depth, 30, 10, xc, 15, worldH / 2 + gh / 2 + 5, wallMat);
+    });
+  }
+  return g;
+}
+
 function createArenaFrame(worldW: number, worldH: number, style: 'classic' | 'modern' = 'modern', renderer?: THREE.WebGLRenderer) {
-  if (style === 'classic') return createArenaFrameClassic(worldW, worldH, renderer);
-  return createArenaFrameModern(worldW, worldH, renderer);
+  const frame = style === 'classic' ? createArenaFrameClassic(worldW, worldH, renderer) : createArenaFrameModern(worldW, worldH, renderer);
+  frame.add(createGoalPockets(worldW, worldH));
+  return frame;
 }
 
 function getArenaWorldSafe(count: number, size: any = 'medium') {
@@ -656,13 +693,16 @@ export function GameScreen3D({
   const createGoalStars3D = (x: number, z: number) => {
     if (!threeRef.current) return;
     const { hitGroup } = threeRef.current;
-    for (let i = 0; i < 24; i++) {
-      const starGeo = new THREE.SphereGeometry(3 + Math.random() * 2.5, 8, 8);
+    for (let i = 0; i < 14; i++) {
+      if (!SHARED_STAR_GEO) SHARED_STAR_GEO = new THREE.SphereGeometry(1, 8, 8);
+      const starGeo = SHARED_STAR_GEO;
+      const starR = 3 + Math.random() * 2.5;
       const starMat = new THREE.MeshBasicMaterial({
         color: ['#ffcf5a', '#ff6b8b', '#61e7c2', '#00e5ff', '#ffffff'][Math.floor(Math.random() * 5)],
         transparent: true, opacity: 1
       });
       const star = new THREE.Mesh(starGeo, starMat);
+      star.scale.setScalar(starR);
       star.position.set(x + (Math.random() - 0.5) * 24, 34 + Math.random() * 22, z + (Math.random() - 0.5) * 24);
       const vel = { x: (Math.random() - 0.5) * 13, y: 5 + Math.random() * 9, z: (Math.random() - 0.5) * 13 };
       hitGroup.add(star);
@@ -1140,7 +1180,31 @@ export function GameScreen3D({
     const PADDLE_RADIUS_LOCAL = 36;
     const BALL_RADIUS_LOCAL = 15;
     const HIT_DIST = PADDLE_RADIUS_LOCAL + BALL_RADIUS_LOCAL;
-    const GOAL_DEPTH = 45; // يجب أن تدخل الكرة بعمق داخل الفتحة قبل احتساب الهدف
+    const GOAL_DEPTH = 20; // الكرة عبرت خط الساحة بالكامل داخل صندوق المرمى
+
+    // تحديد صاحب الهدف بشكل صحيح حتى لو لم يكن الكمبيوتر في قائمة players بنفس الجهة
+    const resolveScorer = (side: Player['side']): Player => {
+      const me = players.find(p => p.socketId === socket.id) || players[0];
+      const mySideNow = getMySide();
+      if (me && side === mySideNow) return me;
+      const cand = players.find(p => p !== me && p.side === side);
+      if (cand) return cand;
+      const others = players.filter(p => p !== me);
+      if (others.length > 0) {
+        const order = sidesForCount.filter(sd => sd !== mySideNow);
+        const idx = order.indexOf(side);
+        return others[idx >= 0 && idx < others.length ? idx : 0];
+      }
+      const SIDE_IDX: Record<string, number> = { bottom: 0, top: 1, right: 2, left: 3 };
+      const COLORS_SC = ['#ffcf5a', '#ff6b8b', '#61e7c2', '#9b8cff'];
+      return {
+        id: String(SIDE_IDX[side] ?? 1),
+        name: 'الكمبيوتر',
+        color: COLORS_SC[SIDE_IDX[side] ?? 1],
+        side,
+        computer: true,
+      } as Player;
+    };
     const MIN_SPEED = 5.0;
     const MAX_SPEED = 18;
     const WALL_BOUNCE_DAMP = 0.95;
@@ -1220,6 +1284,7 @@ export function GameScreen3D({
           if (eff.mesh.material) eff.mesh.material.opacity = eff.life;
           if (eff.life <= 0) {
             hitGroup.remove(eff.mesh);
+            try { eff.mesh.material.dispose(); } catch {}
             hitEffectsRef.current.splice(i, 1);
           }
         }
@@ -1326,8 +1391,8 @@ export function GameScreen3D({
               };
 
               const scoreGoal = (scorerSide: Player['side'], restartSide: Player['side'], fx: number, fz: number) => {
-                console.log('[GOAL]', scorerSide, 'ball=', Math.round(state.ball.x), Math.round(state.ball.y), 'world=', world.w, world.h);
-                const scorer = players.find(p => p.side === scorerSide) || players[0];
+                console.log('[GOAL]', scorerSide, 'ball=', Math.round(state.ball.x), Math.round(state.ball.y), 'world=', world.w, world.h, 'players=', JSON.stringify(players.map(p => ({ id: p.id, side: p.side, computer: p.computer }))));
+                const scorer = resolveScorer(scorerSide);
                 if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(fx, fz); }
                 state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
                 state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
@@ -1503,8 +1568,7 @@ export function GameScreen3D({
 
   const opponentScore = useMemo(() => {
     const me = players.find(p => p.socketId === socket.id) || players[0];
-    const others = players.filter(p => p.id !== me?.id);
-    return others.reduce((s, p) => s + (scores[p.id] ?? 0), 0);
+    return Object.entries(scores).reduce((s, [k, v]) => (String(k) === String(me?.id) ? s : s + (Number(v) || 0)), 0);
   }, [scores, players]);
 
   useEffect(() => {
