@@ -477,6 +477,8 @@ const pausedRef = useRef(paused);
 const gameEndedRef = useRef(false);
 const frameIdRef = useRef<number>(0);
 const localReadyRef = useRef(localReady);
+// ===== إصلاح تكرار الأهداف =====
+const goalScoredRef = useRef(false);
 useEffect(() => { localReadyRef.current = localReady; }, [localReady]);
 pausedRef.current = paused;
 const isMobileCheck = useMemo(() => isMobileDevice(), []);
@@ -622,7 +624,7 @@ const gain2 = ctx.createGain();
 osc2.frequency.value = 900;
 osc2.frequency.exponentialRampToValueAtTime(1450, ctx.currentTime + 0.4);
 gain2.gain.value = 0.38;
-gain2.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.75);
+gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.75);
 osc2.connect(gain2); gain2.connect(ctx.destination);
 osc2.start(); osc2.stop(ctx.currentTime + 0.75);
 } catch {}
@@ -695,6 +697,7 @@ s.paddles.right = { x: world.w - 52, z: world.h / 2 };
 s.targetPaddles = { top: { ...s.paddles.top }, bottom: { ...s.paddles.bottom }, left: { ...s.paddles.left }, right: { ...s.paddles.right } };
 s.lastPaddles = { top: { ...s.paddles.top }, bottom: { ...s.paddles.bottom }, left: { ...s.paddles.left }, right: { ...s.paddles.right } };
 ballBufferRef.current = [];
+goalScoredRef.current = false; // إعادة تعيين عند تغيير حجم الساحة
 }, [world.w, world.h]);
 const playersKey = useMemo(() => players.map(p => `${p.side}:${p.color}`).join(','), [players]);
 const [showCamMenu, setShowCamMenu] = useState(false);
@@ -1277,6 +1280,12 @@ const PADDLE_RADIUS_LOCAL = 36;
              }
            };
            const scoreGoal = (scorerSide: Player['side'], restartSide: Player['side'], fx: number, fz: number) => {
+             // ===== إصلاح تكرار الأهداف =====
+             if (goalScoredRef.current) {
+               console.log('[GOAL BLOCKED] Already scored, preventing duplicate');
+               return false;
+             }
+             goalScoredRef.current = true;
              console.log('[GOAL]', scorerSide, 'ball=', Math.round(state.ball.x), Math.round(state.ball.y), 'world=', world.w, world.h, 'players=', JSON.stringify(players.map(p => ({ id: p.id, side: p.side, computer: p.computer }))));
              const scorer = resolveScorer(scorerSide);
              // إظهار اسم المسجّل لحظة دخول الكرة المرمى (وليس بعد إعادتها للمنتصف)
@@ -1298,6 +1307,7 @@ const PADDLE_RADIUS_LOCAL = 36;
              state.ball.x = Math.max(-PD, Math.min(world.w + PD, state.ball.x));
              if (now >= ga.until) {
                (state as any).goalAnim = null;
+               goalScoredRef.current = false; // ===== إعادة تعيين منع التكرار =====
                state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
                state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
                state.countdown = 3; state.countdownStart = now; state.countdownSide = ga.restartSide;
@@ -1479,7 +1489,7 @@ if (webglError) {
 return (
  <main style={{ width: '100%', height: '100dvh', display: 'grid', placeItems: 'center', background: '#0a0a0a', color: '#fff' }} >
  <div style={{ textAlign: 'center', padding: 20 }} >
- <h2 >⚠️ تنبيه الرسوميات </h2 >
+ <h2 >️ تنبيه الرسوميات </h2 >
  <p >{webglError} </p >
  <button onClick={() => { setWebglError(null); window.location.reload(); }} style={{ marginTop: 12, padding: '10px 20px', borderRadius: 8, background: '#00e5ff', color: '#000', fontWeight: 900, border: 'none', cursor: 'pointer' }}>إعادة المحاولة </button >
  </div >
@@ -1868,7 +1878,7 @@ border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer'
      <span>3D PERSPECTIVE • {currentPreset.toUpperCase()}</span>
      <span>{isMobileCheck ? 'المس وحرك مضربك مباشرة' : 'DRAG MOUSE TO MOVE PADDLE'}</span>
    </div>
- </main >
+ </main>
 );
 }
 const btnStyle: React.CSSProperties = {
