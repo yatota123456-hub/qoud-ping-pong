@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Pause, Play, X, RotateCcw, Camera, Eye, EyeOff, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw,Save, Video, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -682,6 +682,8 @@ export function GameScreen3D({
     countdown: 0,
     countdownStart: 0,
     countdownSide: null as Player['side'] | null,
+    lastGoalAt: 0,
+    lastBallPos: { x: 0, y: 0 },
     serving: { active: (settings as any).start === 'paddle', side: 'bottom' as Player['side'], startTime: 0, requested: false }, // إصلاح 4: يبدأ من المضرب إذا اختيار من المضرب
     paddleVel: { top: {vx:0, vy:0}, bottom: {vx:0, vy:0}, left: {vx:0, vy:0}, right: {vx:0, vy:0} } as any
   });
@@ -861,8 +863,15 @@ export function GameScreen3D({
       if (data.ball) {
         stateRef.current.ballTarget.x = data.ball.x;
         stateRef.current.ballTarget.y = data.ball.y;
-        stateRef.current.ballTarget.vx = data.ball.vx;
-        stateRef.current.ballTarget.vy = data.ball.vy;
+        stateRef.current.ballTarget.vx = data.ball.vx ?? 0;
+        stateRef.current.ballTarget.vy = data.ball.vy ?? 0;
+        // إذا Host أرسل أن الكرة في الوسط مع عد تنازلي، الصق الكرة فوراً للعميل لمنع الأهداف الوهمية
+        if (data.countdown !== undefined && data.countdown > 0) {
+          stateRef.current.ball.x = data.ball.x;
+          stateRef.current.ball.y = data.ball.y;
+          stateRef.current.ball.vx = 0;
+          stateRef.current.ball.vy = 0;
+        }
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
@@ -875,8 +884,16 @@ export function GameScreen3D({
         });
       }
       if (data.countdown !== undefined) {
+        // إصلاح: مزامنة countdownStart عند استلام عد جديد لمنع انتهاء العد فوراً
+        if (data.countdown > 0 && stateRef.current.countdown !== data.countdown) {
+          stateRef.current.countdownStart = performance.now();
+        }
         stateRef.current.countdown = data.countdown;
         setCountdown(data.countdown);
+        if (data.countdown > 0) {
+          // أثناء العد، أوقف التقديم واجعل الكرة في الوسط
+          stateRef.current.serving.active = false;
+        }
       }
       if (data.countdownSide !== undefined) {
         stateRef.current.countdownSide = data.countdownSide || null;
@@ -1439,122 +1456,147 @@ export function GameScreen3D({
               }
             }
 
-            // تسجيل الأهداف - إصلاح مشكلة الاختراق بدون تسجيل
-            const goalScoredSide = (() => {
-              // هدف علوي
-              if (state.ball.y < -BALL_RADIUS * 1.5) {
-                if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
-                  return 'top' as const;
-                }
+            // === إصلاح جذري لمشكلة الأهداف الوهمية في الوسط عند اللعب ضد الأصدقاء ===
+            // فقط Host أو Offline هو من يقرر تسجيل الهدف - العميل لا يسجل أبداً
+            if (!isOfflineMode && !isHost) {
+              // حماية للعميل: إذا خرجت الكرة بشكل غير طبيعي بسبب lag/desync، أرجعها بدون تسجيل هدف
+              const outMargin = 80;
+              if (state.ball.y < -outMargin || state.ball.y > world.h + outMargin || state.ball.x < -outMargin || state.ball.x > world.w + outMargin) {
+                // لا تسجل هدف، فقط صحح الموقع وانتظر تحديث من الـ Host
+                if (state.ball.y < -outMargin) state.ball.y = BALL_RADIUS + 10;
+                if (state.ball.y > world.h + outMargin) state.ball.y = world.h - BALL_RADIUS - 10;
+                if (state.ball.x < -outMargin) state.ball.x = BALL_RADIUS + 10;
+                if (state.ball.x > world.w + outMargin) state.ball.x = world.w - BALL_RADIUS - 10;
+                state.ballTarget.x = state.ball.x;
+                state.ballTarget.y = state.ball.y;
+                state.ball.vx *= -0.5;
+                state.ball.vy *= -0.5;
+                state.ballTarget.vx = state.ball.vx;
+                state.ballTarget.vy = state.ball.vy;
               }
-              // هدف سفلي
-              if (state.ball.y > world.h + BALL_RADIUS * 1.5) {
-                if (Math.abs(state.ball.x - world.w/2) <= goalHalfW) {
-                  return 'bottom' as const;
-                }
-              }
-              // أهداف جانبية للـ 4 لاعبين فقط
-              if (needPlayers >= 4) {
-                if (state.ball.x < -BALL_RADIUS * 1.5) {
-                  if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
-                    return 'left' as const;
+            } else {
+              // Host / Offline فقط هو من يسجل الأهداف
+              // منع التسجيل المتكرر: cooldown 2.5 ثانية بعد كل هدف
+              if (now - (state as any).lastGoalAt < 2500) {
+                // داخل فترة الحماية - لا تسجل
+              } else {
+                const goalScoredSide = (() => {
+                  // يجب أن تكون الكرة خارج الساحة فعلياً + ضمن فتحة الهدف + تتحرك للخارج
+                  // هدف علوي: y خارج من الأعلى + x داخل الفتحة + vy سالب (تتحرك للأعلى)
+                  if (state.ball.y < -BALL_RADIUS * 2) {
+                    if (Math.abs(state.ball.x - world.w/2) <= goalHalfW * 0.92 && state.ball.vy < -0.5) {
+                      return 'top' as const;
+                    }
                   }
-                }
-                if (state.ball.x > world.w + BALL_RADIUS * 1.5) {
-                  if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW) {
-                    return 'right' as const;
+                  // هدف سفلي
+                  if (state.ball.y > world.h + BALL_RADIUS * 2) {
+                    if (Math.abs(state.ball.x - world.w/2) <= goalHalfW * 0.92 && state.ball.vy > 0.5) {
+                      return 'bottom' as const;
+                    }
                   }
-                }
-              }
-              return null;
-            })();
+                  // أهداف جانبية للـ 4 لاعبين فقط
+                  if (needPlayers >= 4) {
+                    if (state.ball.x < -BALL_RADIUS * 2) {
+                      if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW * 0.92 && state.ball.vx < -0.5) {
+                        return 'left' as const;
+                      }
+                    }
+                    if (state.ball.x > world.w + BALL_RADIUS * 2) {
+                      if (Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW * 0.92 && state.ball.vx > 0.5) {
+                        return 'right' as const;
+                      }
+                    }
+                  }
+                  return null;
+                })();
 
-            if (goalScoredSide) {
-              // وجد هدف - سجل - إصلاح: العداد بعد كل هدف + منع التسجيل الخاطئ
-              const missedPlayer = players.find(p => p.side === goalScoredSide) || { side: goalScoredSide, id: goalScoredSide, name: goalScoredSide } as any;
-              
-              // === إصلاح التسجيل الخاطئ: تأكد أن الكرة خرجت فعلاً من الفتحة ===
-              // نتحقق مرة ثانية أن الكرة ضمن فتحة الهدف الحقيقية (0.18 عرض) وليس مجرد قرب الحافة
-              const isValidGoal = (() => {
-                if (goalScoredSide === 'top' || goalScoredSide === 'bottom') {
-                  return Math.abs(state.ball.x - world.w/2) <= goalHalfW;
-                } else {
-                  return Math.abs(state.ball.y - world.h/2) <= sideGoalHalfW;
-                }
-              })();
-              
-              if (!isValidGoal) {
-                // تسجيل خاطئ - أرجع الكرة للداخل ولا تسجل
-                if (goalScoredSide === 'top') state.ball.y = BALL_RADIUS + 5;
-                if (goalScoredSide === 'bottom') state.ball.y = world.h - BALL_RADIUS - 5;
-                if (goalScoredSide === 'left') state.ball.x = BALL_RADIUS + 5;
-                if (goalScoredSide === 'right') state.ball.x = world.w - BALL_RADIUS - 5;
-                state.ball.vx *= -0.8;
-                state.ball.vy *= -0.8;
-                return;
-              }
-
-              // تسجيل صحيح - أعد الكرة للوسط وابدأ العد 3-2-1
-              state.ball.x = world.w / 2;
-              state.ball.y = world.h / 2;
-              state.ballTarget.x = state.ball.x;
-              state.ballTarget.y = state.ball.y;
-              state.ball.vx = 0;
-              state.ball.vy = 0;
-              state.ballTarget.vx = 0;
-              state.ballTarget.vy = 0;
-              // === إصلاح 4: عند اختيار من المضرب - الكرة تبدأ من المضرب وبالترتيب ===
-              if ((settings as any).start === 'paddle') {
-                const order: Player['side'][] = (players.length >= 4 ? ['bottom','right','top','left'] : ['bottom','top']) as any;
-                let nextSide: Player['side'] = 'bottom';
                 if (goalScoredSide) {
-                  const lastIdx = order.indexOf(goalScoredSide as any);
-                  const nextIdx = (lastIdx + 1) % order.length;
-                  nextSide = order[nextIdx] || 'bottom';
+                  // تحقق إضافي: الكرة يجب أن تكون قد عبرت خط المرمى فعلياً وليس بسبب تصحيح الشبكة
+                  // نستخدم lastBallPos للتأكد من الحركة من الداخل للخارج
+                  const prevPos = (state as any).lastBallPos || { x: world.w/2, y: world.h/2 };
+                  const crossedFromInside = (() => {
+                    if (goalScoredSide === 'top') return prevPos.y >= BALL_RADIUS;
+                    if (goalScoredSide === 'bottom') return prevPos.y <= world.h - BALL_RADIUS;
+                    if (goalScoredSide === 'left') return prevPos.x >= BALL_RADIUS;
+                    if (goalScoredSide === 'right') return prevPos.x <= world.w - BALL_RADIUS;
+                    return true;
+                  })();
+                  
+                  if (!crossedFromInside) {
+                    // حركة مشبوهة - لا تسجل
+                    state.ball.x = world.w / 2;
+                    state.ball.y = world.h / 2;
+                    state.ballTarget.x = state.ball.x;
+                    state.ballTarget.y = state.ball.y;
+                    return;
+                  }
+
+                  const missedPlayer = players.find(p => p.side === goalScoredSide) || { side: goalScoredSide, id: goalScoredSide, name: goalScoredSide } as any;
+                  
+                  // تسجيل وقت الهدف لمنع التكرار
+                  (state as any).lastGoalAt = now;
+
+                  // تسجيل صحيح - أعد الكرة للوسط وابدأ العد 3-2-1
+                  state.ball.x = world.w / 2;
+                  state.ball.y = world.h / 2;
+                  state.ballTarget.x = state.ball.x;
+                  state.ballTarget.y = state.ball.y;
+                  state.ball.vx = 0;
+                  state.ball.vy = 0;
+                  state.ballTarget.vx = 0;
+                  state.ballTarget.vy = 0;
+
+                  if ((settings as any).start === 'paddle') {
+                    const order: Player['side'][] = (players.length >= 4 ? ['bottom','right','top','left'] : ['bottom','top']) as any;
+                    let nextSide: Player['side'] = 'bottom';
+                    if (goalScoredSide) {
+                      const lastIdx = order.indexOf(goalScoredSide as any);
+                      const nextIdx = (lastIdx + 1) % order.length;
+                      nextSide = order[nextIdx] || 'bottom';
+                    }
+                    state.serving.active = true;
+                    state.serving.side = nextSide;
+                    state.serving.startTime = now;
+                    state.serving.requested = false;
+                    const paddle = state.paddles[nextSide];
+                    if (paddle) {
+                      if (nextSide === 'bottom') { state.ball.x = paddle.x; state.ball.y = paddle.z - 60; }
+                      else if (nextSide === 'top') { state.ball.x = paddle.x; state.ball.y = paddle.z + 60; }
+                      else if (nextSide === 'left') { state.ball.x = paddle.x + 60; state.ball.y = paddle.z; }
+                      else { state.ball.x = paddle.x - 60; state.ball.y = paddle.z; }
+                      state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
+                    }
+                    state.ball.vx = 0; state.ball.vy = 0; state.ballTarget.vx = 0; state.ballTarget.vy = 0;
+                    try { playGoalSound3D(); createGoalStars3D(state.ball.x, state.ball.y); shakeRef.current.intensity = 20; } catch {}
+                    state.countdown = 0; setCountdown(0);
+                    state.countdownSide = null; setCountdownSide('');
+                    state.rally = 0; setRally(0);
+                    if (onGoal) { onGoal(missedPlayer as any); }
+                    if (isHost && !isOfflineMode) { socket.emit('goal-scored', { side: goalScoredSide }); }
+                    return;
+                  }
+                  try { playGoalSound3D(); createGoalStars3D(state.ball.x, state.ball.y); shakeRef.current.intensity = 20; } catch {}
+                  state.countdown = 3;
+                  state.countdownStart = now;
+                  state.countdownSide = goalScoredSide;
+                  setCountdown(3);
+                  setCountdownSide(goalScoredSide);
+                  state.rally = 0;
+                  setRally(0);
+                  
+                  if (onGoal) {
+                    // @ts-ignore
+                    onGoal(missedPlayer as any);
+                  }
+                  if (isHost && !isOfflineMode) {
+                    socket.emit('goal-scored', { side: goalScoredSide });
+                    socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: 0, vy: 0 }, countdown: 3, countdownSide: goalScoredSide });
+                  }
+                  return;
                 }
-                state.serving.active = true;
-                state.serving.side = nextSide;
-                state.serving.startTime = now;
-                state.serving.requested = false;
-                // ضع الكرة عند المضرب
-                const paddle = state.paddles[nextSide];
-                if (paddle) {
-                  if (nextSide === 'bottom') { state.ball.x = paddle.x; state.ball.y = paddle.z - 60; }
-                  else if (nextSide === 'top') { state.ball.x = paddle.x; state.ball.y = paddle.z + 60; }
-                  else if (nextSide === 'left') { state.ball.x = paddle.x + 60; state.ball.y = paddle.z; }
-                  else { state.ball.x = paddle.x - 60; state.ball.y = paddle.z; }
-                  state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
-                }
-                state.ball.vx = 0; state.ball.vy = 0; state.ballTarget.vx = 0; state.ballTarget.vy = 0;
-                try { playGoalSound3D(); createGoalStars3D(state.ball.x, state.ball.y); shakeRef.current.intensity = 20; } catch {}
-                state.countdown = 0; setCountdown(0);
-                state.countdownSide = null; setCountdownSide('');
-                state.rally = 0; setRally(0);
-                if (onGoal) { onGoal(missedPlayer as any); }
-                if (isHost && !isOfflineMode) { socket.emit('goal-scored', { side: goalScoredSide }); }
-                return;
               }
-              try { playGoalSound3D(); createGoalStars3D(state.ball.x, state.ball.y); shakeRef.current.intensity = 20; } catch {}
-              state.countdown = 3;
-              state.countdownStart = now;
-              state.countdownSide = goalScoredSide;
-              setCountdown(3);
-              setCountdownSide(goalScoredSide);
-              state.rally = 0;
-              setRally(0);
-              
-              // استدعاء onGoal - اللاعب الذي فشل (دخلت الكرة في مرماه)
-              if (onGoal) {
-                // @ts-ignore
-                onGoal(missedPlayer as any);
-              }
-              // إرسال للشبكة إذا Host
-              if (isHost && !isOfflineMode) {
-                socket.emit('goal-scored', { side: goalScoredSide });
-                socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: 0, vy: 0 }, countdown: 3, countdownSide: goalScoredSide });
-              }
-              // لا نكمل باقي الفيزياء هذا الإطار
-              return;
+              // حفظ موقع الكرة السابق للتحقق في الإطار القادم
+              (state as any).lastBallPos = { x: state.ball.x, y: state.ball.y };
             }
 
             // اصطدام بالمضارب - إصلاح الارتداد المباشر لكل اللاعبين
