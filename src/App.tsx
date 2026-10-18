@@ -1115,8 +1115,8 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           cur.y = Math.max(70, Math.min(h - 70, cur.y));
         } else {
           // Connected to server: smooth prediction along server velocity and smooth reconciliation
-          state.ball.x += state.ball.vx * delta;
-          state.ball.y += state.ball.vy * delta;
+          state.ball.x += state.ball.vx * delta * 2;
+          state.ball.y += state.ball.vy * delta * 2;
           const distToTarget = Math.hypot(state.ballTarget.x - state.ball.x, state.ballTarget.y - state.ball.y);
           if (distToTarget > 45) {
             state.ball.x = state.ballTarget.x;
@@ -1257,8 +1257,8 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
               display: 'flex', alignItems: 'center', gap: '10px'
             }}>
               ⚽ {(() => {
-                const opposite: any = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
-                const scorerSide = opposite[countdownSide] || countdownSide;
+                              // countdownSide القادم من الخادم هو جانب اللاعب المسجّل نفسه
+                const scorerSide = countdownSide;
                 const scorer = players.find((p: any) => p.side === scorerSide);
                 return scorer ? `${scorer.name} سجل هدف!` : 'هدف!';
               })()}

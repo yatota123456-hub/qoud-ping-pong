@@ -54,7 +54,6 @@ class QoudRoom extends Room<QoudRoomState> {
   private broadcastAccum = 0;
 
   // ===== Fixed Timestep Constants =====
-  // الثوابت الأساسية لحساب الفيزياء بشكل متطابق مع CLIENT
   private readonly SIMULATION_RATE = 120;  // Hz - معدل المحاكاة
   private readonly BASE_MS = 1000 / this.SIMULATION_RATE;  // 8.33ms
   private readonly FIXED_DELTA = 1 / this.SIMULATION_RATE;  // 1/120
@@ -77,6 +76,8 @@ class QoudRoom extends Room<QoudRoomState> {
   // --- إضافة لحل مشكلة التعليق ---
   private readyPlayers = new Set<string>();
   private isPaused = false;
+  private pausedAt = 0;
+  private lastGoalAt = 0; // حماية من تسجيل الهدف مرتين
   private lastBallPos = { x: 0, y: 0, time: 0 };
   private stuckCheckAccum = 0;
 
@@ -183,6 +184,7 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.timeLeft = this.settings.mode === 'time'? Number(this.settings.duration || 180) : 0;
     this.lastHitSide = null;
     this.isPaused = false;
+    this.pausedAt = 0;
     this.lastBallPos = { x: world.w/2, y: world.h/2, time: Date.now() };
     this.stuckCheckAccum = 0;
   }
@@ -235,6 +237,27 @@ class QoudRoom extends Room<QoudRoomState> {
     if (roomsByCode.get(this.state.code) === this) roomsByCode.delete(this.state.code);
   }
 
+  // ضبط الإيقاف المؤقت على الخادم مع تعويض الوقت الضائع
+  private setPaused(paused: boolean) {
+    if (paused && this.state.status !== 'playing') return;
+    if (paused && !this.isPaused) {
+      this.pausedAt = Date.now();
+    }
+    if (!paused && this.isPaused && this.pausedAt) {
+      const d = Date.now() - this.pausedAt;
+      this.countdownStartedAt += d;
+      this.servingStartedAt += d;
+      this.lastBallPos.time += d;
+      this.pausedAt = 0;
+    }
+    this.isPaused = paused;
+    // إرسال لكل العملاء بكل الأسماء المحتملة لضمان التوافق
+    this.broadcast('pause-update', { paused });
+    this.broadcast('game-paused', { paused });
+    this.broadcast('pause-state', { paused });
+    this.broadcastRoom();
+  }
+
   private handleMessage(type: string, client: { sessionId: string }, payload: any) {
     // إصلاح مشكلة التعليق في انتظار الأصدقاء
     if (type === 'player-ready') {
@@ -255,15 +278,10 @@ class QoudRoom extends Room<QoudRoomState> {
       return;
     }
 
-    // إصلاح 3 & 4: إيقاف مؤقت للكل - Pause for all players
+    // إيقاف مؤقت للكل - الخادم هو المرجع حتى لا تستمر الكرة وتسجل أهداف أثناء الإيقاف
     if (type === 'pause-toggle' || type === 'pause-state' || type === 'game-paused' || type === 'pause-update') {
       const paused = typeof payload === 'boolean' ? payload : Boolean(payload?.paused);
-      this.isPaused = paused;
-      // إرسال لكل العملاء بكل الأسماء المحتملة لضمان التوافق
-      this.broadcast('pause-update', { paused });
-      this.broadcast('game-paused', { paused });
-      this.broadcast('pause-state', { paused });
-      this.broadcastRoom(); // لتحديث حالة الغرفة أيضاً
+      this.setPaused(paused);
       return;
     }
 
@@ -289,6 +307,7 @@ class QoudRoom extends Room<QoudRoomState> {
       this.currentRound = 1;
       this.seriesWinsMap.clear();
       this.roundHistory = [];
+      this.lastGoalAt = 0;
       try {
         (this.state as any).currentRound = 1;
         (this.state as any).seriesWins?.clear();
@@ -327,7 +346,7 @@ class QoudRoom extends Room<QoudRoomState> {
           vy: Math.max(-2500, Math.min(2500, vy)),
         });
       }
-      if (this.servingActive && this.servingSide === side) this.servingRequested = true;
+      // ملاحظة: لم يعد تحريك المضرب يطلق الكرة تلقائياً، الإطلاق عبر 'request-serve' (أو مهلة أمان في tick)
       return;
     }
 
@@ -379,6 +398,9 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private startCountdown(scorerSide: PlayerSide | null) {
+    // إذا كانت اللعبة موقوفة نفك الإيقاف ونبلغ الجميع
+    if (this.isPaused) this.setPaused(false);
+
     // تناوب الإرسال: لا يبدأ من نفس المضرب مرتين حتى لو 4 لاعبين
     let finalScorerSide = scorerSide;
     if (scorerSide && this.lastServeSide && scorerSide === this.lastServeSide) {
@@ -399,6 +421,7 @@ class QoudRoom extends Room<QoudRoomState> {
     this.state.ball.y = this.state.worldH / 2;
     this.state.ball.visible = false;
     this.servingActive = false;
+    this.servingRequested = false;
     this.lastHitSide = null;
     this.isPaused = false;
     this.broadcastGameState();
@@ -409,12 +432,24 @@ class QoudRoom extends Room<QoudRoomState> {
     if (fromServe) {
       const ang = (Math.random() - 0.5) * 0.8;
       const paddle = this.state.paddles.get(side)!;
-      this.state.ball.x = paddle.x;
-      this.state.ball.y = paddle.y;
-      if (side === 'bottom') { this.state.ball.vx = Math.sin(ang) * speed; this.state.ball.vy = -Math.abs(Math.cos(ang) * speed); }
-      else if (side === 'top') { this.state.ball.vx = Math.sin(ang) * speed; this.state.ball.vy = Math.abs(Math.cos(ang) * speed); }
-      else if (side === 'left') { this.state.ball.vx = Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed; }
-      else { this.state.ball.vx = -Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed; }
+      // الكرة تنطلق أمام المضرب (خارج نطاق التصادم) وليس من مركزه
+      const gap = PADDLE_RADIUS + BALL_RADIUS + 4;
+      if (side === 'bottom') {
+        this.state.ball.x = paddle.x; this.state.ball.y = paddle.y - gap;
+        this.state.ball.vx = Math.sin(ang) * speed; this.state.ball.vy = -Math.abs(Math.cos(ang) * speed);
+      } else if (side === 'top') {
+        this.state.ball.x = paddle.x; this.state.ball.y = paddle.y + gap;
+        this.state.ball.vx = Math.sin(ang) * speed; this.state.ball.vy = Math.abs(Math.cos(ang) * speed);
+      } else if (side === 'left') {
+        this.state.ball.x = paddle.x + gap; this.state.ball.y = paddle.y;
+        this.state.ball.vx = Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed;
+      } else {
+        this.state.ball.x = paddle.x - gap; this.state.ball.y = paddle.y;
+        this.state.ball.vx = -Math.abs(Math.cos(ang) * speed); this.state.ball.vy = Math.sin(ang) * speed;
+      }
+      // اللاعب الذي أرسل الكرة يُعتبر آخر من لمسها
+      this.lastHitSide = side;
+      this.lastHitTime = Date.now();
     } else {
       const dirY = Math.random() > 0.5? 1 : -1;
       const ang = (Math.random() - 0.5) * 0.8;
@@ -422,85 +457,14 @@ class QoudRoom extends Room<QoudRoomState> {
       this.state.ball.y = this.state.worldH / 2;
       this.state.ball.vx = Math.sin(ang) * speed;
       this.state.ball.vy = Math.cos(ang) * speed * dirY;
+      this.lastHitSide = null;
     }
     this.state.ball.visible = true;
     this.lastBallPos = { x: this.state.ball.x, y: this.state.ball.y, time: Date.now() };
   }
 
-  private tick(deltaMs: number) {
-    if (this.state.status!== 'playing') return;
-    // إصلاح الإيقاف المؤقت - لا تحرك الكرة إذا متوقف
-    if (this.isPaused) {
-      this.broadcastAccum += deltaMs;
-      if (this.broadcastAccum >= 100) {
-        this.broadcastAccum = 0;
-        this.broadcastGameState();
-      }
-      return;
-    }
-
-    // حساب delta: الوقت المنقضي مقسوماً على وقت الـ baseline للمحاكاة
-    // يجب أن يكون deltaMs حوالي 8.33ms (1000/120) في الحالة الطبيعية
-    const delta = Math.min(deltaMs / this.BASE_MS, 2);
-    
-    // تعليق توضيحي: هذا الحساب مطابق لما يفعله CLIENT
-    // بحيث تكون الفيزياء موحدة بين SERVER و CLIENT
-
-    if (this.state.countdown > 0) {
-      const elapsed = (Date.now() - this.countdownStartedAt) / 1000;
-      if (elapsed >= 3) {
-        this.state.countdown = 0;
-        const side = (this.state.countdownSide || 'bottom') as PlayerSide;
-        if (this.settings.start === 'paddle') {
-          this.servingActive = true;
-          this.servingSide = side;
-          this.servingStartedAt = Date.now();
-          this.servingRequested = false;
-        } else {
-          this.launchBall(false);
-        }
-      } else {
-        this.state.countdown = Math.max(1, Math.ceil(3 - elapsed));
-        this.broadcastGameState();
-        return;
-      }
-    }
-
-    if (this.servingActive) {
-      const paddle = this.state.paddles.get(this.servingSide);
-      if (paddle) {
-        const offset = 24;
-        if (this.servingSide === 'bottom') { this.state.ball.x = paddle.x; this.state.ball.y = paddle.y - offset; }
-        else if (this.servingSide === 'top') { this.state.ball.x = paddle.x; this.state.ball.y = paddle.y + offset; }
-        else if (this.servingSide === 'left') { this.state.ball.x = paddle.x - offset; this.state.ball.y = paddle.y; }
-        else { this.state.ball.x = paddle.x + offset; this.state.ball.y = paddle.y; }
-      }
-      const owner = [...this.state.players.values()].find((p) => p.side === this.servingSide);
-      if (owner?.computer && Date.now() - this.servingStartedAt > 900) this.servingRequested = true;
-      if (this.servingRequested) {
-        this.launchBall(true, this.servingSide);
-        this.servingActive = false;
-        this.servingRequested = false;
-      }
-      this.broadcastGameState();
-      return;
-    }
-
-    if (this.settings.mode === 'time') {
-      this.elapsedAccum += deltaMs / 1000;
-      if (this.elapsedAccum >= 1) {
-        this.elapsedAccum = 0;
-        this.state.timeLeft = Math.max(0, this.state.timeLeft - 1);
-        if (this.state.timeLeft === 0) {
-          this.onTimeUpRound();
-          return;
-        }
-      }
-    }
-
-    // حساب الوقت المنقضي بالثواني مع حد أقصى لمنع القيم غير المعقولة
-    const dtSec = Math.max(0.001, Math.min(deltaMs, 50) / 1000);
-    
+  // تحديث كل المضارب (البشر + الكمبيوتر) - تُستدعى أيضاً أثناء العد التنازلي والإرسال
+  private updatePaddles(dtSec: number) {
     // 1. Human paddles: Instant 0ms response, zero lag, precise velocity calculation
     for (const side of this.activeSides) {
       const paddle = this.state.paddles.get(side);
@@ -533,8 +497,88 @@ class QoudRoom extends Room<QoudRoomState> {
       this.paddlePrev.set(side, { x: paddle.x, y: paddle.y });
     }
 
-    // 2. Computer paddles: Intelligent AI matching difficulty with active forward strikes
+    // 2. Computer paddles
     this.moveComputerPaddles(dtSec);
+  }
+
+  private tick(deltaMs: number) {
+    if (this.state.status!== 'playing') return;
+    // إصلاح الإيقاف المؤقت - لا تحرك الكرة إذا متوقف
+    if (this.isPaused) {
+      this.broadcastAccum += deltaMs;
+      if (this.broadcastAccum >= 100) {
+        this.broadcastAccum = 0;
+        this.broadcastGameState();
+      }
+      return;
+    }
+
+    // حساب delta: الوقت المنقضي مقسوماً على وقت الـ baseline للمحاكاة
+    const delta = Math.min(deltaMs / this.BASE_MS, 2);
+    const dtSec = Math.max(0.001, Math.min(deltaMs, 50) / 1000);
+
+    if (this.state.countdown > 0) {
+      const elapsed = (Date.now() - this.countdownStartedAt) / 1000;
+      if (elapsed >= 3) {
+        this.state.countdown = 0;
+        const side = (this.state.countdownSide || 'bottom') as PlayerSide;
+        if (this.settings.start === 'paddle') {
+          this.servingActive = true;
+          this.servingSide = side;
+          this.servingStartedAt = Date.now();
+          this.servingRequested = false;
+          this.state.ball.visible = true;
+        } else {
+          this.launchBall(false);
+        }
+      } else {
+        this.state.countdown = Math.max(1, Math.ceil(3 - elapsed));
+        // المضارب تتحرك أثناء العد التنازلي حتى لا تقفز بعده
+        this.updatePaddles(dtSec);
+        this.broadcastGameState();
+        return;
+      }
+    }
+
+    if (this.servingActive) {
+      // المضارب تتحرك أثناء انتظار الإرسال
+      this.updatePaddles(dtSec);
+      const paddle = this.state.paddles.get(this.servingSide);
+      if (paddle) {
+        const offset = PADDLE_RADIUS + BALL_RADIUS + 4;
+        if (this.servingSide === 'bottom') { this.state.ball.x = paddle.x; this.state.ball.y = paddle.y - offset; }
+        else if (this.servingSide === 'top') { this.state.ball.x = paddle.x; this.state.ball.y = paddle.y + offset; }
+        else if (this.servingSide === 'left') { this.state.ball.x = paddle.x + offset; this.state.ball.y = paddle.y; }
+        else { this.state.ball.x = paddle.x - offset; this.state.ball.y = paddle.y; }
+      }
+      this.state.ball.vx = 0;
+      this.state.ball.vy = 0;
+      const owner = [...this.state.players.values()].find((p) => p.side === this.servingSide);
+      // الكمبيوتر يرسل بعد 0.9 ثانية، واللاعب البشري بمهلة أمان 6 ثواني حتى لا تتعلق اللعبة
+      const autoDelay = !owner || owner.computer ? 900 : 6000;
+      if (Date.now() - this.servingStartedAt > autoDelay) this.servingRequested = true;
+      if (this.servingRequested) {
+        this.launchBall(true, this.servingSide);
+        this.servingActive = false;
+        this.servingRequested = false;
+      }
+      this.broadcastGameState();
+      return;
+    }
+
+    if (this.settings.mode === 'time') {
+      this.elapsedAccum += deltaMs / 1000;
+      if (this.elapsedAccum >= 1) {
+        this.elapsedAccum = 0;
+        this.state.timeLeft = Math.max(0, this.state.timeLeft - 1);
+        if (this.state.timeLeft === 0) {
+          this.onTimeUpRound();
+          return;
+        }
+      }
+    }
+
+    this.updatePaddles(dtSec);
     this.stepBallImproved(delta);
 
     // إصلاح توقف الكرة - anti-stuck
@@ -588,7 +632,10 @@ class QoudRoom extends Room<QoudRoomState> {
         ])
       ),
       countdown: this.state.countdown,
+      // countdownSide = جانب اللاعب الذي سجّل الهدف (وليس صاحب المرمى)
       countdownSide: this.state.countdownSide,
+      serving: this.servingActive,
+      servingSide: this.servingSide,
       rally: this.state.rally,
       scores: Object.fromEntries(this.state.scores.entries()),
       timeLeft: this.state.timeLeft,
@@ -934,7 +981,14 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private onGoal(missedSide: PlayerSide) {
-    let scorerSide = this.lastHitSide && this.lastHitSide !== missedSide ? this.lastHitSide : OPPOSITE[missedSide];
+    // حماية صارمة: لا يُحتسب هدفان متتاليان ولا هدف أثناء العد التنازلي
+    const nowMs = Date.now();
+    if (this.state.countdown > 0 || nowMs - this.lastGoalAt < 1200) return;
+    this.lastGoalAt = nowMs;
+
+    // المسجّل = آخر لاعب لمس الكرة (إن لم يكن صاحب المرمى نفسه)، وإلا الخصم المقابل
+    const hit = this.lastHitSide;
+    let scorerSide: PlayerSide = hit && hit !== missedSide && this.activeSides.includes(hit) ? hit : OPPOSITE[missedSide];
     let scorer = [...this.state.players.values()].find((p) => p.side === scorerSide);
     if (!scorer) {
       scorer = [...this.state.players.values()].find((p) => p.side !== missedSide);
@@ -1093,4 +1147,4 @@ const gameServer = new Server({
 });
 gameServer.define('qoud', QoudRoom);
 await gameServer.listen(port, '0.0.0.0');
-console.log(`[colyseus] Qoud server listening on port ${port} - 6 digits only - Pause fixed - Anti-stuck fixed`);
+console.log(`[colyseus] Qoud server listening on port ${port} - 6 digits only - Pause fixed - Anti-stuck fixed - Goals server-authoritative`);
