@@ -903,8 +903,11 @@ export function GameScreen3D({
       return hit ? point : null;   // كان يرجع (0,0,0) عند الفشل
     };
 
-    const handlePointerAction = (cx: number, cy: number) => {
-      const pt = getIntersect(cx, cy);
+    const handlePointerAction = (cx: number, cy: number, isTouch: boolean) => {
+      // على اللمس: يظهر المضرب فوق الإصبع على الشاشة حتى لا يغطيه
+      const rectH = el.getBoundingClientRect().height;
+      const offsetPx = isTouch ? Math.max(70, Math.min(120, rectH * 0.14)) : 0;
+      const pt = getIntersect(cx, cy - offsetPx);
       if (!pt) return;
       const mySide = getMySide();
       const clamped = safeClampPaddle(pt.x, pt.z, mySide, world.w, world.h);
@@ -931,18 +934,16 @@ export function GameScreen3D({
       }
     };
 
-    const onPointerDown = (e: PointerEvent | TouchEvent) => {
+    const onPointerDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement)?.closest?.('button')) return;
       dragging = true;
-      const cx = (e as TouchEvent).touches ? (e as TouchEvent).touches[0].clientX : (e as PointerEvent).clientX;
-      const cy = (e as TouchEvent).touches ? (e as TouchEvent).touches[0].clientY : (e as PointerEvent).clientY;
-      handlePointerAction(cx, cy);
+      try { el.setPointerCapture(e.pointerId); } catch {}
+      handlePointerAction(e.clientX, e.clientY, e.pointerType !== 'mouse');
     };
 
-    const onPointerMove = (e: PointerEvent | TouchEvent) => {
+    const onPointerMove = (e: PointerEvent) => {
       if (!dragging) return;
-      const cx = (e as TouchEvent).touches ? (e as TouchEvent).touches[0].clientX : (e as PointerEvent).clientX;
-      const cy = (e as TouchEvent).touches ? (e as TouchEvent).touches[0].clientY : (e as PointerEvent).clientY;
-      handlePointerAction(cx, cy);
+      handlePointerAction(e.clientX, e.clientY, e.pointerType !== 'mouse');
     };
 
     const onPointerUp = () => { dragging = false; };
@@ -951,18 +952,12 @@ export function GameScreen3D({
     el.addEventListener('pointermove', onPointerMove as any);
     el.addEventListener('pointerup', onPointerUp);
     el.addEventListener('pointercancel', onPointerUp);
-    el.addEventListener('touchstart', onPointerDown as any, { passive: false });
-    el.addEventListener('touchmove', onPointerMove as any, { passive: false });
-    el.addEventListener('touchend', onPointerUp);
 
     return () => {
       el.removeEventListener('pointerdown', onPointerDown as any);
       el.removeEventListener('pointermove', onPointerMove as any);
       el.removeEventListener('pointerup', onPointerUp);
       el.removeEventListener('pointercancel', onPointerUp);
-      el.removeEventListener('touchstart', onPointerDown as any);
-      el.removeEventListener('touchmove', onPointerMove as any);
-      el.removeEventListener('touchend', onPointerUp);
     };
   }, [world.w, world.h, getMySide, isHost, isOfflineMode]);
 
@@ -1141,6 +1136,7 @@ export function GameScreen3D({
     const PADDLE_RADIUS_LOCAL = 36;
     const BALL_RADIUS_LOCAL = 15;
     const HIT_DIST = PADDLE_RADIUS_LOCAL + BALL_RADIUS_LOCAL;
+    const GOAL_DEPTH = 45; // يجب أن تدخل الكرة بعمق داخل الفتحة قبل احتساب الهدف
     const MIN_SPEED = 5.0;
     const MAX_SPEED = 18;
     const WALL_BOUNCE_DAMP = 0.95;
@@ -1326,6 +1322,7 @@ export function GameScreen3D({
               };
 
               const scoreGoal = (scorerSide: Player['side'], restartSide: Player['side'], fx: number, fz: number) => {
+                console.log('[GOAL]', scorerSide, 'ball=', Math.round(state.ball.x), Math.round(state.ball.y), 'world=', world.w, world.h);
                 const scorer = players.find(p => p.side === scorerSide) || players[0];
                 if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(fx, fz); }
                 state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
@@ -1392,13 +1389,13 @@ export function GameScreen3D({
                 // الأهداف: لا تُحتسب إلا إذا عبر مركز الكرة خط المرمى فعلاً داخل الفتحة
                 const inTopBottomGap = Math.abs(state.ball.x - world.w / 2) <= goalHalfW;
                 const inSideGap = Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW;
-                if (state.ball.y < -BALL_RADIUS_LOCAL && inTopBottomGap) {
+                if (state.ball.y < -GOAL_DEPTH && inTopBottomGap) {
                   scored = scoreGoal('bottom', 'top', state.ball.x, 0);
-                } else if (state.ball.y > world.h + BALL_RADIUS_LOCAL && inTopBottomGap) {
+                } else if (state.ball.y > world.h + GOAL_DEPTH && inTopBottomGap) {
                   scored = scoreGoal('top', 'bottom', state.ball.x, world.h);
-                } else if (needPlayers >= 4 && state.ball.x < -BALL_RADIUS_LOCAL && inSideGap) {
+                } else if (needPlayers >= 4 && state.ball.x < -GOAL_DEPTH && inSideGap) {
                   scored = scoreGoal('right', 'left', 0, state.ball.y);
-                } else if (needPlayers >= 4 && state.ball.x > world.w + BALL_RADIUS_LOCAL && inSideGap) {
+                } else if (needPlayers >= 4 && state.ball.x > world.w + GOAL_DEPTH && inSideGap) {
                   scored = scoreGoal('left', 'right', world.w, state.ball.y);
                 }
               }
