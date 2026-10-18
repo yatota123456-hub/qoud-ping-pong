@@ -522,6 +522,7 @@ export function GameScreen3D({
   const [rally, setRally] = useState(0);
   const [countdown, setCountdown] = useState(0);
   const [countdownSide, setCountdownSide] = useState<string>('');
+  const [goalBanner, setGoalBanner] = useState<string | null>(null);
   const pausedRef = useRef(paused);
   const gameEndedRef = useRef(false);
   const frameIdRef = useRef<number>(0);
@@ -1400,9 +1401,12 @@ export function GameScreen3D({
               const scoreGoal = (scorerSide: Player['side'], restartSide: Player['side'], fx: number, fz: number) => {
                 console.log('[GOAL]', scorerSide, 'ball=', Math.round(state.ball.x), Math.round(state.ball.y), 'world=', world.w, world.h, 'players=', JSON.stringify(players.map(p => ({ id: p.id, side: p.side, computer: p.computer }))));
                 const scorer = resolveScorer(scorerSide);
+                // إظهار اسم المسجّل لحظة دخول الكرة المرمى (وليس بعد إعادتها للمنتصف)
+                setGoalBanner(scorer?.name ? `${scorer.name} سجل هدف!` : 'هدف!');
+                setTimeout(() => setGoalBanner(null), 1500);
                 if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(fx, fz); }
                 // الكرة تكمل داخل صندوق المرمى وتتباطأ، ثم تُعاد للمنتصف بعد لحظة
-                (state as any).goalAnim = { until: now + 900, restartSide };
+                (state as any).goalAnim = { until: now + 1200, restartSide };
                 return true;
               };
 
@@ -1420,7 +1424,7 @@ export function GameScreen3D({
                   state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
                   state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
                   state.countdown = 3; state.countdownStart = now; state.countdownSide = ga.restartSide;
-                  setCountdown(3); setCountdownSide(ga.restartSide);
+                  setCountdown(3); setCountdownSide('');
                 }
               } else {
               clampBallSpeed();
@@ -1847,6 +1851,17 @@ export function GameScreen3D({
             }}>
               ▶ المس لضرب الكرة
             </button>
+          </div>
+        )}
+
+        {/* لافتة الهدف: تظهر والكرة داخل المرمى */}
+        {goalBanner && (
+          <div style={{ position: 'absolute', left: 0, right: 0, top: '16%', display: 'flex', justifyContent: 'center', zIndex: 24, pointerEvents: 'none' }}>
+            <span style={{
+              fontSize: '15px', fontWeight: 900, color: '#fff',
+              background: '#ff2828', padding: '8px 22px', borderRadius: 999,
+              boxShadow: '0 4px 16px rgba(255,40,40,0.5)'
+            }}>⚽ {goalBanner}</span>
           </div>
         )}
 
