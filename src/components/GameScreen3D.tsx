@@ -28,6 +28,10 @@ type Player = {
 type Settings = any;
 type Scores = Record<string | number, number>;
 
+// نسبة فتحة المرمى (موحّدة بين الفيزياء والإطار والقوس الأحمر على الطاولة)
+const GOAL_W_RATIO = 0.46;   // الأعلى/الأسفل: نسبة من عرض الساحة
+const GOAL_H_RATIO = 0.36;   // اليمين/اليسار (4 لاعبين): نسبة من طول الساحة
+
 // دالة فحص الجهاز المحمول
 const isMobileDevice = () => {
   if (typeof window === 'undefined') return false;
@@ -241,8 +245,8 @@ function createArenaFrameClassic(worldW: number, worldH: number, renderer?: THRE
     metalness: 0.8
   });
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.68;
-  const goalGapH = worldH * 0.58;
+  const goalGapW = worldW * GOAL_W_RATIO;
+  const goalGapH = worldH * GOAL_H_RATIO;
 
   const bezelPieces: any[] = [];
   const topSideWidth = (worldW - goalGapW) / 2 + bezelThickness;
@@ -316,8 +320,8 @@ function createArenaFrameModern(worldW: number, worldH: number, renderer?: THREE
   });
 
   const isSquareArena = worldW >= 950 && Math.abs(worldW - worldH) < 150;
-  const goalGapW = worldW * 0.68;
-  const goalGapH = worldH * 0.58;
+  const goalGapW = worldW * GOAL_W_RATIO;
+  const goalGapH = worldH * GOAL_H_RATIO;
 
   const createBoxSide = (w: number, d: number, x: number, z: number) => {
     const geo = new THREE.BoxGeometry(w, bezelHeight, d);
@@ -1298,8 +1302,8 @@ export function GameScreen3D({
           // حركة الكرة
           if (state.countdown === 0 && !state.serving.active) {
             if (isOfflineMode || isHost) {
-              const goalHalfW = (world.w * 0.68) / 2 - BALL_RADIUS_LOCAL;
-              const sideGoalHalfW = (world.h * 0.58) / 2 - BALL_RADIUS_LOCAL;
+              const goalHalfW = (world.w * GOAL_W_RATIO) / 2 - BALL_RADIUS_LOCAL;
+              const sideGoalHalfW = (world.h * GOAL_H_RATIO) / 2 - BALL_RADIUS_LOCAL;
               const leftBound = BALL_RADIUS_LOCAL;
               const rightBound = world.w - BALL_RADIUS_LOCAL;
               const topBound = BALL_RADIUS_LOCAL;
