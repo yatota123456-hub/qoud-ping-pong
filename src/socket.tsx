@@ -2,7 +2,6 @@ import { Client } from '@colyseus/sdk';
 
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
 type RoomData = { code: string; players: Player[]; maxPlayers: number; status: 'waiting' | 'playing'; createdAt?: number; hostName?: string; hostSocketId?: string; settings?: any; series?: any; isPaused?: boolean; worldW?: number; worldH?: number };
-
 type SocketListener = (...args: any[]) => void;
 
 class ColyseusBridge {
@@ -14,21 +13,24 @@ class ColyseusBridge {
   get connected() { return Boolean(this.room); }
   get id() { return this.room?.sessionId ?? ''; }
 
-  on(event: string, listener: SocketListener) { 
-    if (!this.listeners.has(event)) this.listeners.set(event, new Set()); 
-    this.listeners.get(event)!.add(listener); 
-    return this; 
+  on(event: string, listener: SocketListener) {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event)!.add(listener);
+    return this;
   }
-  off(event: string, listener?: SocketListener) { 
-    if (!listener) this.listeners.delete(event); 
-    else this.listeners.get(event)?.delete(listener); 
-    return this; 
+
+  off(event: string, listener?: SocketListener) {
+    if (!listener) this.listeners.delete(event);
+    else this.listeners.get(event)?.delete(listener);
+    return this;
   }
-  emit(event: string, payload?: unknown) { 
-    if (!this.room) return false; 
-    this.room.send(event, payload); 
-    return true; 
+
+  emit(event: string, payload?: unknown) {
+    if (!this.room) return false;
+    this.room.send(event, payload);
+    return true;
   }
+
   sendPaddleTarget(x: number, y: number, vx?: number, vy?: number) {
     const now = performance.now();
     const dt = Math.max(0.005, (now - this.lastPaddleEmit) / 1000);
@@ -36,7 +38,7 @@ class ColyseusBridge {
     const computedVy = vy !== undefined ? vy : (y - this.lastPaddlePos.y) / dt;
     const dx = x - this.lastPaddlePos.x;
     const dy = y - this.lastPaddlePos.y;
-    const distSq = dx*dx + dy*dy;
+    const distSq = dx * dx + dy * dy;
     if (distSq < 1 && now - this.lastPaddleEmit < 16) return;
     if (now - this.lastPaddleEmit < 10) return;
     this.lastPaddleEmit = now;
@@ -48,44 +50,48 @@ class ColyseusBridge {
       vy: Math.round(computedVy)
     });
   }
+
   attach(room: any) {
     this.room = room;
     const messageTypes = [
-      'room-update','game-started','goal-scored','round-finished',
-      'next-round','series-started','match-finished','host-left',
-      'hit-effect','countdown','game-state','paddle-input',
-      'player-ready','all-players-ready',
-      'pause-update','game-paused','pause-state'
+      'room-update', 'game-started', 'goal-scored', 'round-finished',
+      'next-round', 'series-started', 'match-finished', 'host-left',
+      'hit-effect', 'countdown', 'game-state', 'paddle-input',
+      'player-ready', 'all-players-ready',
+      'pause-update', 'game-paused', 'pause-state'
     ];
     for (const messageType of messageTypes) {
       room.onMessage(messageType, (payload: unknown) => this.dispatch(messageType, payload));
     }
     room.onStateChange((state: any) => this.dispatch('room-update', this.roomData(state)));
     room.onError?.((code: number, message: string) => this.dispatch('error', message || `Connection error (${code})`));
-    room.onLeave?.((code: number) => { 
+    room.onLeave?.((code: number) => {
       if (this.room !== room) return;
       if (code === 1000 || (code as any) === 4000) {
         this.room = null;
         return;
       }
-      if (this.room === room) this.dispatch('connection-lost', code); 
+      if (this.room === room) this.dispatch('connection-lost', code);
     });
     if (room.state) this.dispatch('room-update', this.roomData(room.state));
   }
+
   async leave() {
     const room = this.room;
     this.room = null;
-    if (room) { 
-      try { 
+    if (room) {
+      try {
         (room as any)._reconnectionToken = null;
         (room as any).connection?.close();
-        await room.leave(true); 
-      } catch {} 
+        await room.leave(true);
+      } catch {}
     }
   }
+
   private dispatch(event: string, ...args: any[]) {
     this.listeners.get(event)?.forEach((l) => { try { l(...args); } catch {} });
   }
+
   private roomData(state: any): RoomData {
     const players = state?.players ? Array.from(state.players.values()).map((p: any) => ({
       id: p.id, name: p.name, color: p.color, side: p.side, computer: Boolean(p.computer), socketId: p.id,
@@ -108,7 +114,6 @@ class ColyseusBridge {
       hostName: players.find((p: Player) => p.id === state?.hostSessionId)?.name,
       players, settings, series,
       isPaused: Boolean(state?.isPaused),
-      // ✅ حجم الساحة من السيرفر
       worldW: state?.worldW ? Number(state.worldW) : undefined,
       worldH: state?.worldH ? Number(state.worldH) : undefined,
     };
