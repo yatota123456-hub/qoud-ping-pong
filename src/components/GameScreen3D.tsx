@@ -1125,6 +1125,13 @@ export function GameScreen3D({
 
     const hitGroup = new THREE.Group();
     scene.add(hitGroup);
+    // نجمة شفافة دائمة لتجهيز الشيدر مسبقاً ومنع التوقف عند أول هدف
+    const warmStar = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 8, 8),
+      new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0 })
+    );
+    warmStar.frustumCulled = false;
+    hitGroup.add(warmStar);
 
     threeRef.current = { scene, camera, renderer, ball: puckGroup, paddles, hitGroup, surfaceTexture, tableMaterial };
     lastDimsRef.current = { w: initW, h: initH };
@@ -1394,13 +1401,28 @@ export function GameScreen3D({
                 console.log('[GOAL]', scorerSide, 'ball=', Math.round(state.ball.x), Math.round(state.ball.y), 'world=', world.w, world.h, 'players=', JSON.stringify(players.map(p => ({ id: p.id, side: p.side, computer: p.computer }))));
                 const scorer = resolveScorer(scorerSide);
                 if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(fx, fz); }
-                state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
-                state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
-                state.countdown = 3; state.countdownStart = now; state.countdownSide = restartSide;
-                setCountdown(3); setCountdownSide(restartSide);
+                // الكرة تكمل داخل صندوق المرمى وتتباطأ، ثم تُعاد للمنتصف بعد لحظة
+                (state as any).goalAnim = { until: now + 900, restartSide };
                 return true;
               };
 
+              const ga = (state as any).goalAnim as { until: number; restartSide: Player['side'] } | null;
+              if (ga) {
+                const damp = Math.pow(0.88, delta);
+                state.ball.vx *= damp; state.ball.vy *= damp;
+                state.ball.x += state.ball.vx * delta;
+                state.ball.y += state.ball.vy * delta;
+                const PD = 49; // عمق صندوق المرمى المتاح للكرة
+                state.ball.y = Math.max(-PD, Math.min(world.h + PD, state.ball.y));
+                state.ball.x = Math.max(-PD, Math.min(world.w + PD, state.ball.x));
+                if (now >= ga.until) {
+                  (state as any).goalAnim = null;
+                  state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
+                  state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
+                  state.countdown = 3; state.countdownStart = now; state.countdownSide = ga.restartSide;
+                  setCountdown(3); setCountdownSide(ga.restartSide);
+                }
+              } else {
               clampBallSpeed();
               // تقسيم الحركة إلى خطوات صغيرة حتى لا تعبر الكرة الجدران أو المرمى بقفزة واحدة
               const steps = Math.min(16, Math.max(1, Math.ceil((Math.hypot(state.ball.vx, state.ball.vy) * delta) / 8)));
@@ -1467,6 +1489,8 @@ export function GameScreen3D({
                 } else if (needPlayers >= 4 && state.ball.x > world.w + GOAL_DEPTH && inSideGap) {
                   scored = scoreGoal('left', 'right', world.w, state.ball.y);
                 }
+              }
+
               }
 
               if (isHost && !isOfflineMode && performance.now() - lastBallEmitRef.current > 45) {
@@ -1885,6 +1909,10 @@ export function GameScreen3D({
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,10,10,0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 40, gap: 14 }}>
             <h2 style={{ color: '#fff', fontWeight: 900, fontSize: 22, margin: 0 }}>{isAr ? 'مستعد للمباراة؟' : 'Ready to Play?'}</h2>
             <button onClick={() => {
+              try {
+                if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+                audioCtxRef.current.resume?.();
+              } catch {}
               setLocalReady(true); localReadyRef.current = true;
               stateRef.current.serving.active = (settings as any).start === 'paddle';
               stateRef.current.serving.startTime = performance.now();
