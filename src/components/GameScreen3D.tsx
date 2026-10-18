@@ -1,4 +1,4 @@
-﻿﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import {
   Pause, Play, X, RotateCcw, Camera, Eye, EyeOff,
@@ -203,7 +203,8 @@ function buildRoundedRectPoints(w: number, h: number, r: number, segmentsPerCorn
 function setup3DArenaLighting(scene: THREE.Scene, worldWidth: number, worldHeight: number) {
   const mobile = isMobileDevice();
   scene.background = new THREE.Color('#0a0a0a');
-  scene.fog = new THREE.Fog('#0a0a0a', worldWidth * 1.8, worldWidth * 4.5);
+  // تخفيف الضباب كي لا تختفي المضارب والكرة
+  scene.fog = new THREE.Fog('#0a0a0a', worldWidth * 3, worldWidth * 8);
 
   const ambientLight = new THREE.AmbientLight(0xffffff, mobile ? 1.05 : 0.85);
   scene.add(ambientLight);
@@ -420,6 +421,39 @@ function getAdaptiveCameraPresets(world: { w: number; h: number }, arenaSize: st
 
 type Cam3DPresetKey = 'top' | 'bottom' | 'topPlayer' | 'iso' | 'sideLeft' | 'sideRight';
 const RENDER_DELAY_MS = 60;
+
+// ===== دوال حماية المضارب (جديدة) =====
+const PADDLE_R = 36;
+const MAX_PADDLE_V = 14;
+
+function manualClampPaddle(x: number, z: number, side: Player['side'], w: number, h: number) {
+  const r = PADDLE_R;
+  const m = 20;
+  let minX = r + m, maxX = w - r - m, minZ = r + m, maxZ = h - r - m;
+  if (side === 'bottom') minZ = h / 2 + r;
+  if (side === 'top') maxZ = h / 2 - r;
+  if (side === 'left') maxX = w / 2 - r;
+  if (side === 'right') minX = w / 2 + r;
+  return {
+    x: Math.max(minX, Math.min(maxX, x)),
+    y: Math.max(minZ, Math.min(maxZ, z)),
+  };
+}
+
+function safeClampPaddle(x: number, z: number, side: Player['side'], w: number, h: number) {
+  try {
+    const r: any = clampPaddlePosition ? (clampPaddlePosition as any)({ x, y: z }, side, w, h) : null;
+    if (r && Number.isFinite(r.x) && Number.isFinite(r.y)) return { x: r.x as number, y: r.y as number };
+  } catch {}
+  return manualClampPaddle(x, z, side, w, h);
+}
+
+function defaultPaddlePos(side: Player['side'], w: number, h: number) {
+  if (side === 'top') return { x: w / 2, z: 52 };
+  if (side === 'bottom') return { x: w / 2, z: h - 52 };
+  if (side === 'left') return { x: 52, z: h / 2 };
+  return { x: w - 52, z: h / 2 };
+}
 
 export function GameScreen3D({
   roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating,
@@ -697,7 +731,8 @@ export function GameScreen3D({
   const humanCount = Math.max(1, players.filter((p: any) => !p.computer).length);
   const isFriendsMode = !isVsComputer && !!roomCode && humanCount > 1;
 
-  const createHatPaddle = useCallback((color: string, style: 'classic' | 'modern' = arenaStyle) => {
+  const createHatPaddle = useCallback((colorIn: string, style: 'classic' | 'modern' = arenaStyle) => {
+    const color = String(colorIn || '#ffcf5a');
     const group = new THREE.Group();
     const isBlue = color.toLowerCase().includes('61e7c2') || color.toLowerCase().includes('00e5ff') || color.toLowerCase().includes('blue') || color === '#61e7c2';
     const baseColor = isBlue ? '#0a84ff' : (color === '#ffcf5a' ? '#0a84ff' : color);
@@ -739,6 +774,7 @@ export function GameScreen3D({
       handle.scale.y = 0.8;
       group.add(handle);
     }
+    group.traverse((o) => { o.frustumCulled = false; });
     return group;
   }, [arenaStyle]);
 
@@ -863,17 +899,15 @@ export function GameScreen3D({
       raycaster.setFromCamera(mouse, threeRef.current.camera);
       const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -10);
       const point = new THREE.Vector3();
-      raycaster.ray.intersectPlane(plane, point);
-      return point;
+      const hit = raycaster.ray.intersectPlane(plane, point);
+      return hit ? point : null;   // كان يرجع (0,0,0) عند الفشل
     };
 
     const handlePointerAction = (cx: number, cy: number) => {
       const pt = getIntersect(cx, cy);
       if (!pt) return;
       const mySide = getMySide();
-      const clamped = clampPaddlePosition
-        ? clampPaddlePosition({ x: pt.x, y: pt.z } as any, mySide, world.w, world.h)
-        : { x: pt.x, y: pt.z };
+      const clamped = safeClampPaddle(pt.x, pt.z, mySide, world.w, world.h);
 
       // تحديث فوري ومباشر للمضرب للاعب
       stateRef.current.paddles[mySide].x = clamped.x;
@@ -1044,6 +1078,8 @@ export function GameScreen3D({
       const existing = players.find(p => p.side === side);
       const color = existing?.color || COLORS_FALLBACK[idx] || '#ffcf5a';
       const g = createHatPaddle(color);
+      const dp = defaultPaddlePos(side, world.w, world.h);
+      g.position.set(dp.x, 14, dp.z);
       scene.add(g);
       paddles[side] = g;
     });
@@ -1155,6 +1191,13 @@ export function GameScreen3D({
           const current = state.paddles[s];
           const mesh = paddles[s];
 
+          // حماية من NaN: إعادة المضرب لموضعه الافتراضي
+          if (!Number.isFinite(current.x) || !Number.isFinite(current.z)) {
+            const d = defaultPaddlePos(s, world.w, world.h);
+            current.x = d.x; current.z = d.z;
+            target.x = d.x; target.z = d.z;
+          }
+
           if (s === mySide) {
             // اللاعب المحلي: استجابة فورية بدون أي تأخير
             if (mesh) mesh.position.set(current.x, 14, current.z);
@@ -1222,13 +1265,15 @@ export function GameScreen3D({
             state.ballTarget.y = state.ball.y;
           }
 
-          // حساب سرعات المضارب لتوليد القوة
+          // حساب سرعات المضارب لتوليد القوة (مع قصّ السرعة)
           (['top', 'bottom', 'right', 'left'] as Player['side'][]).forEach(side => {
             if (!activeSide(side)) return;
             const prev = state.lastPaddles[side];
             const curr = state.paddles[side];
-            state.paddleVel[side].vx = (curr.x - prev.x) / (delta || 1);
-            state.paddleVel[side].vy = (curr.z - prev.z) / (delta || 1);
+            const d = delta || 1;
+            const cl = (v: number) => Math.max(-MAX_PADDLE_V, Math.min(MAX_PADDLE_V, v));
+            state.paddleVel[side].vx = cl((curr.x - prev.x) / d);
+            state.paddleVel[side].vy = cl((curr.z - prev.z) / d);
             prev.x = curr.x;
             prev.z = curr.z;
           });
@@ -1257,9 +1302,117 @@ export function GameScreen3D({
           // حركة الكرة
           if (state.countdown === 0 && !state.serving.active) {
             if (isOfflineMode || isHost) {
-              state.ball.x += state.ball.vx * delta;
-              state.ball.y += state.ball.vy * delta;
+              const goalHalfW = (world.w * 0.68) / 2 - BALL_RADIUS_LOCAL;
+              const sideGoalHalfW = (world.h * 0.58) / 2 - BALL_RADIUS_LOCAL;
+              const leftBound = BALL_RADIUS_LOCAL;
+              const rightBound = world.w - BALL_RADIUS_LOCAL;
+              const topBound = BALL_RADIUS_LOCAL;
+              const bottomBound = world.h - BALL_RADIUS_LOCAL;
+
+              const clampBallSpeed = () => {
+                const sp = Math.hypot(state.ball.vx, state.ball.vy);
+                if (!Number.isFinite(sp) || !Number.isFinite(state.ball.x) || !Number.isFinite(state.ball.y)) {
+                  state.ball.x = world.w / 2; state.ball.y = world.h / 2;
+                  state.ball.vx = MIN_SPEED; state.ball.vy = MIN_SPEED;
+                  return;
+                }
+                if (sp < MIN_SPEED) {
+                  const a = sp === 0 ? Math.random() * Math.PI * 2 : Math.atan2(state.ball.vy, state.ball.vx);
+                  state.ball.vx = Math.cos(a) * MIN_SPEED; state.ball.vy = Math.sin(a) * MIN_SPEED;
+                } else if (sp > MAX_SPEED) {
+                  const k = MAX_SPEED / sp;
+                  state.ball.vx *= k; state.ball.vy *= k;
+                }
+              };
+
+              const scoreGoal = (scorerSide: Player['side'], restartSide: Player['side'], fx: number, fz: number) => {
+                const scorer = players.find(p => p.side === scorerSide) || players[0];
+                if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(fx, fz); }
+                state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
+                state.ballTarget.x = state.ball.x; state.ballTarget.y = state.ball.y;
+                state.countdown = 3; state.countdownStart = now; state.countdownSide = restartSide;
+                setCountdown(3); setCountdownSide(restartSide);
+                return true;
+              };
+
+              clampBallSpeed();
+              // تقسيم الحركة إلى خطوات صغيرة حتى لا تعبر الكرة الجدران أو المرمى بقفزة واحدة
+              const steps = Math.min(16, Math.max(1, Math.ceil((Math.hypot(state.ball.vx, state.ball.vy) * delta) / 8)));
+              const sd = delta / steps;
+              let scored = false;
+
+              for (let i = 0; i < steps && !scored; i++) {
+                state.ball.x += state.ball.vx * sd;
+                state.ball.y += state.ball.vy * sd;
+
+                // ارتداد الجدران
+                if (state.ball.x < leftBound && (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW)) {
+                  state.ball.x = leftBound; state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                }
+                if (state.ball.x > rightBound && (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW)) {
+                  state.ball.x = rightBound; state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
+                }
+                if (state.ball.y < topBound && Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
+                  state.ball.y = topBound; state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                }
+                if (state.ball.y > bottomBound && Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
+                  state.ball.y = bottomBound; state.ball.vy = -Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
+                }
+
+                // تصادم المضارب
+                (['top', 'bottom', 'left', 'right'] as Player['side'][]).forEach(side => {
+                  if (!activeSide(side)) return;
+                  const pad = state.paddles[side];
+                  const dx = state.ball.x - pad.x;
+                  const dy = state.ball.y - pad.z;
+                  const dist = Math.hypot(dx, dy) || 0.0001;
+                  if (dist >= HIT_DIST) return;
+
+                  const nx = dx / dist, ny = dy / dist;
+                  state.ball.x += nx * (HIT_DIST - dist);
+                  state.ball.y += ny * (HIT_DIST - dist);
+
+                  const pv = state.paddleVel[side];
+                  const dot = (state.ball.vx - pv.vx) * nx + (state.ball.vy - pv.vy) * ny;
+                  if (dot < 0) {           // الكرة تقترب فعلاً من المضرب
+                    state.ball.vx -= 2 * dot * nx;
+                    state.ball.vy -= 2 * dot * ny;
+                    state.ball.vx += pv.vx * 0.4 + nx * 2.0;
+                    state.ball.vy += pv.vy * 0.4 + ny * 2.0;
+                    clampBallSpeed();
+                    state.rally++;
+                    setRally(state.rally);
+                    playHitSound3D(Math.min(1, Math.hypot(state.ball.vx, state.ball.vy) / MAX_SPEED));
+                    shakeRef.current.intensity = Math.min(8, Math.hypot(state.ball.vx, state.ball.vy) * 0.4);
+                  }
+                });
+
+                clampBallSpeed();
+
+                // الأهداف: لا تُحتسب إلا إذا عبر مركز الكرة خط المرمى فعلاً داخل الفتحة
+                const inTopBottomGap = Math.abs(state.ball.x - world.w / 2) <= goalHalfW;
+                const inSideGap = Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW;
+                if (state.ball.y < -BALL_RADIUS_LOCAL && inTopBottomGap) {
+                  scored = scoreGoal('bottom', 'top', state.ball.x, 0);
+                } else if (state.ball.y > world.h + BALL_RADIUS_LOCAL && inTopBottomGap) {
+                  scored = scoreGoal('top', 'bottom', state.ball.x, world.h);
+                } else if (needPlayers >= 4 && state.ball.x < -BALL_RADIUS_LOCAL && inSideGap) {
+                  scored = scoreGoal('right', 'left', 0, state.ball.y);
+                } else if (needPlayers >= 4 && state.ball.x > world.w + BALL_RADIUS_LOCAL && inSideGap) {
+                  scored = scoreGoal('left', 'right', world.w, state.ball.y);
+                }
+              }
+
+              if (isHost && !isOfflineMode && performance.now() - lastBallEmitRef.current > 45) {
+                const ms = getMySide();
+                socket.emit('game-state', {
+                  ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy },
+                  paddles: { [ms]: { x: state.paddles[ms].x, y: state.paddles[ms].z } }
+                });
+                lastBallEmitRef.current = performance.now();
+              }
             } else {
+              // غير المضيف: استيفاء من بيانات السيرفر
               const buf = ballBufferRef.current;
               const renderTime = now - RENDER_DELAY_MS;
               if (buf.length >= 2) {
@@ -1272,130 +1425,12 @@ export function GameScreen3D({
                   const tRatio = span > 0 ? Math.max(0, Math.min(1, (renderTime - a.t) / span)) : 1;
                   state.ball.x = a.x + (b.x - a.x) * tRatio;
                   state.ball.y = a.y + (b.y - a.y) * tRatio;
-                  state.ball.vx = b.vx;
-                  state.ball.vy = b.vy;
+                  state.ball.vx = b.vx; state.ball.vy = b.vy;
                 } else {
-                  state.ball.x += state.ball.vx * delta;
-                  state.ball.y += state.ball.vy * delta;
+                  state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
                 }
               } else {
-                state.ball.x += state.ball.vx * delta;
-                state.ball.y += state.ball.vy * delta;
-              }
-            }
-
-            if (isOfflineMode || isHost) {
-              const speed = Math.hypot(state.ball.vx, state.ball.vy);
-              if (speed < MIN_SPEED) {
-                const angle = Math.atan2(state.ball.vy, state.ball.vx);
-                state.ball.vx = Math.cos(angle) * MIN_SPEED;
-                state.ball.vy = Math.sin(angle) * MIN_SPEED;
-              }
-              if (speed > MAX_SPEED) {
-                const angle = Math.atan2(state.ball.vy, state.ball.vx);
-                state.ball.vx = Math.cos(angle) * MAX_SPEED;
-                state.ball.vy = Math.sin(angle) * MAX_SPEED;
-              }
-
-              const goalHalfW = (world.w * 0.68) / 2 - BALL_RADIUS_LOCAL;
-              const sideGoalHalfW = (world.h * 0.58) / 2 - BALL_RADIUS_LOCAL;
-              const leftBound = BALL_RADIUS_LOCAL;
-              const rightBound = world.w - BALL_RADIUS_LOCAL;
-              const topBound = BALL_RADIUS_LOCAL;
-              const bottomBound = world.h - BALL_RADIUS_LOCAL;
-
-              // ارتداد الجدران
-              if (state.ball.x < leftBound) {
-                if (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW) {
-                  state.ball.x = leftBound;
-                  state.ball.vx = Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
-                }
-              }
-              if (state.ball.x > rightBound) {
-                if (needPlayers < 4 || Math.abs(state.ball.y - world.h / 2) > sideGoalHalfW) {
-                  state.ball.x = rightBound;
-                  state.ball.vx = -Math.abs(state.ball.vx) * WALL_BOUNCE_DAMP;
-                }
-              }
-              if (state.ball.y < topBound) {
-                if (Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
-                  state.ball.y = topBound;
-                  state.ball.vy = Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
-                }
-              }
-              if (state.ball.y > bottomBound) {
-                if (Math.abs(state.ball.x - world.w / 2) > goalHalfW) {
-                  state.ball.y = bottomBound;
-                  state.ball.vy = -Math.abs(state.ball.vy) * WALL_BOUNCE_DAMP;
-                }
-              }
-
-              // تصادم المضارب مع الكرة بدقة هندسية موحدة
-              (['top', 'bottom', 'left', 'right'] as Player['side'][]).forEach(side => {
-                if (!activeSide(side)) return;
-                const pad = state.paddles[side];
-                const dx = state.ball.x - pad.x;
-                const dy = state.ball.y - pad.z;
-                const dist = Math.hypot(dx, dy);
-                if (dist < HIT_DIST) {
-                  const nx = dx / (dist || 1);
-                  const ny = dy / (dist || 1);
-                  const overlap = HIT_DIST - dist;
-                  state.ball.x += nx * overlap;
-                  state.ball.y += ny * overlap;
-
-                  const relVelX = state.ball.vx - state.paddleVel[side].vx;
-                  const relVelY = state.ball.vy - state.paddleVel[side].vy;
-                  const dot = relVelX * nx + relVelY * ny;
-                  if (dot < 0) {
-                    state.ball.vx -= 2 * dot * nx;
-                    state.ball.vy -= 2 * dot * ny;
-                  }
-                  state.ball.vx += state.paddleVel[side].vx * 0.4 + nx * 2.0;
-                  state.ball.vy += state.paddleVel[side].vy * 0.4 + ny * 2.0;
-
-                  const sp = Math.hypot(state.ball.vx, state.ball.vy);
-                  state.rally++;
-                  setRally(state.rally);
-                  playHitSound3D(Math.min(1, sp / MAX_SPEED));
-                  shakeRef.current.intensity = Math.min(8, sp * 0.4);
-                }
-              });
-
-              // تحقق من دخول الأهداف وتأثير النجوم
-              if (state.ball.y < -BALL_RADIUS_LOCAL * 2) {
-                if (Math.abs(state.ball.x - world.w / 2) <= goalHalfW) {
-                  const scorer = players.find(p => p.side === 'bottom') || players[0];
-                  if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(state.ball.x, 0); }
-                  state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
-                  state.countdown = 3; state.countdownStart = now; state.countdownSide = 'top'; setCountdown(3); setCountdownSide('top');
-                }
-              } else if (state.ball.y > world.h + BALL_RADIUS_LOCAL * 2) {
-                if (Math.abs(state.ball.x - world.w / 2) <= goalHalfW) {
-                  const scorer = players.find(p => p.side === 'top') || players[1] || players[0];
-                  if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(state.ball.x, world.h); }
-                  state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
-                  state.countdown = 3; state.countdownStart = now; state.countdownSide = 'bottom'; setCountdown(3); setCountdownSide('bottom');
-                }
-              }
-
-              if (needPlayers >= 4) {
-                if (state.ball.x < -BALL_RADIUS_LOCAL * 2 && Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
-                  const scorer = players.find(p => p.side === 'right') || players[0];
-                  if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(0, state.ball.y); }
-                  state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
-                  state.countdown = 3; state.countdownStart = now; state.countdownSide = 'left'; setCountdown(3); setCountdownSide('left');
-                } else if (state.ball.x > world.w + BALL_RADIUS_LOCAL * 2 && Math.abs(state.ball.y - world.h / 2) <= sideGoalHalfW) {
-                  const scorer = players.find(p => p.side === 'left') || players[0];
-                  if (scorer) { onGoal(scorer); playGoalSound3D(); createGoalStars3D(world.w, state.ball.y); }
-                  state.ball.x = world.w / 2; state.ball.y = world.h / 2; state.ball.vx = 0; state.ball.vy = 0;
-                  state.countdown = 3; state.countdownStart = now; state.countdownSide = 'right'; setCountdown(3); setCountdownSide('right');
-                }
-              }
-
-              if (isHost && !isOfflineMode && performance.now() - lastBallEmitRef.current > 45) {
-                socket.emit('game-state', { ball: { x: state.ball.x, y: state.ball.y, vx: state.ball.vx, vy: state.ball.vy }, paddles: { [getMySide()]: { x: state.paddles[getMySide()].x, y: state.paddles[getMySide()].z } } });
-                lastBallEmitRef.current = performance.now();
+                state.ball.x += state.ball.vx * delta; state.ball.y += state.ball.vy * delta;
               }
             }
 
@@ -1413,7 +1448,7 @@ export function GameScreen3D({
                 } else {
                   pad.z += (state.ball.y - pad.z) * diff;
                 }
-                const clamped = clampPaddlePosition ? clampPaddlePosition({ x: pad.x, y: pad.z } as any, side, world.w, world.h) : pad;
+                const clamped = safeClampPaddle(pad.x, pad.z, side, world.w, world.h);
                 pad.x = clamped.x; pad.z = clamped.y;
               });
             }
@@ -1428,9 +1463,10 @@ export function GameScreen3D({
         try {
           threeRef.current.renderer.render(threeRef.current.scene, threeRef.current.camera);
         } catch {}
-
-        frameIdRef.current = requestAnimationFrame(tick);
       }
+
+      // الجدولة خارج الـ if حتى لا تتوقف حلقة الرسم أبداً
+      frameIdRef.current = requestAnimationFrame(tick);
     };
 
     frameIdRef.current = requestAnimationFrame(tick);
