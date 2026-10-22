@@ -1,4 +1,4 @@
-﻿﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Pause, Play, X, RotateCcw, Camera, Eye, EyeOff, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw, Save, Video, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,8 @@ import {
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
 type Settings = any;
 type Scores = Record<string | number, number>;
+
+const btnStyle: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#fff', borderRadius: 8, padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontWeight: 700, cursor: 'pointer', fontSize: '10px' };
 
 const isMobileDevice = () => {
   if (typeof window === 'undefined') return false;
@@ -509,64 +511,7 @@ const CAM_PRESETS_3D_BASE = {
 type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D_BASE;
 const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
 
-// === 2D Canvas Component (نفس Rollback) ===
-function GameScreen2DInternal({ world, players, getMySide, stateRef, rollbackHistoryRef, lastServerStateRef, getInitialSpeed, paused, onGoal }: any) {
-  const canvas2DRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = canvas2DRef.current; if (!canvas) return;
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
-    let raf=0;
-    const draw = (now: number) => {
-      const st = stateRef.current;
-      const dt = Math.min(2.5, (now - st.last)/16.67);
-      st.last = now;
-      const offline = !socket.connected;
-      if (!paused && st.countdown===0) {
-        if (!offline) {
-          const stepK = dt * SERVER_STEP;
-          st.ballTarget.x += st.ballTarget.vx * stepK;
-          st.ballTarget.y += st.ballTarget.vy * stepK;
-          st.ball.x += st.ball.vx * stepK;
-          st.ball.y += st.ball.vy * stepK;
-          const ex = st.ballTarget.x - st.ball.x, ey = st.ballTarget.y - st.ball.y;
-          if (Math.hypot(ex,ey)>120){ st.ball.x=st.ballTarget.x; st.ball.y=st.ballTarget.y; }
-          else { st.ball.x+=ex*0.25; st.ball.y+=ey*0.25; }
-        }
-        (['top','bottom','left','right'] as any[]).forEach(side=>{
-          if (side===getMySide()) return;
-          const cur=st.paddles[side], tgt=st.targetPaddles[side];
-          cur.x += (tgt.x-cur.x)*(offline?1:PADDLE_LERP_FAST);
-          cur.z += (tgt.z-cur.z)*(offline?1:PADDLE_LERP_FAST);
-        });
-      }
-      // رسم 2D مثل صورتك
-      ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      const scaleX=canvas.width/world.w, scaleY=canvas.height/world.h;
-      ctx.fillStyle='#fefefe'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle='rgba(0,0,0,0.15)';
-      for(let x=0;x<world.w;x+=28) for(let y=0;y<world.h;y+=28){ ctx.beginPath(); ctx.arc(x*scaleX,y*scaleY,1.2,0,Math.PI*2); ctx.fill(); }
-      ctx.strokeStyle='#ff2d2d'; ctx.lineWidth=6;
-      const goalR=world.w*0.26;
-      ctx.beginPath(); ctx.arc((world.w/2)*scaleX,0,goalR*scaleX,0,Math.PI); ctx.stroke();
-      ctx.beginPath(); ctx.arc((world.w/2)*scaleX,canvas.height,goalR*scaleX,Math.PI,Math.PI*2); ctx.stroke();
-      ctx.fillStyle='#e60000'; const wallThick=18, goalGap=world.w*0.52, sideW=(world.w-goalGap)/2;
-      ctx.fillRect(0,0,sideW*scaleX,wallThick); ctx.fillRect((world.w-sideW)*scaleX,0,sideW*scaleX,wallThick);
-      ctx.fillRect(0,canvas.height-wallThick,sideW*scaleX,wallThick); ctx.fillRect((world.w-sideW)*scaleX,canvas.height-wallThick,sideW*scaleX,wallThick);
-      ctx.fillRect(0,0,wallThick,canvas.height); ctx.fillRect(canvas.width-wallThick,0,wallThick,canvas.height);
-      ctx.shadowColor='#00e5ff'; ctx.shadowBlur=18; ctx.fillStyle='#fff';
-      ctx.beginPath(); ctx.arc(st.ball.x*scaleX,st.ball.y*scaleY,16,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
-      ctx.fillStyle='#00e5ff'; ctx.beginPath(); ctx.arc(st.ball.x*scaleX,st.ball.y*scaleY,6,0,Math.PI*2); ctx.fill();
-      players.forEach((p:any)=>{ const pad=st.paddles[p.side]; if(!pad) return; ctx.fillStyle=p.color; ctx.shadowColor=p.color; ctx.shadowBlur=12; ctx.beginPath(); ctx.arc(pad.x*scaleX,pad.z*scaleY,22,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0; ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); });
-      raf=requestAnimationFrame(draw);
-    };
-    raf=requestAnimationFrame(draw);
-    return ()=>cancelAnimationFrame(raf);
-  }, [world.w, world.h, players, paused]);
-  return <canvas ref={canvas2DRef} width={world.w} height={world.h} style={{width:'100%',height:'100%',display:'block',touchAction:'none',background:'#000'}} />;
-}
-
-export function GameScreen3D({
- 
+export function GameScreen3D({ 
   roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating, 
   seriesWins = {}, currentRound = 1, onGoal, onTimeUp, onPause, onExit 
 }: { 
@@ -581,63 +526,6 @@ export function GameScreen3D({
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
   // حالة الإرسال من المضرب (تأتي من الخادم عند الاتصال)
   const [servingInfo, setServingInfo] = useState<{ active: boolean; side: string }>({ active: !socket.connected && (settings as any).start === 'paddle', side: 'bottom' });
-
-  // === 2D MODE INSIDE SAME FILE - يشتغل بنفس Rollback ===
-  const is2DMode = settings.graphics === '2d';
-
-  // 2D canvas ref for unified mode
-  const canvas2DRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!is2DMode) return;
-    const canvas = canvas2DRef.current; if (!canvas) return;
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
-    let raf=0;
-    const draw2D = (now: number) => {
-      const st = stateRef.current;
-      const dt = Math.min(2.5, (now - st.last)/16.67);
-      st.last = now;
-      const offline = !socket.connected;
-      if (!pausedRef.current && !gameEndedRef.current && st.countdown===0) {
-        if (!offline) {
-          const stepK = dt * SERVER_STEP;
-          st.ballTarget.x += st.ballTarget.vx * stepK;
-          st.ballTarget.y += st.ballTarget.vy * stepK;
-          st.ball.x += st.ball.vx * stepK;
-          st.ball.y += st.ball.vy * stepK;
-          const ex = st.ballTarget.x - st.ball.x, ey = st.ballTarget.y - st.ball.y;
-          if (Math.hypot(ex,ey)>120){ st.ball.x=st.ballTarget.x; st.ball.y=st.ballTarget.y; }
-          else { st.ball.x+=ex*0.25; st.ball.y+=ey*0.25; }
-        }
-        (['top','bottom','left','right'] as any[]).forEach(side=>{
-          if (side===getMySide()) return;
-          const cur=st.paddles[side], tgt=st.targetPaddles[side];
-          cur.x += (tgt.x-cur.x)*(offline?1:PADDLE_LERP_FAST);
-          cur.z += (tgt.z-cur.z)*(offline?1:PADDLE_LERP_FAST);
-        });
-      }
-      ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      const scaleX=canvas.width/world.w, scaleY=canvas.height/world.h;
-      ctx.fillStyle='#fefefe'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle='rgba(0,0,0,0.18)';
-      for(let x=0;x<world.w;x+=28) for(let y=0;y<world.h;y+=28){ ctx.beginPath(); ctx.arc(x*scaleX,y*scaleY,1.2,0,Math.PI*2); ctx.fill(); }
-      ctx.strokeStyle='#ff2d2d'; ctx.lineWidth=6;
-      const goalR=world.w*0.26;
-      ctx.beginPath(); ctx.arc((world.w/2)*scaleX,0,goalR*scaleX,0,Math.PI); ctx.stroke();
-      ctx.beginPath(); ctx.arc((world.w/2)*scaleX,canvas.height,goalR*scaleX,Math.PI,Math.PI*2); ctx.stroke();
-      ctx.fillStyle='#e60000'; const wallThick=18, goalGap=world.w*0.52, sideW=(world.w-goalGap)/2;
-      ctx.fillRect(0,0,sideW*scaleX,wallThick); ctx.fillRect((world.w-sideW)*scaleX,0,sideW*scaleX,wallThick);
-      ctx.fillRect(0,canvas.height-wallThick,sideW*scaleX,wallThick); ctx.fillRect((world.w-sideW)*scaleX,canvas.height-wallThick,sideW*scaleX,wallThick);
-      ctx.fillRect(0,0,wallThick,canvas.height); ctx.fillRect(canvas.width-wallThick,0,wallThick,canvas.height);
-      ctx.shadowColor='#00e5ff'; ctx.shadowBlur=18; ctx.fillStyle='#fff';
-      ctx.beginPath(); ctx.arc(st.ball.x*scaleX,st.ball.y*scaleY,16,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
-      ctx.fillStyle='#00e5ff'; ctx.beginPath(); ctx.arc(st.ball.x*scaleX,st.ball.y*scaleY,6,0,Math.PI*2); ctx.fill();
-      players.forEach((p:any)=>{ const pad=st.paddles[p.side]; if(!pad) return; ctx.fillStyle=p.color; ctx.shadowColor=p.color; ctx.shadowBlur=12; ctx.beginPath(); ctx.arc(pad.x*scaleX,pad.z*scaleY,22,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0; ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); });
-      raf=requestAnimationFrame(draw2D);
-    };
-    raf=requestAnimationFrame(draw2D);
-    return ()=>cancelAnimationFrame(raf);
-  }, [is2DMode, world.w, world.h, players, paused]);
-
 
   useEffect(() => {
     const savedCam = localStorage.getItem(`qoud_camera_preset_${settings.arenaSize || 'medium'}`);
@@ -2061,18 +1949,7 @@ export function GameScreen3D({
               return sides.map((side, idx) => {
                 const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top'? 'سامي' : side === 'right'? 'ليان' : side === 'left'? 'كريم' : 'نورا', color: COLORS_FB[idx], side };
                 const isMe = side===mySideForCam;
-                if (is2DMode) {
-    return (
-      <div style={{ width:'100%', height:'100%', background:'#000', position:'relative' }}>
-        <canvas ref={canvas2DRef} width={world.w} height={world.h} style={{ width:'100%', height:'100%', display:'block', touchAction:'none' }} />
-        <div style={{ position:'absolute', top:10, left:10, color:'#fff', background:'rgba(0,0,0,0.6)', padding:'6px 10px', borderRadius:8, fontSize:12 }}>
-          2D • Rollback • {players.length}P • سرعة ×{BALL_SPEED_MULTIPLIER}
-        </div>
-      </div>
-    );
-  }
-
-  return (
+                return (
                   <div key={p.id + side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', background: isMe?'#1a2a3a':'#151515', border: `2px solid ${p.color}`, borderRadius: '14px', padding: '6px 16px', minWidth: '90px' }}>
                     <strong style={{ color: p.color, fontSize: '20px', lineHeight: '1', fontWeight: 900 }}>{scores[p.id]?? 0}</strong>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -2385,4 +2262,3 @@ export function GameScreen3D({
     </main>
   );
 }
-const btnStyle: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#fff', borderRadius: 8, padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontWeight: 700, cursor: 'pointer', fontSize: '10px' };
