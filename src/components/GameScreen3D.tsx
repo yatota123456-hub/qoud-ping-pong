@@ -23,14 +23,14 @@ const isMobileDevice = () => {
 };
 
 // الخادم يحاكي بمعدل 120Hz بينما العرض 60fps: الكرة تتحرك ضعف المسافة لكل إطار عرض
-const SERVER_STEP = 2;
+const SERVER_STEP = 1; // FIXED: was 2 - doubled speed
 
 // === ROLLBACK NETCODE FOR AIR HOCKEY - 4P 1 PUCK ===
 const ROLLBACK_HISTORY_SIZE = 60; // 1 sec at 60fps
 const ROLLBACK_ERROR_THRESHOLD = 35; // px - if server deviates more than this, correct
 const ROLLBACK_SMOOTH_FACTOR = 0.35; // كيف نصحح الخطأ بسلاسة
-const PADDLE_LERP_FAST = 0.65; // مضارب الخصم اسرع من قبل (كان 0.45)
-const BALL_SPEED_MULTIPLIER = 1.8; // الكرة اسرع 80% - حل مشكلة البطء
+const PADDLE_LERP_FAST = 0.42; // FIXED: was 0.65 - too twitchy // مضارب الخصم اسرع من قبل (كان 0.45)
+const BALL_SPEED_MULTIPLIER = 1.0; // FIXED: was 1.8 - respects server speed // الكرة اسرع 80% - حل مشكلة البطء
 
 
 function createAirHockeySurface(worldW: number, worldH: number) {

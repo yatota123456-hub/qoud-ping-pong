@@ -59,8 +59,8 @@ class QoudRoom extends Room<QoudRoomState> {
   private readonly FIXED_DELTA = 1 / this.SIMULATION_RATE;  // 1/120
 
   // === FIXED PHYSICS FOR NO LAG ===
-  private readonly BALL_SPEED_BOOST = 1.6; // الكرة اسرع 60%
-  private readonly FRICTION = 0.9995; // كان 0.998 - احتكاك اقل
+  private readonly BALL_SPEED_BOOST = 1.0; // FIXED: was 1.6 - causes wall penetration // الكرة اسرع 60%
+  private readonly FRICTION = 0.998; // balanced // كان 0.998 - احتكاك اقل
 
   // Physics
   private paddleTargets = new Map<PlayerSide, { x: number; y: number }>();
@@ -100,7 +100,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
     this.settings = {
-      mode: 'time', duration: 180, goal: 7, ballSpeed: 14, // FIXED: was 10 - faster default difficulty: 'normal',
+      mode: 'time', duration: 180, goal: 7, ballSpeed: 9, // FIXED: was 10 - faster default difficulty: 'normal',
       arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3,
      ...options.settings
     };
@@ -432,7 +432,9 @@ class QoudRoom extends Room<QoudRoomState> {
   }
 
   private launchBall(fromServe = false, side: PlayerSide = 'bottom') {
-    const speed = 3.5 + Number(this.settings.ballSpeed || 10) * 0.15;
+    // FIXED: respect ballSpeed setting properly, prevent wall penetration
+    const baseSpeed = Math.max(2.5, Math.min(12, Number(this.settings.ballSpeed || 9)));
+    const speed = 2.2 + baseSpeed * 0.22; // 2.2 + 9*0.22 = 4.18 max, was 5.6+
     if (fromServe) {
       const ang = (Math.random() - 0.5) * 0.8;
       const paddle = this.state.paddles.get(side)!;
@@ -518,7 +520,7 @@ class QoudRoom extends Room<QoudRoomState> {
     }
 
     // حساب delta: الوقت المنقضي مقسوماً على وقت الـ baseline للمحاكاة
-    const delta = Math.min(deltaMs / this.BASE_MS, 2);
+    const delta = Math.min(deltaMs / this.BASE_MS, 1.25); // FIXED: was 2 - caused tunneling
     const dtSec = Math.max(0.001, Math.min(deltaMs, 50) / 1000);
 
     if (this.state.countdown > 0) {
@@ -795,7 +797,7 @@ class QoudRoom extends Room<QoudRoomState> {
     const totalVx = ball.vx * delta;
     const totalVy = ball.vy * delta;
     const dist = Math.hypot(totalVx, totalVy);
-    const maxStep = 4;
+    const maxStep = 3; // FIXED: was 4 - smaller steps prevent wall tunneling
     const steps = Math.max(1, Math.ceil(dist / maxStep));
     const stepVx = totalVx / steps;
     const stepVy = totalVy / steps;
@@ -1136,7 +1138,26 @@ const gameServer = new Server({
     });
     app.get('/health', (_req, res) => res.json({ ok: true, rooms: roomsByCode.size }));
     if (isProduction) {
-      const publicDir = path.resolve(import.meta.dirname, '../dist/public');
+      // Robust public dir detection for Fly - tries multiple locations
+      const possibleDirs = [
+        path.resolve(import.meta.dirname, '../dist/public'),
+        path.resolve(import.meta.dirname, '../../dist/public'),
+        path.resolve(process.cwd(), 'dist/public'),
+        path.resolve(process.cwd(), 'dist'),
+        path.resolve(import.meta.dirname, '../public'),
+      ];
+      let publicDir = possibleDirs[0];
+      for (const dir of possibleDirs) {
+        try {
+          const fs = await import('node:fs');
+          if (fs.existsSync(path.join(dir, 'index.html'))) {
+            publicDir = dir;
+            console.log(`[server] Found public dir: ${publicDir}`);
+            break;
+          }
+        } catch {}
+      }
+      console.log(`[server] Serving static from: ${publicDir}`);
       app.use(express.static(publicDir, { index: 'index.html' }));
       app.get(/.*/, (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
       return;

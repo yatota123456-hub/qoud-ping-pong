@@ -31,7 +31,7 @@ const SIDES: Player['side'][] = ['bottom', 'top', 'right', 'left'];
 const ZONE = 100;
 const PADDLE_MOVE_ZONE = 220;
 const PADDLE_SIZE = 42;
-const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 14, sound: true, graphics: '2d', arenaSize: 'medium', seriesType: 'single', seriesRounds: 3 } as Settings;
+const defaultSettings = { players: 2, vsComputer: true, difficulty: 'normal', start: 'center', mode: 'time', duration: 180, goal: 7, speed: 'never_reset', ballSpeed: 9, // FIXED: was 14 - too fast, now respects settings sound: true, graphics: '2d', arenaSize: 'medium', seriesType: 'single', seriesRounds: 3 } as Settings;
 
 function randomRoom(existing: string[] = []) {
   // 6 أرقام مختلفة فقط - بدون تكرار
