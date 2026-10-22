@@ -1,3 +1,4 @@
+
 import { Client } from '@colyseus/sdk';
 
 type Player = { id: number | string; name: string; color: string; side: 'top' | 'right' | 'bottom' | 'left'; computer: boolean; socketId?: string };
@@ -9,6 +10,9 @@ class ColyseusBridge {
   listeners = new Map<string, Set<SocketListener>>();
   private lastPaddleEmit = 0;
   private lastPaddlePos = { x: 0, y: 0 };
+  private seq = 0;
+  // Rollback history for client prediction
+  public inputHistory: Array<{seq:number, x:number, y:number, vx:number, vy:number, t:number}> = [];
 
   get connected() { return Boolean(this.room); }
   get id() { return this.room?.sessionId ?? ''; }
@@ -31,23 +35,32 @@ class ColyseusBridge {
     return true;
   }
 
+  // === FIXED: حركة مضرب فورية 0ms بدون تقريب ===
   sendPaddleTarget(x: number, y: number, vx?: number, vy?: number) {
     const now = performance.now();
-    const dt = Math.max(0.005, (now - this.lastPaddleEmit) / 1000);
+    // قللنا الثروتل من 16ms الى 5ms عشان 200Hz ارسال - اسرع 3 مرات
+    if (now - this.lastPaddleEmit < 5) return;
+
+    const dt = Math.max(0.001, (now - this.lastPaddleEmit) / 1000);
     const computedVx = vx !== undefined ? vx : (x - this.lastPaddlePos.x) / dt;
     const computedVy = vy !== undefined ? vy : (y - this.lastPaddlePos.y) / dt;
-    const dx = x - this.lastPaddlePos.x;
-    const dy = y - this.lastPaddlePos.y;
-    const distSq = dx * dx + dy * dy;
-    if (distSq < 1 && now - this.lastPaddleEmit < 16) return;
-    if (now - this.lastPaddleEmit < 10) return;
+
+    // لا تقرب الارقام - ارسل float كامل عشان Rollback دقيق
     this.lastPaddleEmit = now;
     this.lastPaddlePos = { x, y };
+    this.seq++;
+
+    // حفظ في history للـ rollback
+    this.inputHistory.push({ seq: this.seq, x, y, vx: computedVx, vy: computedVy, t: Date.now() });
+    if (this.inputHistory.length > 60) this.inputHistory.shift();
+
     this.emit('paddle-target', {
-      x: Math.round(x),
-      y: Math.round(y),
-      vx: Math.round(computedVx),
-      vy: Math.round(computedVy)
+      x: x, // بدون Math.round - دقة كاملة
+      y: y,
+      vx: computedVx,
+      vy: computedVy,
+      seq: this.seq,
+      t: Date.now() // timestamp للـ rollback
     });
   }
 

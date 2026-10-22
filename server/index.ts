@@ -54,9 +54,13 @@ class QoudRoom extends Room<QoudRoomState> {
   private broadcastAccum = 0;
 
   // ===== Fixed Timestep Constants =====
-  private readonly SIMULATION_RATE = 120;  // Hz - معدل المحاكاة
+  private readonly SIMULATION_RATE = 120; // 120Hz - ثابت  // Hz - معدل المحاكاة
   private readonly BASE_MS = 1000 / this.SIMULATION_RATE;  // 8.33ms
   private readonly FIXED_DELTA = 1 / this.SIMULATION_RATE;  // 1/120
+
+  // === FIXED PHYSICS FOR NO LAG ===
+  private readonly BALL_SPEED_BOOST = 1.6; // الكرة اسرع 60%
+  private readonly FRICTION = 0.9995; // كان 0.998 - احتكاك اقل
 
   // Physics
   private paddleTargets = new Map<PlayerSide, { x: number; y: number }>();
@@ -96,7 +100,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
     this.settings = {
-      mode: 'time', duration: 180, goal: 7, ballSpeed: 10, difficulty: 'normal',
+      mode: 'time', duration: 180, goal: 7, ballSpeed: 14, // FIXED: was 10 - faster default difficulty: 'normal',
       arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3,
      ...options.settings
     };
@@ -143,8 +147,8 @@ class QoudRoom extends Room<QoudRoomState> {
     this.onMessage('*', (client, type, payload) => this.handleMessage(type, client, payload));
 
     // ✅ Fly.io Optimized: 60Hz broadcast, 120Hz simulation
-    this.setPatchRate(1000 / 60);
-    this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 120);
+    this.setPatchRate(1000 / 30); // FIXED: was 60Hz - now 30Hz less bandwidth, client predicts rest via rollback
+    this.setSimulationInterval((deltaMs) => this.tick(deltaMs), 1000 / 120); // 120Hz sim kept
   }
 
   private initWorldAndPaddles() {

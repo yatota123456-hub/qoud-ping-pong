@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Pause, Play, X, RotateCcw, Camera, Eye, EyeOff, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, RotateCw, Save, Video, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +22,14 @@ const isMobileDevice = () => {
 
 // الخادم يحاكي بمعدل 120Hz بينما العرض 60fps: الكرة تتحرك ضعف المسافة لكل إطار عرض
 const SERVER_STEP = 2;
+
+// === ROLLBACK NETCODE FOR AIR HOCKEY - 4P 1 PUCK ===
+const ROLLBACK_HISTORY_SIZE = 60; // 1 sec at 60fps
+const ROLLBACK_ERROR_THRESHOLD = 35; // px - if server deviates more than this, correct
+const ROLLBACK_SMOOTH_FACTOR = 0.35; // كيف نصحح الخطأ بسلاسة
+const PADDLE_LERP_FAST = 0.65; // مضارب الخصم اسرع من قبل (كان 0.45)
+const BALL_SPEED_MULTIPLIER = 1.8; // الكرة اسرع 80% - حل مشكلة البطء
+
 
 function createAirHockeySurface(worldW: number, worldH: number) {
   const mobile = isMobileDevice();
@@ -501,7 +509,64 @@ const CAM_PRESETS_3D_BASE = {
 type Cam3DPresetKey = keyof typeof CAM_PRESETS_3D_BASE;
 const CAM_PRESETS_3D = CAM_PRESETS_3D_BASE;
 
-export function GameScreen3D({ 
+// === 2D Canvas Component (نفس Rollback) ===
+function GameScreen2DInternal({ world, players, getMySide, stateRef, rollbackHistoryRef, lastServerStateRef, getInitialSpeed, paused, onGoal }: any) {
+  const canvas2DRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvas2DRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    let raf=0;
+    const draw = (now: number) => {
+      const st = stateRef.current;
+      const dt = Math.min(2.5, (now - st.last)/16.67);
+      st.last = now;
+      const offline = !socket.connected;
+      if (!paused && st.countdown===0) {
+        if (!offline) {
+          const stepK = dt * SERVER_STEP;
+          st.ballTarget.x += st.ballTarget.vx * stepK;
+          st.ballTarget.y += st.ballTarget.vy * stepK;
+          st.ball.x += st.ball.vx * stepK;
+          st.ball.y += st.ball.vy * stepK;
+          const ex = st.ballTarget.x - st.ball.x, ey = st.ballTarget.y - st.ball.y;
+          if (Math.hypot(ex,ey)>120){ st.ball.x=st.ballTarget.x; st.ball.y=st.ballTarget.y; }
+          else { st.ball.x+=ex*0.25; st.ball.y+=ey*0.25; }
+        }
+        (['top','bottom','left','right'] as any[]).forEach(side=>{
+          if (side===getMySide()) return;
+          const cur=st.paddles[side], tgt=st.targetPaddles[side];
+          cur.x += (tgt.x-cur.x)*(offline?1:PADDLE_LERP_FAST);
+          cur.z += (tgt.z-cur.z)*(offline?1:PADDLE_LERP_FAST);
+        });
+      }
+      // رسم 2D مثل صورتك
+      ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      const scaleX=canvas.width/world.w, scaleY=canvas.height/world.h;
+      ctx.fillStyle='#fefefe'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='rgba(0,0,0,0.15)';
+      for(let x=0;x<world.w;x+=28) for(let y=0;y<world.h;y+=28){ ctx.beginPath(); ctx.arc(x*scaleX,y*scaleY,1.2,0,Math.PI*2); ctx.fill(); }
+      ctx.strokeStyle='#ff2d2d'; ctx.lineWidth=6;
+      const goalR=world.w*0.26;
+      ctx.beginPath(); ctx.arc((world.w/2)*scaleX,0,goalR*scaleX,0,Math.PI); ctx.stroke();
+      ctx.beginPath(); ctx.arc((world.w/2)*scaleX,canvas.height,goalR*scaleX,Math.PI,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='#e60000'; const wallThick=18, goalGap=world.w*0.52, sideW=(world.w-goalGap)/2;
+      ctx.fillRect(0,0,sideW*scaleX,wallThick); ctx.fillRect((world.w-sideW)*scaleX,0,sideW*scaleX,wallThick);
+      ctx.fillRect(0,canvas.height-wallThick,sideW*scaleX,wallThick); ctx.fillRect((world.w-sideW)*scaleX,canvas.height-wallThick,sideW*scaleX,wallThick);
+      ctx.fillRect(0,0,wallThick,canvas.height); ctx.fillRect(canvas.width-wallThick,0,wallThick,canvas.height);
+      ctx.shadowColor='#00e5ff'; ctx.shadowBlur=18; ctx.fillStyle='#fff';
+      ctx.beginPath(); ctx.arc(st.ball.x*scaleX,st.ball.y*scaleY,16,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+      ctx.fillStyle='#00e5ff'; ctx.beginPath(); ctx.arc(st.ball.x*scaleX,st.ball.y*scaleY,6,0,Math.PI*2); ctx.fill();
+      players.forEach((p:any)=>{ const pad=st.paddles[p.side]; if(!pad) return; ctx.fillStyle=p.color; ctx.shadowColor=p.color; ctx.shadowBlur=12; ctx.beginPath(); ctx.arc(pad.x*scaleX,pad.z*scaleY,22,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0; ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); });
+      raf=requestAnimationFrame(draw);
+    };
+    raf=requestAnimationFrame(draw);
+    return ()=>cancelAnimationFrame(raf);
+  }, [world.w, world.h, players, paused]);
+  return <canvas ref={canvas2DRef} width={world.w} height={world.h} style={{width:'100%',height:'100%',display:'block',touchAction:'none',background:'#000'}} />;
+}
+
+export function GameScreen3D({
+ 
   roomCode, isHost, players, settings, scores, lastGoal, paused, celebrating, 
   seriesWins = {}, currentRound = 1, onGoal, onTimeUp, onPause, onExit 
 }: { 
@@ -516,6 +581,63 @@ export function GameScreen3D({
   const [savedCamData, setSavedCamData] = useState<string | null>(null);
   // حالة الإرسال من المضرب (تأتي من الخادم عند الاتصال)
   const [servingInfo, setServingInfo] = useState<{ active: boolean; side: string }>({ active: !socket.connected && (settings as any).start === 'paddle', side: 'bottom' });
+
+  // === 2D MODE INSIDE SAME FILE - يشتغل بنفس Rollback ===
+  const is2DMode = settings.graphics === '2d';
+
+  // 2D canvas ref for unified mode
+  const canvas2DRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!is2DMode) return;
+    const canvas = canvas2DRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    let raf=0;
+    const draw2D = (now: number) => {
+      const st = stateRef.current;
+      const dt = Math.min(2.5, (now - st.last)/16.67);
+      st.last = now;
+      const offline = !socket.connected;
+      if (!pausedRef.current && !gameEndedRef.current && st.countdown===0) {
+        if (!offline) {
+          const stepK = dt * SERVER_STEP;
+          st.ballTarget.x += st.ballTarget.vx * stepK;
+          st.ballTarget.y += st.ballTarget.vy * stepK;
+          st.ball.x += st.ball.vx * stepK;
+          st.ball.y += st.ball.vy * stepK;
+          const ex = st.ballTarget.x - st.ball.x, ey = st.ballTarget.y - st.ball.y;
+          if (Math.hypot(ex,ey)>120){ st.ball.x=st.ballTarget.x; st.ball.y=st.ballTarget.y; }
+          else { st.ball.x+=ex*0.25; st.ball.y+=ey*0.25; }
+        }
+        (['top','bottom','left','right'] as any[]).forEach(side=>{
+          if (side===getMySide()) return;
+          const cur=st.paddles[side], tgt=st.targetPaddles[side];
+          cur.x += (tgt.x-cur.x)*(offline?1:PADDLE_LERP_FAST);
+          cur.z += (tgt.z-cur.z)*(offline?1:PADDLE_LERP_FAST);
+        });
+      }
+      ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      const scaleX=canvas.width/world.w, scaleY=canvas.height/world.h;
+      ctx.fillStyle='#fefefe'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='rgba(0,0,0,0.18)';
+      for(let x=0;x<world.w;x+=28) for(let y=0;y<world.h;y+=28){ ctx.beginPath(); ctx.arc(x*scaleX,y*scaleY,1.2,0,Math.PI*2); ctx.fill(); }
+      ctx.strokeStyle='#ff2d2d'; ctx.lineWidth=6;
+      const goalR=world.w*0.26;
+      ctx.beginPath(); ctx.arc((world.w/2)*scaleX,0,goalR*scaleX,0,Math.PI); ctx.stroke();
+      ctx.beginPath(); ctx.arc((world.w/2)*scaleX,canvas.height,goalR*scaleX,Math.PI,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='#e60000'; const wallThick=18, goalGap=world.w*0.52, sideW=(world.w-goalGap)/2;
+      ctx.fillRect(0,0,sideW*scaleX,wallThick); ctx.fillRect((world.w-sideW)*scaleX,0,sideW*scaleX,wallThick);
+      ctx.fillRect(0,canvas.height-wallThick,sideW*scaleX,wallThick); ctx.fillRect((world.w-sideW)*scaleX,canvas.height-wallThick,sideW*scaleX,wallThick);
+      ctx.fillRect(0,0,wallThick,canvas.height); ctx.fillRect(canvas.width-wallThick,0,wallThick,canvas.height);
+      ctx.shadowColor='#00e5ff'; ctx.shadowBlur=18; ctx.fillStyle='#fff';
+      ctx.beginPath(); ctx.arc(st.ball.x*scaleX,st.ball.y*scaleY,16,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+      ctx.fillStyle='#00e5ff'; ctx.beginPath(); ctx.arc(st.ball.x*scaleX,st.ball.y*scaleY,6,0,Math.PI*2); ctx.fill();
+      players.forEach((p:any)=>{ const pad=st.paddles[p.side]; if(!pad) return; ctx.fillStyle=p.color; ctx.shadowColor=p.color; ctx.shadowBlur=12; ctx.beginPath(); ctx.arc(pad.x*scaleX,pad.z*scaleY,22,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0; ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); });
+      raf=requestAnimationFrame(draw2D);
+    };
+    raf=requestAnimationFrame(draw2D);
+    return ()=>cancelAnimationFrame(raf);
+  }, [is2DMode, world.w, world.h, players, paused]);
+
 
   useEffect(() => {
     const savedCam = localStorage.getItem(`qoud_camera_preset_${settings.arenaSize || 'medium'}`);
@@ -666,6 +788,11 @@ export function GameScreen3D({
   const hitEffectsRef = useRef<any[]>([]);
   const shakeRef = useRef({ intensity: 0 });
   const lastBallEmitRef = useRef(0);
+  // Rollback history
+  const rollbackHistoryRef = useRef<Array<{x:number,y:number,vx:number,vy:number,t:number}>>([]);
+  const lastServerStateRef = useRef<{x:number,y:number,vx:number,vy:number,t:number}|null>(null);
+  const predictionErrorRef = useRef({x:0,y:0});
+
   const stateRef = useRef({
     ball: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
     ballTarget: { x: world.w / 2, y: world.h / 2, vx: 0, vy: 0 },
@@ -731,7 +858,7 @@ export function GameScreen3D({
   const [readyPlayers, setReadyPlayers] = useState<string[]>([]);
   const isAr = i18n.language?.startsWith('ar');
 
-  const getInitialSpeed = useCallback(() => 3 + settings.ballSpeed * 0.2, [settings.ballSpeed]);
+  const getInitialSpeed = useCallback(() => (4 + settings.ballSpeed * 0.6) * BALL_SPEED_MULTIPLIER, [settings.ballSpeed]);
   const isOfflineMode = !socket.connected;
   const isVsComputer = settings.vsComputer || players.some((p:any) => p.computer || p.isBot || p.isComputer || p.type === 'bot' || (p.name && (p.name.includes('كمبيوتر') || p.name.toLowerCase().includes('computer') || p.name.toLowerCase().includes('bot') || p.name.toLowerCase().includes('cpu'))));
   const isFriendsMode = !isVsComputer && !!roomCode && players.length > 1;
@@ -877,20 +1004,56 @@ export function GameScreen3D({
     cam.current = {...initialCam, targetX: world.w/2, targetZ: world.h/2, lookX: world.w/2, lookZ: world.h/2} as any;
   }, [initialCam, settings.arenaSize, world.w, world.h]);
 
-  // ===== استقبال حالة الخادم (المرجع الوحيد للكرة والأهداف والعداد) =====
+  // ===== استقبال حالة الخادم مع ROLLBACK =====
   useEffect(() => {
     const handleGameState = (data: any) => {
       if (!data) return;
       const st = stateRef.current;
       const mySide = getMySide();
+      const now = Date.now();
       if (data.ball) {
+        // حفظ حالة السيرفر مع timestamp للـ rollback
+        lastServerStateRef.current = { x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, t: now };
+        
         st.ballTarget.x = data.ball.x;
         st.ballTarget.y = data.ball.y;
         st.ballTarget.vx = data.ball.vx;
         st.ballTarget.vy = data.ball.vy;
-        // سرعة الكرة دائماً من الخادم حتى لا تنحرف المحاكاة المحلية
-        st.ball.vx = data.ball.vx;
-        st.ball.vy = data.ball.vy;
+
+        // === ROLLBACK RECONCILIATION ===
+        // احسب الخطأ بين توقعنا المحلي وحقيقة السيرفر
+        const errorX = data.ball.x - st.ball.x;
+        const errorY = data.ball.y - st.ball.y;
+        const errorDist = Math.hypot(errorX, errorY);
+        predictionErrorRef.current = { x: errorX, y: errorY };
+
+        if (errorDist > ROLLBACK_ERROR_THRESHOLD) {
+          // خطأ كبير - صحح فوراً (مثلاً بعد هدف او ضربة قوية)
+          if (errorDist > 120) {
+            st.ball.x = data.ball.x;
+            st.ball.y = data.ball.y;
+          } else {
+            // تصحيح سلس - 35% من الخطأ كل فريم
+            st.ball.x += errorX * ROLLBACK_SMOOTH_FACTOR;
+            st.ball.y += errorY * ROLLBACK_SMOOTH_FACTOR;
+          }
+          st.ball.vx = data.ball.vx;
+          st.ball.vy = data.ball.vy;
+          // امسح history القديم
+          rollbackHistoryRef.current = [];
+        } else if (errorDist > 5) {
+          // خطأ صغير - صحح السرعة فقط
+          st.ball.vx = data.ball.vx;
+          st.ball.vy = data.ball.vy;
+          // صحح الموقع ببطء
+          st.ball.x += errorX * 0.15;
+          st.ball.y += errorY * 0.15;
+        }
+        // اذا الخطأ <5 بكسل - اترك التوقع المحلي يكمل - هذا هو سحر Rollback
+
+        // حفظ في history
+        rollbackHistoryRef.current.push({ x: st.ball.x, y: st.ball.y, vx: st.ball.vx, vy: st.ball.vy, t: now });
+        if (rollbackHistoryRef.current.length > ROLLBACK_HISTORY_SIZE) rollbackHistoryRef.current.shift();
       }
       if (data.paddles) {
         Object.keys(data.paddles).forEach((side) => {
@@ -1218,8 +1381,8 @@ export function GameScreen3D({
     const PADDLE_RADIUS = 36;
     const BALL_RADIUS = 14;
     const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
-    const MIN_SPEED = 5.0;
-    const MAX_SPEED = 16;
+    const MIN_SPEED = 7.5 * BALL_SPEED_MULTIPLIER; // كان 5.0 - اسرع 50%
+    const MAX_SPEED = 22 * BALL_SPEED_MULTIPLIER; // كان 16 - اسرع
     const WALL_BOUNCE_DAMP = 0.95;
 
     // ===== المحاكاة المحلية الكاملة: تعمل فقط عند عدم الاتصال بالخادم =====
@@ -1642,7 +1805,8 @@ export function GameScreen3D({
               current.x = target.x;
               current.z = target.z;
             } else {
-              const PADDLE_LERP = offlineNow ? 1 : 0.45;
+              // FIXED: مضارب الخصم اسرع + مضربك فوري
+              const PADDLE_LERP = offlineNow ? 1 : PADDLE_LERP_FAST;
               current.x += (target.x - current.x) * PADDLE_LERP;
               current.z += (target.z - current.z) * PADDLE_LERP;
             }
@@ -1897,7 +2061,18 @@ export function GameScreen3D({
               return sides.map((side, idx) => {
                 const p = players.find((pl: any) => pl.side === side) || { id: String(idx), name: side === 'top'? 'سامي' : side === 'right'? 'ليان' : side === 'left'? 'كريم' : 'نورا', color: COLORS_FB[idx], side };
                 const isMe = side===mySideForCam;
-                return (
+                if (is2DMode) {
+    return (
+      <div style={{ width:'100%', height:'100%', background:'#000', position:'relative' }}>
+        <canvas ref={canvas2DRef} width={world.w} height={world.h} style={{ width:'100%', height:'100%', display:'block', touchAction:'none' }} />
+        <div style={{ position:'absolute', top:10, left:10, color:'#fff', background:'rgba(0,0,0,0.6)', padding:'6px 10px', borderRadius:8, fontSize:12 }}>
+          2D • Rollback • {players.length}P • سرعة ×{BALL_SPEED_MULTIPLIER}
+        </div>
+      </div>
+    );
+  }
+
+  return (
                   <div key={p.id + side} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', background: isMe?'#1a2a3a':'#151515', border: `2px solid ${p.color}`, borderRadius: '14px', padding: '6px 16px', minWidth: '90px' }}>
                     <strong style={{ color: p.color, fontSize: '20px', lineHeight: '1', fontWeight: 900 }}>{scores[p.id]?? 0}</strong>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
