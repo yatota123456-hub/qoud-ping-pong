@@ -32,7 +32,7 @@ class ColyseusBridge {
   }
   sendPaddleTarget(x: number, y: number, vx?: number, vy?: number) {
     const now = performance.now();
-    if (now - this.lastPaddleEmit < 5) return;
+    if (now - this.lastPaddleEmit < 16) return; // FIXED: was 5ms - 16ms = 60Hz = less lag + less bandwidth
     const dt = Math.max(0.001, (now - this.lastPaddleEmit) / 1000);
     const computedVx = vx !== undefined ? vx : (x - this.lastPaddlePos.x) / dt;
     const computedVy = vy !== undefined ? vy : (y - this.lastPaddlePos.y) / dt;

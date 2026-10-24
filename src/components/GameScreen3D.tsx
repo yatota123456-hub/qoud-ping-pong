@@ -22,17 +22,17 @@ const isMobileDevice = () => {
   return window.innerWidth < 768 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 };
 
-// === STABLE NETCODE FOR DIFFERENT NETWORKS - FIXED ===
+// === STABLE NETCODE + NO LAG + FIXED SPEED ===
 const SERVER_STEP = 1;
-const ROLLBACK_HISTORY_SIZE = 120; // 2 sec buffer for high ping
-const ROLLBACK_ERROR_THRESHOLD = 50; // زيادة التحمل للشبكات المختلفة
-const ROLLBACK_SMOOTH_FACTOR = 0.18; // تصحيح ناعم جداً - يمنع الاهتزاز
-const PADDLE_LERP_FAST = 0.22; // أبطأ للخصوم = أكثر استقراراً
-const PADDLE_LERP_SLOW = 0.12;
-const BALL_SPEED_MULTIPLIER = 1.0;
-const BALL_INTERPOLATION_DELAY = 100; // 100ms buffer - يخفي تأخر الشبكة
-const BALL_LERP_FACTOR = 0.15; // تمهيد حركة الكرة
-const PING_SMOOTH_WINDOW = 15; // متوسط البنج // تمهيد حركة الكرة
+const ROLLBACK_HISTORY_SIZE = 60; // FIXED: was 120 - less memory = less lag
+const ROLLBACK_ERROR_THRESHOLD = 60; // FIXED: more tolerant = less corrections = less lag
+const ROLLBACK_SMOOTH_FACTOR = 0.12; // FIXED: was 0.18 - smoother = less jitter
+const PADDLE_LERP_FAST = 0.18; // FIXED: was 0.22 - more stable
+const PADDLE_LERP_SLOW = 0.10;
+const BALL_SPEED_MULTIPLIER = 0.85; // FIXED: was 1.0 - slower = no white blur + less lag
+const BALL_INTERPOLATION_DELAY = 80; // FIXED: was 100 - less delay = less lag
+const BALL_LERP_FACTOR = 0.12; // FIXED: was 0.15 - smoother
+const PING_SMOOTH_WINDOW = 10; // FIXED: was 15
 
 
 function createAirHockeySurface(worldW: number, worldH: number) {
@@ -1269,10 +1269,10 @@ export function GameScreen3D({
     const activeSide = (side: Player['side']) => sidesForCount.includes(side);
 
     const PADDLE_RADIUS = 36;
-    const BALL_RADIUS = 18; // FIXED: was 14 - too small at high speed
+    const BALL_RADIUS = 20; // FIXED: bigger = visible + less lag perceived
     const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
-    const MIN_SPEED = 3.8 * BALL_SPEED_MULTIPLIER; // FIXED: was 7.5 - too fast invisible
-    const MAX_SPEED = 11 * BALL_SPEED_MULTIPLIER; // FIXED: was 22 - white blur
+    const MIN_SPEED = 2.8 * BALL_SPEED_MULTIPLIER; // FIXED: truly fixed speed
+    const MAX_SPEED = 6.5 * BALL_SPEED_MULTIPLIER; // FIXED: cap for fixed mode
     const WALL_BOUNCE_DAMP = 0.95;
 
     // ===== المحاكاة المحلية الكاملة: تعمل فقط عند عدم الاتصال بالخادم =====

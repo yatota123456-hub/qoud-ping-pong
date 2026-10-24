@@ -100,7 +100,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
     this.settings = {
-      mode: 'time', duration: 180, goal: 7, ballSpeed: 5, // FIXED: was 9 - too fast white blur - faster default difficulty: 'normal',
+      mode: 'time', duration: 180, goal: 7, ballSpeed: 5, speed: 'fixed', // FIXED: default fixed - no acceleration unless chosen
       arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3,
      ...options.settings
     };
