@@ -141,19 +141,27 @@ useEffect(() => {
       setScreen('results');
     }
   };
-  const onGoalScored = ({ scores: serverScores, missedSide, scorerSide, scorerId }: any) => {
+  const onGoalScored = ({ scores: serverScores, missedSide, scorerSide, scorerId, scorerName, scorerColor }: any) => {
     if (!socket.connected) return;
     if (serverScores) setScores(serverScores);
-    // إظهار اسم اللاعب الذي سجل الهدف بدقة (وليس من استقبل الهدف)
-    const scorer = playersRef.current.find((p) => (scorerId && p.id === scorerId) || (scorerSide && p.side === scorerSide));
-    if (scorer) { 
-      setLastGoal(scorer.name); 
-      window.setTimeout(() => setLastGoal(null), 1400); 
+    // FIXED: use scorerName directly from server - accurate for all players
+    if (scorerName) {
+      setLastGoal(scorerName);
+      // store color for UI
+      (window as any).__lastScorerColor = scorerColor || '#ffcf5a';
+      window.setTimeout(() => setLastGoal(null), 2200);
     } else {
-      const other = playersRef.current.find((p) => p.side !== missedSide);
-      if (other) {
-        setLastGoal(other.name);
-        window.setTimeout(() => setLastGoal(null), 1400);
+      const scorer = playersRef.current.find((p) => (scorerId && p.id === scorerId) || (scorerSide && p.side === scorerSide));
+      if (scorer) { 
+        setLastGoal(scorer.name); 
+        (window as any).__lastScorerColor = scorer.color;
+        window.setTimeout(() => setLastGoal(null), 2200); 
+      } else {
+        const other = playersRef.current.find((p) => p.side !== missedSide);
+        if (other) {
+          setLastGoal(other.name);
+          window.setTimeout(() => setLastGoal(null), 2200);
+        }
       }
     }
   };
@@ -1272,7 +1280,7 @@ function GameScreen({ roomCode, isHost, players, settings, scores, lastGoal, pau
           background: 'linear-gradient(135deg, rgba(255,34,51,0.96) 0%, rgba(255,100,100,0.96) 100%)', 
           color: '#fff', padding: '16px 30px', borderRadius: 16, fontWeight: 900, fontSize: '19px',
           zIndex: 11, boxShadow: '0 10px 36px rgba(255,34,51,0.7)', border: '2px solid rgba(255,255,255,0.3)'
-        }}>⚽ هدف! {lastGoal}</div>
+        }}>⚽ {lastGoal} سجل!</div>
       )}
       {celebrating && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, gap: '8px' }}>

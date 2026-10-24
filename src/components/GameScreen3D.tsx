@@ -1168,11 +1168,11 @@ export function GameScreen3D({
     const puckGroup = new THREE.Group();
     const isWhiteArena = arenaStyle === 'classic';
     const puckMat = new THREE.MeshStandardMaterial({
-      color: isWhiteArena ? '#111111' : '#ffffff',
-      roughness: isWhiteArena ? 0.35 : 0.12,
-      metalness: isWhiteArena ? 0.15 : 0.15,
-      emissive: isWhiteArena ? '#000000' : '#00e5ff',
-      emissiveIntensity: isWhiteArena ? 0 : 1.4,
+      color: '#1a1a1a', // FIXED: was white - invisible at high speed
+      roughness: 0.2,
+      metalness: 0.3,
+      emissive: '#ffcf5a', // ذهبي واضح
+      emissiveIntensity: 0.9,
     });
     const puckBase = new THREE.Mesh(new THREE.CylinderGeometry(17, 17, 13, 48), puckMat);
     puckBase.position.y = 6;
@@ -1197,7 +1197,7 @@ export function GameScreen3D({
       const outerGlow = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 1, 32), outerGlowMat);
       outerGlow.position.y = 1;
       puckGroup.add(outerGlow);
-      const puckGlowMat = new THREE.MeshBasicMaterial({
+      const puckGlowMat = new THREE.MeshBasicMaterial({ // FIXED: bigger glow for visibility
         color: '#00e5ff',
         transparent: true,
         opacity: 0.55
@@ -1269,10 +1269,10 @@ export function GameScreen3D({
     const activeSide = (side: Player['side']) => sidesForCount.includes(side);
 
     const PADDLE_RADIUS = 36;
-    const BALL_RADIUS = 14;
+    const BALL_RADIUS = 18; // FIXED: was 14 - too small at high speed
     const HIT_DIST = PADDLE_RADIUS + BALL_RADIUS;
-    const MIN_SPEED = 7.5 * BALL_SPEED_MULTIPLIER; // كان 5.0 - اسرع 50%
-    const MAX_SPEED = 22 * BALL_SPEED_MULTIPLIER; // كان 16 - اسرع
+    const MIN_SPEED = 3.8 * BALL_SPEED_MULTIPLIER; // FIXED: was 7.5 - too fast invisible
+    const MAX_SPEED = 11 * BALL_SPEED_MULTIPLIER; // FIXED: was 22 - white blur
     const WALL_BOUNCE_DAMP = 0.95;
 
     // ===== المحاكاة المحلية الكاملة: تعمل فقط عند عدم الاتصال بالخادم =====

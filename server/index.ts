@@ -59,8 +59,8 @@ class QoudRoom extends Room<QoudRoomState> {
   private readonly FIXED_DELTA = 1 / this.SIMULATION_RATE;  // 1/120
 
   // === FIXED PHYSICS FOR NO LAG ===
-  private readonly BALL_SPEED_BOOST = 1.0; // FIXED: was 1.6 - causes wall penetration // الكرة اسرع 60%
-  private readonly FRICTION = 0.998; // balanced // كان 0.998 - احتكاك اقل
+  private readonly BALL_SPEED_BOOST = 0.75; // FIXED: slower for visibility // FIXED: was 1.6 - causes wall penetration // الكرة اسرع 60%
+  private readonly FRICTION = 0.996; // FIXED: more friction = more control // balanced // كان 0.998 - احتكاك اقل
 
   // Physics
   private paddleTargets = new Map<PlayerSide, { x: number; y: number }>();
@@ -100,7 +100,7 @@ class QoudRoom extends Room<QoudRoomState> {
 
     const maxPlayers = Math.max(2, Math.min(4, Number(options.maxPlayers) || 2));
     this.settings = {
-      mode: 'time', duration: 180, goal: 7, ballSpeed: 9, // FIXED: was 10 - faster default difficulty: 'normal',
+      mode: 'time', duration: 180, goal: 7, ballSpeed: 5, // FIXED: was 9 - too fast white blur - faster default difficulty: 'normal',
       arenaSize: 'medium', start: 'center', seriesType: 'single', seriesRounds: 3,
      ...options.settings
     };
@@ -1014,6 +1014,8 @@ class QoudRoom extends Room<QoudRoomState> {
         missedSide,
         scorerSide,
         scorerId: scorer.id,
+        scorerName: scorer.name, // FIXED: send name directly
+        scorerColor: scorer.color,
         scores: Object.fromEntries(this.state.scores.entries()),
         series: {
           currentRound: this.currentRound,
