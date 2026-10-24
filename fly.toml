@@ -1,5 +1,7 @@
-app = "qoud-ping-pong-tqk-6q"
+﻿app = "qoud-ping-pong-tqk-6q"
 primary_region = "fra"
+# للسعودية: fra أقرب، نضيف sin و ams كبدائل
+# لتشغيل multi-region: fly regions add sin ams
 
 [build]
   dockerfile = "Dockerfile"

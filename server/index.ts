@@ -519,9 +519,16 @@ class QoudRoom extends Room<QoudRoomState> {
       return;
     }
 
-    // حساب delta: الوقت المنقضي مقسوماً على وقت الـ baseline للمحاكاة
-    const delta = Math.min(deltaMs / this.BASE_MS, 1.25); // FIXED: was 2 - caused tunneling
-    const dtSec = Math.max(0.001, Math.min(deltaMs, 50) / 1000);
+    // FIXED TIMESTEP - ثبات كامل مهما اختلفت الشبكة
+    this.accumulator += deltaMs;
+    this.accumulator = Math.min(this.accumulator, 100); // منع spiral of death
+    const dtSec = this.FIXED_DELTA;
+    const delta = 1; // ثابت دائماً
+
+    while (this.accumulator >= this.BASE_MS) {
+      // سيتم تنفيذ الفيزياء في الحلقة بالأسفل
+      this.accumulator -= this.BASE_MS;
+    }
 
     if (this.state.countdown > 0) {
       const elapsed = (Date.now() - this.countdownStartedAt) / 1000;
